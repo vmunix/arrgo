@@ -1,0 +1,78 @@
+version: '3'
+
+vars:
+  BINARY: arrgo
+  MAIN: ./cmd/arrgo
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+
+  build:
+    desc: Build the binary
+    cmds:
+      - go build -o {{.BINARY}} {{.MAIN}}
+
+  run:
+    desc: Run the server
+    deps: [build]
+    cmds:
+      - ./{{.BINARY}} serve
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test ./...
+
+  test:v:
+    desc: Run tests with verbose output
+    cmds:
+      - go test -v ./...
+
+  test:cover:
+    desc: Run tests with coverage
+    cmds:
+      - go test -coverprofile=coverage.out ./...
+      - go tool cover -html=coverage.out -o coverage.html
+      - echo "Coverage report: coverage.html"
+
+  lint:
+    desc: Run golangci-lint
+    cmds:
+      - golangci-lint run ./...
+
+  fmt:
+    desc: Format code
+    cmds:
+      - gofmt -w .
+      - goimports -w .
+
+  check:
+    desc: Run all checks (fmt, lint, test)
+    cmds:
+      - task: fmt
+      - task: lint
+      - task: test
+
+  dev:
+    desc: Run with live reload (requires air)
+    cmds:
+      - air
+
+  generate:
+    desc: Run go generate
+    cmds:
+      - go generate ./...
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -f {{.BINARY}} coverage.out coverage.html
+
+  deps:
+    desc: Download dependencies
+    cmds:
+      - go mod download
+      - go mod tidy

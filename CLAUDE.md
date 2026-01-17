@@ -37,21 +37,59 @@ arrgo/
 - **SQLite** embedded database
 - **Two API surfaces**: clean native API (`/api/v1`) + compat shim (`/api/v3`)
 
-## Development Commands
+## Development Setup
+
+### Required Tools
 
 ```bash
-# Build
-go build -o arrgo ./cmd/arrgo
+# Core (included with Go)
+go version  # Go 1.21+
 
-# Run
-./arrgo serve
+# Linting
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
-# Test
-go test ./...
+# Task runner (optional but recommended)
+go install github.com/go-task/task/v3/cmd/task@latest
 
-# Lint (if golangci-lint installed)
-golangci-lint run
+# Live reload (optional)
+go install github.com/air-verse/air@latest
+
+# Mock generation (for testing)
+go install go.uber.org/mock/mockgen@latest
 ```
+
+Ensure `~/go/bin` is in your PATH.
+
+### Commands
+
+Using Task (recommended):
+```bash
+task              # List all tasks
+task build        # Build binary
+task test         # Run tests
+task lint         # Run linter
+task check        # fmt + lint + test
+task dev          # Live reload (air)
+task test:cover   # Tests with coverage report
+```
+
+Or directly with Go:
+```bash
+go build -o arrgo ./cmd/arrgo
+go test ./...
+golangci-lint run ./...
+```
+
+### Configuration
+
+Development config: copy `config.example.toml` to `config.toml` and set env vars:
+```bash
+export PROWLARR_API_KEY="your-key"
+export SABNZBD_API_KEY="your-key"
+# etc.
+```
+
+Or use defaults syntax in config: `${VAR:-default_value}`
 
 ## Module Responsibilities
 

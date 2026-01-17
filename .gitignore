@@ -8,6 +8,7 @@
 # Build output
 /dist/
 /bin/
+/tmp/
 
 # Data
 /data/
