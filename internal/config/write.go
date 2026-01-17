@@ -33,8 +33,11 @@ func (c *Config) Write(path string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 
 	encoder := toml.NewEncoder(f)
-	return encoder.Encode(c)
+	if err := encoder.Encode(c); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }
