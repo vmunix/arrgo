@@ -289,13 +289,11 @@ func TestTx_MultipleEpisodesAndFiles(t *testing.T) {
 		t.Fatalf("tx.AddContent failed: %v", err)
 	}
 
-	var episodes []*Episode
 	for i := 1; i <= 3; i++ {
 		ep := &Episode{ContentID: series.ID, Season: 1, Episode: i, Title: "Episode", Status: StatusWanted}
 		if err := tx.AddEpisode(ep); err != nil {
 			t.Fatalf("tx.AddEpisode failed: %v", err)
 		}
-		episodes = append(episodes, ep)
 
 		// Add a file for each episode
 		f := &File{

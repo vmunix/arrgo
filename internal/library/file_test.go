@@ -470,7 +470,7 @@ func TestTx_AddFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	f := &File{
 		ContentID: movie.ID,

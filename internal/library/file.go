@@ -87,7 +87,7 @@ func listFiles(q querier, f FileFilter) ([]*File, int, error) {
 	if err != nil {
 		return nil, 0, fmt.Errorf("list files: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []*File
 	for rows.Next() {

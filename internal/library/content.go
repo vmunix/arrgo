@@ -120,7 +120,7 @@ func listContent(q querier, f ContentFilter) ([]*Content, int, error) {
 	if err != nil {
 		return nil, 0, fmt.Errorf("list content: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []*Content
 	for rows.Next() {

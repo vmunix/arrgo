@@ -84,7 +84,7 @@ func listEpisodes(q querier, f EpisodeFilter) ([]*Episode, int, error) {
 	if err != nil {
 		return nil, 0, fmt.Errorf("list episodes: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []*Episode
 	for rows.Next() {

@@ -381,7 +381,7 @@ func TestTx_AddEpisode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	e := &Episode{
 		ContentID: series.ID,

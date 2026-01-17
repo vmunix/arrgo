@@ -415,7 +415,7 @@ func TestTx_AddContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	c := &Content{
 		Type:           ContentTypeMovie,
@@ -510,7 +510,7 @@ func TestTx_ListContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Add more in transaction
 	c2 := &Content{Type: ContentTypeMovie, TMDBID: ptr(int64(680)), Title: "Pulp Fiction", Year: 1994, Status: StatusWanted, QualityProfile: "hd", RootPath: "/movies"}
@@ -553,7 +553,7 @@ func TestTx_UpdateContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	c.Status = StatusAvailable
 	if err := tx.UpdateContent(c); err != nil {
@@ -595,7 +595,7 @@ func TestTx_DeleteContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Begin: %v", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if err := tx.DeleteContent(c.ID); err != nil {
 		t.Fatalf("tx.DeleteContent: %v", err)
