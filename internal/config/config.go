@@ -119,19 +119,46 @@ type AnthropicConfig struct {
 	Model  string `toml:"model"`
 }
 
-// Load reads and parses the configuration file.
+// Load reads, parses, and validates the configuration file.
 func Load(path string) (*Config, error) {
+	cfg, missing, err := load(path)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build ConfigError if any issues
+	configErr := &ConfigError{Path: path, Missing: missing}
+
+	// Run validation
+	configErr.Errors = cfg.Validate()
+
+	if configErr.HasErrors() {
+		return nil, configErr
+	}
+
+	return cfg, nil
+}
+
+// LoadWithoutValidation reads and parses the config without validation.
+// Useful for init commands or debugging.
+func LoadWithoutValidation(path string) (*Config, error) {
+	cfg, _, err := load(path)
+	return cfg, err
+}
+
+// load is the internal loader that returns config, missing vars, and parse error.
+func load(path string) (*Config, []string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("reading config: %w", err)
+		return nil, nil, fmt.Errorf("reading config: %w", err)
 	}
 
 	// Substitute environment variables
-	content, _ := substituteEnvVars(string(data))
+	content, missing := substituteEnvVars(string(data))
 
 	var cfg Config
 	if _, err := toml.Decode(content, &cfg); err != nil {
-		return nil, fmt.Errorf("parsing config: %w", err)
+		return nil, nil, fmt.Errorf("parsing config: %w", err)
 	}
 
 	// Apply defaults
@@ -148,7 +175,7 @@ func Load(path string) (*Config, error) {
 		cfg.Database.Path = "./data/arrgo.db"
 	}
 
-	return &cfg, nil
+	return &cfg, missing, nil
 }
 
 // substituteEnvVars replaces ${VAR}, ${VAR:-default}, ${VAR:?error} patterns.
