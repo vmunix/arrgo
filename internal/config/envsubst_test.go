@@ -1,16 +1,13 @@
-// internal/config/envsubst_test.go
 package config
 
 import (
-	"os"
 	"testing"
 )
 
 func TestSubstituteEnvVars_Simple(t *testing.T) {
-	os.Setenv("TEST_VAR", "hello")
-	defer os.Unsetenv("TEST_VAR")
+	t.Setenv("TEST_VAR_SIMPLE", "hello")
 
-	content, missing := substituteEnvVars("value = ${TEST_VAR}")
+	content, missing := substituteEnvVars("value = ${TEST_VAR_SIMPLE}")
 	if content != "value = hello" {
 		t.Errorf("expected 'value = hello', got %q", content)
 	}
@@ -20,21 +17,22 @@ func TestSubstituteEnvVars_Simple(t *testing.T) {
 }
 
 func TestSubstituteEnvVars_Missing(t *testing.T) {
-	os.Unsetenv("MISSING_VAR")
-
-	content, missing := substituteEnvVars("value = ${MISSING_VAR}")
-	if content != "value = ${MISSING_VAR}" {
+	// Use a unique var name that definitely doesn't exist
+	// t.Setenv cannot truly unset, so we use a name we know is never set
+	content, missing := substituteEnvVars("value = ${ARRGO_TEST_NONEXISTENT_VAR_12345}")
+	if content != "value = ${ARRGO_TEST_NONEXISTENT_VAR_12345}" {
 		t.Errorf("expected unchanged, got %q", content)
 	}
-	if len(missing) != 1 || missing[0] != "MISSING_VAR" {
-		t.Errorf("expected [MISSING_VAR], got %v", missing)
+	if len(missing) != 1 || missing[0] != "ARRGO_TEST_NONEXISTENT_VAR_12345" {
+		t.Errorf("expected [ARRGO_TEST_NONEXISTENT_VAR_12345], got %v", missing)
 	}
 }
 
 func TestSubstituteEnvVars_Default(t *testing.T) {
-	os.Unsetenv("UNSET_VAR")
+	// Empty string should trigger default (same as unset for :- syntax)
+	t.Setenv("UNSET_VAR_DEFAULT", "")
 
-	content, missing := substituteEnvVars("value = ${UNSET_VAR:-default_value}")
+	content, missing := substituteEnvVars("value = ${UNSET_VAR_DEFAULT:-default_value}")
 	if content != "value = default_value" {
 		t.Errorf("expected 'value = default_value', got %q", content)
 	}
@@ -44,10 +42,9 @@ func TestSubstituteEnvVars_Default(t *testing.T) {
 }
 
 func TestSubstituteEnvVars_DefaultOverriddenByEnv(t *testing.T) {
-	os.Setenv("SET_VAR", "from_env")
-	defer os.Unsetenv("SET_VAR")
+	t.Setenv("SET_VAR_OVERRIDE", "from_env")
 
-	content, missing := substituteEnvVars("value = ${SET_VAR:-default}")
+	content, missing := substituteEnvVars("value = ${SET_VAR_OVERRIDE:-default}")
 	if content != "value = from_env" {
 		t.Errorf("expected 'value = from_env', got %q", content)
 	}
@@ -57,28 +54,28 @@ func TestSubstituteEnvVars_DefaultOverriddenByEnv(t *testing.T) {
 }
 
 func TestSubstituteEnvVars_RequiredError(t *testing.T) {
-	os.Unsetenv("REQUIRED_VAR")
+	// Empty string should trigger :? error (same as unset)
+	t.Setenv("REQUIRED_VAR_TEST", "")
 
-	content, missing := substituteEnvVars("value = ${REQUIRED_VAR:?API key is required}")
-	if content != "value = ${REQUIRED_VAR:?API key is required}" {
+	content, missing := substituteEnvVars("value = ${REQUIRED_VAR_TEST:?API key is required}")
+	if content != "value = ${REQUIRED_VAR_TEST:?API key is required}" {
 		t.Errorf("expected unchanged, got %q", content)
 	}
-	if len(missing) != 1 || missing[0] != "REQUIRED_VAR: API key is required" {
+	if len(missing) != 1 || missing[0] != "REQUIRED_VAR_TEST: API key is required" {
 		t.Errorf("expected error message, got %v", missing)
 	}
 }
 
 func TestSubstituteEnvVars_Multiple(t *testing.T) {
-	os.Setenv("VAR1", "one")
-	os.Unsetenv("VAR2")
-	os.Unsetenv("VAR3")
-	defer os.Unsetenv("VAR1")
+	t.Setenv("VAR1_MULTI", "one")
+	// VAR2_MULTI_NONEXISTENT is never set - truly missing
+	t.Setenv("VAR3_MULTI", "")
 
-	content, missing := substituteEnvVars("${VAR1} ${VAR2} ${VAR3:-three}")
-	if content != "one ${VAR2} three" {
-		t.Errorf("expected 'one ${VAR2} three', got %q", content)
+	content, missing := substituteEnvVars("${VAR1_MULTI} ${ARRGO_VAR2_NONEXISTENT} ${VAR3_MULTI:-three}")
+	if content != "one ${ARRGO_VAR2_NONEXISTENT} three" {
+		t.Errorf("expected 'one ${ARRGO_VAR2_NONEXISTENT} three', got %q", content)
 	}
-	if len(missing) != 1 || missing[0] != "VAR2" {
-		t.Errorf("expected [VAR2], got %v", missing)
+	if len(missing) != 1 || missing[0] != "ARRGO_VAR2_NONEXISTENT" {
+		t.Errorf("expected [ARRGO_VAR2_NONEXISTENT], got %v", missing)
 	}
 }

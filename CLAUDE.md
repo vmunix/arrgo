@@ -107,3 +107,11 @@ Native API conventions:
 - Unit tests for business logic (parsing, scoring, etc.)
 - Integration tests for API endpoints
 - Mock external services (Prowlarr, SABnzbd, Plex)
+
+Follow Eskil Steenberg's black-box architecture:
+1. **Black Box Interfaces**: Every module has a clean API with hidden implementation
+2. **Replaceable Components**: Any module can be rewritten using only its interface
+3. **Single Responsibility**: One module = one person can build/maintain it
+4. **Primitive-First Design**: Core types flow consistently through the system
+5. **Streaming Collection**: Memory-efficient data extraction; batch classification
+

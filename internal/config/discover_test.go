@@ -62,7 +62,11 @@ func TestDiscover_CurrentDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get working directory: %v", err)
 	}
-	defer os.Chdir(origDir)
+	defer func() {
+		if err := os.Chdir(origDir); err != nil {
+			t.Errorf("failed to restore working directory: %v", err)
+		}
+	}()
 
 	t.Setenv("ARRGO_CONFIG", "")
 
@@ -72,7 +76,9 @@ func TestDiscover_CurrentDir(t *testing.T) {
 	if err := os.WriteFile(cfgPath, []byte("[server]"), 0644); err != nil {
 		t.Fatalf("failed to create test config: %v", err)
 	}
-	os.Chdir(tmp)
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatalf("failed to change directory: %v", err)
+	}
 
 	path, err := Discover()
 	if err != nil {
@@ -89,13 +95,19 @@ func TestDiscover_NotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get working directory: %v", err)
 	}
-	defer os.Chdir(origDir)
+	defer func() {
+		if err := os.Chdir(origDir); err != nil {
+			t.Errorf("failed to restore working directory: %v", err)
+		}
+	}()
 
 	t.Setenv("ARRGO_CONFIG", "")
 	t.Setenv("XDG_CONFIG_HOME", "/nonexistent/xdg")
 
 	tmp := t.TempDir() // Empty temp dir
-	os.Chdir(tmp)
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatalf("failed to change directory: %v", err)
+	}
 
 	_, err = Discover()
 	if err == nil {

@@ -1,4 +1,3 @@
-// internal/config/load_test.go
 package config
 
 import (
@@ -18,7 +17,9 @@ port = 8080
 [libraries.movies]
 root = "` + tmp + `"
 `
-	os.WriteFile(cfgPath, []byte(content), 0644)
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
 
 	cfg, err := Load(cfgPath)
 	if err != nil {
@@ -30,7 +31,7 @@ root = "` + tmp + `"
 }
 
 func TestLoad_MissingEnvVar(t *testing.T) {
-	os.Unsetenv("MISSING_KEY")
+	// Use a unique var name that definitely doesn't exist
 	tmp := t.TempDir()
 	cfgPath := filepath.Join(tmp, "config.toml")
 	content := `
@@ -42,16 +43,18 @@ root = "` + tmp + `"
 
 [indexers.prowlarr]
 url = "http://localhost"
-api_key = "${MISSING_KEY}"
+api_key = "${ARRGO_NONEXISTENT_KEY_12345}"
 `
-	os.WriteFile(cfgPath, []byte(content), 0644)
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
 
 	_, err := Load(cfgPath)
 	if err == nil {
 		t.Fatal("expected error for missing env var")
 	}
-	if !strings.Contains(err.Error(), "MISSING_KEY") {
-		t.Errorf("expected MISSING_KEY in error, got %v", err)
+	if !strings.Contains(err.Error(), "ARRGO_NONEXISTENT_KEY_12345") {
+		t.Errorf("expected ARRGO_NONEXISTENT_KEY_12345 in error, got %v", err)
 	}
 }
 
@@ -65,7 +68,9 @@ port = 99999
 [libraries.movies]
 root = "` + tmp + `"
 `
-	os.WriteFile(cfgPath, []byte(content), 0644)
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
 
 	_, err := Load(cfgPath)
 	if err == nil {
@@ -83,7 +88,9 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 [libraries.movies]
 root = "` + tmp + `"
 `
-	os.WriteFile(cfgPath, []byte(content), 0644)
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
 
 	cfg, err := Load(cfgPath)
 	if err != nil {
@@ -104,7 +111,9 @@ func TestLoadWithoutValidation(t *testing.T) {
 [server]
 port = 99999
 `
-	os.WriteFile(cfgPath, []byte(content), 0644)
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
 
 	cfg, err := LoadWithoutValidation(cfgPath)
 	if err != nil {
@@ -116,17 +125,19 @@ port = 99999
 }
 
 func TestLoad_EnvVarDefault(t *testing.T) {
-	os.Unsetenv("OPTIONAL_VAR")
+	// Use a unique var name that doesn't exist to test default syntax
 	tmp := t.TempDir()
 	cfgPath := filepath.Join(tmp, "config.toml")
 	content := `
 [server]
-host = "${OPTIONAL_VAR:-localhost}"
+host = "${ARRGO_OPTIONAL_VAR_NONEXISTENT:-localhost}"
 
 [libraries.movies]
 root = "` + tmp + `"
 `
-	os.WriteFile(cfgPath, []byte(content), 0644)
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
 
 	cfg, err := Load(cfgPath)
 	if err != nil {
