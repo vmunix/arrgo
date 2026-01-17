@@ -127,7 +127,7 @@ func Load(path string) (*Config, error) {
 	}
 
 	// Substitute environment variables
-	content := substituteEnvVars(string(data))
+	content, _ := substituteEnvVars(string(data))
 
 	var cfg Config
 	if _, err := toml.Decode(content, &cfg); err != nil {
@@ -151,15 +151,41 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// substituteEnvVars replaces ${VAR_NAME} with environment variable values.
-var envVarPattern = regexp.MustCompile(`\$\{([^}]+)\}`)
+// substituteEnvVars replaces ${VAR}, ${VAR:-default}, ${VAR:?error} patterns.
+// Returns the substituted content and a list of missing/error variables.
+var envVarPattern = regexp.MustCompile(`\$\{([^}:]+)(?:(:[-?])([^}]*))?\}`)
 
-func substituteEnvVars(content string) string {
-	return envVarPattern.ReplaceAllStringFunc(content, func(match string) string {
-		varName := match[2 : len(match)-1] // Strip ${ and }
-		if value, ok := os.LookupEnv(varName); ok {
+func substituteEnvVars(content string) (string, []string) {
+	var missing []string
+
+	result := envVarPattern.ReplaceAllStringFunc(content, func(match string) string {
+		parts := envVarPattern.FindStringSubmatch(match)
+		varName := parts[1]
+		modifier := parts[2]
+		modValue := parts[3]
+
+		value, exists := os.LookupEnv(varName)
+
+		switch modifier {
+		case ":-": // Default value
+			if !exists || value == "" {
+				return modValue
+			}
 			return value
+		case ":?": // Required with error
+			if !exists || value == "" {
+				missing = append(missing, varName+": "+modValue)
+				return match
+			}
+			return value
+		default: // Simple substitution
+			if exists {
+				return value
+			}
+			missing = append(missing, varName)
+			return match
 		}
-		return match // Leave unchanged if not found
 	})
+
+	return result, missing
 }
