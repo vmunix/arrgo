@@ -1,0 +1,81 @@
+# arrgo configuration
+# Copy to config.toml and edit values
+
+[server]
+host = "0.0.0.0"
+port = 8484
+log_level = "info"  # debug | info | warn | error
+
+[database]
+path = "./data/arrgo.db"
+
+# Media library paths and naming templates
+[libraries.movies]
+root = "/srv/data/media/movies"
+naming = "{title} ({year})/{title} ({year}) [{quality}].{ext}"
+
+[libraries.series]
+root = "/srv/data/media/tv"
+naming = "{title}/Season {season:02d}/{title} - S{season:02d}E{episode:02d} [{quality}].{ext}"
+
+# Quality profiles
+[quality]
+default = "hd"
+
+[quality.profiles.hd]
+accept = ["1080p bluray", "1080p webdl", "1080p hdtv", "720p bluray", "720p webdl"]
+
+[quality.profiles.uhd]
+accept = ["2160p bluray", "2160p webdl", "1080p bluray", "1080p webdl"]
+
+[quality.profiles.any]
+accept = ["2160p", "1080p", "720p", "480p"]
+
+# Indexer configuration (Prowlarr initially)
+[indexers.prowlarr]
+url = "http://localhost:9696"
+api_key = "${PROWLARR_API_KEY}"
+
+# Download clients
+[downloaders.sabnzbd]
+url = "http://localhost:8085"
+api_key = "${SABNZBD_API_KEY}"
+category = "arrgo"
+
+# Uncomment when torrent support is added
+# [downloaders.qbittorrent]
+# url = "http://localhost:8083"
+# username = "admin"
+# password = "${QB_PASSWORD}"
+
+# Media server notifications
+[notifications.plex]
+url = "http://localhost:32400"
+token = "${PLEX_TOKEN}"
+libraries = ["Movies", "TV Shows"]
+
+# Overseerr integration (optional)
+[overseerr]
+enabled = false
+url = "http://localhost:5055"
+api_key = "${OVERSEERR_API_KEY}"
+sync_interval = "5m"
+
+# Compatibility API for Overseerr to connect to arrgo
+[compat]
+api_key = "${ARRGO_API_KEY}"
+radarr = true
+sonarr = true
+
+# AI assistant configuration
+[ai]
+enabled = true
+provider = "ollama"  # ollama | anthropic
+
+[ai.ollama]
+url = "http://localhost:11434"
+model = "llama3.1:8b"
+
+[ai.anthropic]
+api_key = "${ANTHROPIC_API_KEY}"
+model = "claude-3-haiku"
