@@ -2,7 +2,6 @@
 package library
 
 import (
-	"database/sql"
 	"time"
 )
 
@@ -59,62 +58,4 @@ type File struct {
 	Quality   string
 	Source    string
 	AddedAt   time.Time
-}
-
-// Store provides access to content data.
-type Store struct {
-	db *sql.DB
-}
-
-// NewStore creates a new library store.
-func NewStore(db *sql.DB) *Store {
-	return &Store{db: db}
-}
-
-// AddContent adds a movie or series to the library.
-func (s *Store) AddContent(c *Content) error {
-	// TODO: implement
-	return nil
-}
-
-// GetContent retrieves content by ID.
-func (s *Store) GetContent(id int64) (*Content, error) {
-	// TODO: implement
-	return nil, nil
-}
-
-// ListContent returns all content, optionally filtered.
-func (s *Store) ListContent(contentType *ContentType, status *ContentStatus) ([]*Content, error) {
-	// TODO: implement
-	return nil, nil
-}
-
-// UpdateContent updates content fields.
-func (s *Store) UpdateContent(c *Content) error {
-	// TODO: implement
-	return nil
-}
-
-// DeleteContent removes content from the library.
-func (s *Store) DeleteContent(id int64) error {
-	// TODO: implement
-	return nil
-}
-
-// GetEpisodes returns all episodes for a series.
-func (s *Store) GetEpisodes(contentID int64) ([]*Episode, error) {
-	// TODO: implement
-	return nil, nil
-}
-
-// AddFile records a media file.
-func (s *Store) AddFile(f *File) error {
-	// TODO: implement
-	return nil
-}
-
-// GetFiles returns files for content.
-func (s *Store) GetFiles(contentID int64) ([]*File, error) {
-	// TODO: implement
-	return nil, nil
 }
