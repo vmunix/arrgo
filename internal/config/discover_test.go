@@ -1,4 +1,3 @@
-// internal/config/discover_test.go
 package config
 
 import (
@@ -10,9 +9,7 @@ import (
 
 func TestDefaultPath(t *testing.T) {
 	// Clear XDG var to test default
-	old := os.Getenv("XDG_CONFIG_HOME")
-	os.Unsetenv("XDG_CONFIG_HOME")
-	defer os.Setenv("XDG_CONFIG_HOME", old)
+	t.Setenv("XDG_CONFIG_HOME", "")
 
 	path := DefaultPath()
 	if !strings.Contains(path, ".config/arrgo/config.toml") {
@@ -21,8 +18,7 @@ func TestDefaultPath(t *testing.T) {
 }
 
 func TestDefaultPath_XDG(t *testing.T) {
-	os.Setenv("XDG_CONFIG_HOME", "/custom/config")
-	defer os.Unsetenv("XDG_CONFIG_HOME")
+	t.Setenv("XDG_CONFIG_HOME", "/custom/config")
 
 	path := DefaultPath()
 	if path != "/custom/config/arrgo/config.toml" {
@@ -33,10 +29,11 @@ func TestDefaultPath_XDG(t *testing.T) {
 func TestDiscover_ARRGO_CONFIG(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := filepath.Join(tmp, "custom.toml")
-	os.WriteFile(cfgPath, []byte("[server]"), 0644)
+	if err := os.WriteFile(cfgPath, []byte("[server]"), 0644); err != nil {
+		t.Fatalf("failed to create test config: %v", err)
+	}
 
-	os.Setenv("ARRGO_CONFIG", cfgPath)
-	defer os.Unsetenv("ARRGO_CONFIG")
+	t.Setenv("ARRGO_CONFIG", cfgPath)
 
 	path, err := Discover()
 	if err != nil {
@@ -48,8 +45,7 @@ func TestDiscover_ARRGO_CONFIG(t *testing.T) {
 }
 
 func TestDiscover_ARRGO_CONFIG_NotFound(t *testing.T) {
-	os.Setenv("ARRGO_CONFIG", "/nonexistent/config.toml")
-	defer os.Unsetenv("ARRGO_CONFIG")
+	t.Setenv("ARRGO_CONFIG", "/nonexistent/config.toml")
 
 	_, err := Discover()
 	if err == nil {
@@ -61,21 +57,21 @@ func TestDiscover_ARRGO_CONFIG_NotFound(t *testing.T) {
 }
 
 func TestDiscover_CurrentDir(t *testing.T) {
-	// Save current dir and env
-	origDir, _ := os.Getwd()
-	origEnv := os.Getenv("ARRGO_CONFIG")
-	os.Unsetenv("ARRGO_CONFIG")
-	defer func() {
-		os.Chdir(origDir)
-		if origEnv != "" {
-			os.Setenv("ARRGO_CONFIG", origEnv)
-		}
-	}()
+	// Save current dir
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	defer os.Chdir(origDir)
+
+	t.Setenv("ARRGO_CONFIG", "")
 
 	// Create temp dir with config
 	tmp := t.TempDir()
 	cfgPath := filepath.Join(tmp, "config.toml")
-	os.WriteFile(cfgPath, []byte("[server]"), 0644)
+	if err := os.WriteFile(cfgPath, []byte("[server]"), 0644); err != nil {
+		t.Fatalf("failed to create test config: %v", err)
+	}
 	os.Chdir(tmp)
 
 	path, err := Discover()
@@ -88,18 +84,20 @@ func TestDiscover_CurrentDir(t *testing.T) {
 }
 
 func TestDiscover_NotFound(t *testing.T) {
-	// Clear all discovery paths
-	os.Unsetenv("ARRGO_CONFIG")
-	origXDG := os.Getenv("XDG_CONFIG_HOME")
-	os.Setenv("XDG_CONFIG_HOME", "/nonexistent/xdg")
-	defer os.Setenv("XDG_CONFIG_HOME", origXDG)
-
-	origDir, _ := os.Getwd()
-	tmp := t.TempDir() // Empty temp dir
-	os.Chdir(tmp)
+	// Save current dir
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
 	defer os.Chdir(origDir)
 
-	_, err := Discover()
+	t.Setenv("ARRGO_CONFIG", "")
+	t.Setenv("XDG_CONFIG_HOME", "/nonexistent/xdg")
+
+	tmp := t.TempDir() // Empty temp dir
+	os.Chdir(tmp)
+
+	_, err = Discover()
 	if err == nil {
 		t.Fatal("expected error when no config found")
 	}

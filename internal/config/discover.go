@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // DefaultPath returns the XDG-compliant default config path.
@@ -53,12 +54,5 @@ func Discover() (string, error) {
 }
 
 func formatPaths(paths []string) string {
-	result := ""
-	for i, p := range paths {
-		if i > 0 {
-			result += ", "
-		}
-		result += p
-	}
-	return result
+	return strings.Join(paths, ", ")
 }
