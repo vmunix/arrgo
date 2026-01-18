@@ -69,3 +69,17 @@ func (c Codec) String() string {
 		return "unknown"
 	}
 }
+
+// Info contains parsed release information.
+type Info struct {
+	Title      string
+	Year       int
+	Season     int
+	Episode    int
+	Resolution Resolution
+	Source     Source
+	Codec      Codec
+	Group      string
+	Proper     bool
+	Repack     bool
+}

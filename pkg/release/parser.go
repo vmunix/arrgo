@@ -3,119 +3,105 @@ package release
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 )
-
-// Info contains parsed information from a release name.
-type Info struct {
-	Title      string
-	Year       int
-	Season     int
-	Episode    int
-	Quality    string // 2160p, 1080p, 720p, 480p
-	Source     string // bluray, webdl, webrip, hdtv, dvd
-	Codec      string // x264, x265, hevc, xvid
-	Audio      string // dts, truehd, atmos, aac
-	Group      string // release group
-	Proper     bool
-	Repack     bool
-	Extended   bool
-	Directors  bool // director's cut
-}
 
 // Parse extracts information from a release name.
 func Parse(name string) *Info {
 	info := &Info{}
 
 	// Normalize
-	name = strings.ReplaceAll(name, ".", " ")
-	name = strings.ReplaceAll(name, "_", " ")
+	normalized := strings.ReplaceAll(name, ".", " ")
+	normalized = strings.ReplaceAll(normalized, "_", " ")
 
-	// Quality
-	info.Quality = parseQuality(name)
+	// Resolution
+	info.Resolution = parseResolution(normalized)
 
 	// Source
-	info.Source = parseSource(name)
+	info.Source = parseSource(normalized)
 
 	// Codec
-	info.Codec = parseCodec(name)
+	info.Codec = parseCodec(normalized)
 
 	// Flags
-	info.Proper = containsAny(name, "proper")
-	info.Repack = containsAny(name, "repack", "rerip")
-	info.Extended = containsAny(name, "extended")
-	info.Directors = containsAny(name, "directors cut", "director's cut")
+	info.Proper = containsAny(normalized, "proper")
+	info.Repack = containsAny(normalized, "repack", "rerip")
 
 	// Year
 	yearRe := regexp.MustCompile(`\b(19|20)\d{2}\b`)
-	if match := yearRe.FindString(name); match != "" {
-		// TODO: parse year
+	if match := yearRe.FindString(normalized); match != "" {
+		if year, err := strconv.Atoi(match); err == nil {
+			info.Year = year
+		}
 	}
 
 	// Season/Episode
 	seRe := regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,2})`)
-	if matches := seRe.FindStringSubmatch(name); len(matches) == 3 {
-		// TODO: parse season/episode
+	if matches := seRe.FindStringSubmatch(normalized); len(matches) == 3 {
+		if season, err := strconv.Atoi(matches[1]); err == nil {
+			info.Season = season
+		}
+		if episode, err := strconv.Atoi(matches[2]); err == nil {
+			info.Episode = episode
+		}
 	}
 
 	// Group (usually last, after hyphen)
 	if idx := strings.LastIndex(name, "-"); idx > 0 {
 		group := strings.TrimSpace(name[idx+1:])
 		// Remove file extension if present
-		if dotIdx := strings.LastIndex(group, " "); dotIdx > 0 {
+		if dotIdx := strings.LastIndex(group, "."); dotIdx > 0 {
 			group = group[:dotIdx]
 		}
 		info.Group = group
 	}
 
+	// Title - extract from start up to year or quality marker
+	info.Title = parseTitle(normalized)
+
 	return info
 }
 
-func parseQuality(name string) string {
+func parseResolution(name string) Resolution {
 	name = strings.ToLower(name)
 	switch {
 	case strings.Contains(name, "2160p"), strings.Contains(name, "4k"), strings.Contains(name, "uhd"):
-		return "2160p"
+		return Resolution2160p
 	case strings.Contains(name, "1080p"):
-		return "1080p"
+		return Resolution1080p
 	case strings.Contains(name, "720p"):
-		return "720p"
-	case strings.Contains(name, "480p"), strings.Contains(name, "sd"):
-		return "480p"
+		return Resolution720p
 	default:
-		return ""
+		return ResolutionUnknown
 	}
 }
 
-func parseSource(name string) string {
+func parseSource(name string) Source {
 	name = strings.ToLower(name)
 	switch {
 	case containsAny(name, "bluray", "blu-ray", "bdrip", "brrip"):
-		return "bluray"
+		return SourceBluRay
 	case containsAny(name, "web-dl", "webdl"):
-		return "webdl"
+		return SourceWEBDL
 	case containsAny(name, "webrip", "web-rip"):
-		return "webrip"
+		return SourceWEBRip
 	case containsAny(name, "hdtv"):
-		return "hdtv"
-	case containsAny(name, "dvdrip", "dvd"):
-		return "dvd"
+		return SourceHDTV
 	default:
-		return ""
+		return SourceUnknown
 	}
 }
 
-func parseCodec(name string) string {
+func parseCodec(name string) Codec {
 	name = strings.ToLower(name)
 	switch {
 	case containsAny(name, "x265", "h265", "hevc"):
-		return "hevc"
+		return CodecX265
 	case containsAny(name, "x264", "h264", "avc"):
-		return "x264"
-	case containsAny(name, "xvid", "divx"):
-		return "xvid"
+		return CodecX264
 	default:
-		return ""
+		return CodecUnknown
 	}
 }
 
@@ -129,48 +115,14 @@ func containsAny(s string, substrs ...string) bool {
 	return false
 }
 
-// Score calculates a quality score for ranking releases.
-func (i *Info) Score() int {
-	score := 0
-
-	// Quality
-	switch i.Quality {
-	case "2160p":
-		score += 100
-	case "1080p":
-		score += 80
-	case "720p":
-		score += 60
-	case "480p":
-		score += 40
+func parseTitle(name string) string {
+	// Find the first marker that indicates end of title
+	// Common markers: year (4 digits), resolution, S01E01, etc.
+	markers := regexp.MustCompile(`(?i)\b(19|20)\d{2}\b|\b\d{3,4}p\b|\bS\d{1,2}E\d{1,2}\b|\b4K\b|\bUHD\b`)
+	loc := markers.FindStringIndex(name)
+	if loc != nil {
+		title := strings.TrimSpace(name[:loc[0]])
+		return title
 	}
-
-	// Source
-	switch i.Source {
-	case "bluray":
-		score += 30
-	case "webdl":
-		score += 25
-	case "webrip":
-		score += 20
-	case "hdtv":
-		score += 15
-	case "dvd":
-		score += 10
-	}
-
-	// Codec (HEVC preferred for efficiency)
-	switch i.Codec {
-	case "hevc":
-		score += 10
-	case "x264":
-		score += 8
-	}
-
-	// Bonuses
-	if i.Proper || i.Repack {
-		score += 5
-	}
-
-	return score
+	return ""
 }
