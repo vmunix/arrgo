@@ -43,6 +43,29 @@ type radarrMovieResponse struct {
 	Status    string `json:"status"`
 }
 
+// sonarrAddRequest is the Sonarr format for adding a series.
+type sonarrAddRequest struct {
+	TVDBID           int64  `json:"tvdbId"`
+	Title            string `json:"title"`
+	Year             int    `json:"year"`
+	QualityProfileID int    `json:"qualityProfileId"`
+	RootFolderPath   string `json:"rootFolderPath"`
+	Monitored        bool   `json:"monitored"`
+	AddOptions       struct {
+		SearchForMissingEpisodes bool `json:"searchForMissingEpisodes"`
+	} `json:"addOptions"`
+}
+
+// sonarrSeriesResponse is the Sonarr format for a series.
+type sonarrSeriesResponse struct {
+	ID        int64  `json:"id"`
+	TVDBID    int64  `json:"tvdbId"`
+	Title     string `json:"title"`
+	Year      int    `json:"year"`
+	Monitored bool   `json:"monitored"`
+	Status    string `json:"status"`
+}
+
 // Server provides Radarr/Sonarr API compatibility.
 type Server struct {
 	cfg       Config
@@ -246,7 +269,54 @@ func (s *Server) getSeries(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "Not implemented"})
+	var req sonarrAddRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+		return
+	}
+
+	// Map quality profile ID to name
+	profileName := "hd"
+	for name, id := range s.cfg.QualityProfiles {
+		if id == req.QualityProfileID {
+			profileName = name
+			break
+		}
+	}
+
+	// Determine root path
+	rootPath := req.RootFolderPath
+	if rootPath == "" {
+		rootPath = s.cfg.SeriesRoot
+	}
+
+	// Add to library
+	tvdbID := req.TVDBID
+	content := &library.Content{
+		Type:           library.ContentTypeSeries,
+		TVDBID:         &tvdbID,
+		Title:          req.Title,
+		Year:           req.Year,
+		Status:         library.StatusWanted,
+		QualityProfile: profileName,
+		RootPath:       rootPath,
+	}
+
+	if err := s.library.AddContent(content); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Note: Series auto-search is more complex (episodes), skip for v1
+
+	writeJSON(w, http.StatusCreated, sonarrSeriesResponse{
+		ID:        content.ID,
+		TVDBID:    req.TVDBID,
+		Title:     req.Title,
+		Year:      req.Year,
+		Monitored: req.Monitored,
+		Status:    "continuing",
+	})
 }
 
 // searchAndGrab performs a background search and grabs the best result.
