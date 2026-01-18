@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"syscall"
 	"time"
 
@@ -135,7 +136,26 @@ func runServe(configPath string) error {
 
 	// Compat API (if enabled)
 	if cfg.Compat.Radarr || cfg.Compat.Sonarr {
-		apiCompat := compat.New(cfg.Compat.APIKey)
+		// Build quality profile ID map (sorted for deterministic IDs across restarts)
+		names := make([]string, 0, len(cfg.Quality.Profiles))
+		for name := range cfg.Quality.Profiles {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		profileIDs := make(map[string]int)
+		for i, name := range names {
+			profileIDs[name] = i + 1
+		}
+
+		compatCfg := compat.Config{
+			APIKey:          cfg.Compat.APIKey,
+			MovieRoot:       cfg.Libraries.Movies.Root,
+			SeriesRoot:      cfg.Libraries.Series.Root,
+			QualityProfiles: profileIDs,
+		}
+		apiCompat := compat.New(compatCfg, libraryStore, downloadStore)
+		apiCompat.SetSearcher(searcher)
+		apiCompat.SetManager(downloadManager)
 		apiCompat.RegisterRoutes(mux)
 	}
 
@@ -148,9 +168,7 @@ func runServe(configPath string) error {
 	fmt.Printf("  plex: %v\n", plexClient != nil)
 
 	// Silence unused variable warnings for stores not yet wired up
-	_ = libraryStore
 	_ = historyStore
-	_ = imp
 
 	// === HTTP Server ===
 	srv := &http.Server{Addr: addr, Handler: mux}
