@@ -391,11 +391,88 @@ func (s *Server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) search(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "Not yet implemented")
+	if s.searcher == nil {
+		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Searcher not configured")
+		return
+	}
+
+	var req searchRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	profile := req.Profile
+	if profile == "" {
+		profile = "hd"
+	}
+
+	q := search.Query{
+		Text:    req.Query,
+		Type:    req.Type,
+		Season:  req.Season,
+		Episode: req.Episode,
+	}
+	if req.ContentID != nil {
+		q.ContentID = *req.ContentID
+	}
+
+	result, err := s.searcher.Search(r.Context(), q, profile)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "SEARCH_ERROR", err.Error())
+		return
+	}
+
+	resp := searchResponse{
+		Releases: make([]releaseResponse, len(result.Releases)),
+	}
+
+	for i, rel := range result.Releases {
+		quality := ""
+		if rel.Quality != nil {
+			quality = rel.Quality.Resolution.String()
+		}
+		resp.Releases[i] = releaseResponse{
+			Title:       rel.Title,
+			Indexer:     rel.Indexer,
+			GUID:        rel.GUID,
+			DownloadURL: rel.DownloadURL,
+			Size:        rel.Size,
+			PublishDate: rel.PublishDate,
+			Quality:     quality,
+			Score:       rel.Score,
+		}
+	}
+
+	for _, e := range result.Errors {
+		resp.Errors = append(resp.Errors, e.Error())
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) grab(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "Not yet implemented")
+	if s.manager == nil {
+		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Download manager not configured")
+		return
+	}
+
+	var req grabRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	d, err := s.manager.Grab(r.Context(), req.ContentID, req.EpisodeID, req.DownloadURL, req.Title, req.Indexer)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "GRAB_ERROR", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, grabResponse{
+		DownloadID: d.ID,
+		Status:     string(d.Status),
+	})
 }
 
 func (s *Server) listDownloads(w http.ResponseWriter, r *http.Request) {

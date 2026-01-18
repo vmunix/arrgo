@@ -64,3 +64,46 @@ type listEpisodesResponse struct {
 type updateEpisodeRequest struct {
 	Status *string `json:"status,omitempty"`
 }
+
+// searchRequest is the request body for POST /search.
+type searchRequest struct {
+	ContentID *int64  `json:"content_id,omitempty"`
+	Query     string  `json:"query,omitempty"`
+	Type      string  `json:"type,omitempty"`
+	Season    *int    `json:"season,omitempty"`
+	Episode   *int    `json:"episode,omitempty"`
+	Profile   string  `json:"profile,omitempty"`
+}
+
+// releaseResponse is the API representation of a search result.
+type releaseResponse struct {
+	Title       string    `json:"title"`
+	Indexer     string    `json:"indexer"`
+	GUID        string    `json:"guid"`
+	DownloadURL string    `json:"download_url"`
+	Size        int64     `json:"size"`
+	PublishDate time.Time `json:"publish_date"`
+	Quality     string    `json:"quality,omitempty"`
+	Score       int       `json:"score"`
+}
+
+// searchResponse is the response for POST /search.
+type searchResponse struct {
+	Releases []releaseResponse `json:"releases"`
+	Errors   []string          `json:"errors,omitempty"`
+}
+
+// grabRequest is the request body for POST /grab.
+type grabRequest struct {
+	ContentID   int64  `json:"content_id"`
+	EpisodeID   *int64 `json:"episode_id,omitempty"`
+	DownloadURL string `json:"download_url"`
+	Title       string `json:"title"`
+	Indexer     string `json:"indexer"`
+}
+
+// grabResponse is the response for POST /grab.
+type grabResponse struct {
+	DownloadID int64  `json:"download_id"`
+	Status     string `json:"status"`
+}

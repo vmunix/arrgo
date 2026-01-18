@@ -445,3 +445,33 @@ func TestUpdateEpisode(t *testing.T) {
 		t.Errorf("status = %q, want available", updated.Status)
 	}
 }
+
+func TestSearch_NoSearcher(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	body := `{"query":"test movie"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/search", strings.NewReader(body))
+	w := httptest.NewRecorder()
+
+	srv.search(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func TestGrab_NoManager(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	body := `{"content_id":1,"download_url":"http://example.com/nzb","title":"Test","indexer":"TestIndexer"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/grab", strings.NewReader(body))
+	w := httptest.NewRecorder()
+
+	srv.grab(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
+	}
+}
