@@ -4,6 +4,7 @@ package v1
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -111,8 +112,6 @@ func writeJSON(w http.ResponseWriter, code int, data any) {
 }
 
 // pathID extracts an integer ID from the URL path.
-//
-//nolint:unused // Used by future endpoint implementations
 func pathID(r *http.Request, name string) (int64, error) {
 	idStr := r.PathValue(name)
 	if idStr == "" {
@@ -122,8 +121,6 @@ func pathID(r *http.Request, name string) (int64, error) {
 }
 
 // queryInt extracts an optional integer from query string.
-//
-//nolint:unused // Used by future endpoint implementations
 func queryInt(r *http.Request, name string, defaultVal int) int {
 	val := r.URL.Query().Get(name)
 	if val == "" {
@@ -137,8 +134,6 @@ func queryInt(r *http.Request, name string, defaultVal int) int {
 }
 
 // queryString extracts an optional string from query string.
-//
-//nolint:unused // Used by future endpoint implementations
 func queryString(r *http.Request, name string) *string {
 	val := r.URL.Query().Get(name)
 	if val == "" {
@@ -150,11 +145,75 @@ func queryString(r *http.Request, name string) *string {
 // Handlers (stubs)
 
 func (s *Server) listContent(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, []any{})
+	// Parse filters
+	filter := library.ContentFilter{
+		Limit:  queryInt(r, "limit", 50),
+		Offset: queryInt(r, "offset", 0),
+	}
+
+	if typeStr := queryString(r, "type"); typeStr != nil {
+		t := library.ContentType(*typeStr)
+		filter.Type = &t
+	}
+	if statusStr := queryString(r, "status"); statusStr != nil {
+		st := library.ContentStatus(*statusStr)
+		filter.Status = &st
+	}
+
+	items, total, err := s.library.ListContent(filter)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	resp := listContentResponse{
+		Items:  make([]contentResponse, len(items)),
+		Total:  total,
+		Limit:  filter.Limit,
+		Offset: filter.Offset,
+	}
+
+	for i, c := range items {
+		resp.Items[i] = contentToResponse(c)
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) getContent(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotFound, "NOT_FOUND", "Content not found")
+	id, err := pathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
+		return
+	}
+
+	c, err := s.library.GetContent(id)
+	if err != nil {
+		if errors.Is(err, library.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "Content not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, contentToResponse(c))
+}
+
+func contentToResponse(c *library.Content) contentResponse {
+	return contentResponse{
+		ID:             c.ID,
+		Type:           string(c.Type),
+		TMDBID:         c.TMDBID,
+		TVDBID:         c.TVDBID,
+		Title:          c.Title,
+		Year:           c.Year,
+		Status:         string(c.Status),
+		QualityProfile: c.QualityProfile,
+		RootPath:       c.RootPath,
+		AddedAt:        c.AddedAt,
+		UpdatedAt:      c.UpdatedAt,
+	}
 }
 
 func (s *Server) addContent(w http.ResponseWriter, r *http.Request) {
