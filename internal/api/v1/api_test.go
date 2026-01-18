@@ -475,3 +475,55 @@ func TestGrab_NoManager(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
 	}
 }
+
+func TestListDownloads_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/downloads", nil)
+	w := httptest.NewRecorder()
+
+	srv.listDownloads(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp listDownloadsResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Items) != 0 {
+		t.Errorf("items = %d, want 0", len(resp.Items))
+	}
+}
+
+func TestGetDownload_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/downloads/999", nil)
+	req.SetPathValue("id", "999")
+	w := httptest.NewRecorder()
+
+	srv.getDownload(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+func TestDeleteDownload_NoManager(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/downloads/1", nil)
+	req.SetPathValue("id", "1")
+	w := httptest.NewRecorder()
+
+	srv.deleteDownload(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
+	}
+}

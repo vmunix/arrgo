@@ -107,3 +107,23 @@ type grabResponse struct {
 	DownloadID int64  `json:"download_id"`
 	Status     string `json:"status"`
 }
+
+// downloadResponse is the API representation of a download.
+type downloadResponse struct {
+	ID          int64      `json:"id"`
+	ContentID   int64      `json:"content_id"`
+	EpisodeID   *int64     `json:"episode_id,omitempty"`
+	Client      string     `json:"client"`
+	ClientID    string     `json:"client_id"`
+	Status      string     `json:"status"`
+	ReleaseName string     `json:"release_name"`
+	Indexer     string     `json:"indexer"`
+	AddedAt     time.Time  `json:"added_at"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+}
+
+// listDownloadsResponse is the response for GET /downloads.
+type listDownloadsResponse struct {
+	Items []downloadResponse `json:"items"`
+	Total int                `json:"total"`
+}

@@ -476,15 +476,83 @@ func (s *Server) grab(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listDownloads(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, []any{})
+	filter := download.DownloadFilter{}
+	if activeStr := r.URL.Query().Get("active"); activeStr == "true" {
+		filter.Active = true
+	}
+
+	downloads, err := s.downloads.List(filter)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	resp := listDownloadsResponse{
+		Items: make([]downloadResponse, len(downloads)),
+		Total: len(downloads),
+	}
+
+	for i, d := range downloads {
+		resp.Items[i] = downloadToResponse(d)
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func downloadToResponse(d *download.Download) downloadResponse {
+	return downloadResponse{
+		ID:          d.ID,
+		ContentID:   d.ContentID,
+		EpisodeID:   d.EpisodeID,
+		Client:      string(d.Client),
+		ClientID:    d.ClientID,
+		Status:      string(d.Status),
+		ReleaseName: d.ReleaseName,
+		Indexer:     d.Indexer,
+		AddedAt:     d.AddedAt,
+		CompletedAt: d.CompletedAt,
+	}
 }
 
 func (s *Server) getDownload(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotFound, "NOT_FOUND", "Download not found")
+	id, err := pathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
+		return
+	}
+
+	d, err := s.downloads.Get(id)
+	if err != nil {
+		if errors.Is(err, download.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "Download not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, downloadToResponse(d))
 }
 
 func (s *Server) deleteDownload(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "Not yet implemented")
+	if s.manager == nil {
+		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Download manager not configured")
+		return
+	}
+
+	id, err := pathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
+		return
+	}
+
+	deleteFiles := r.URL.Query().Get("delete_files") == "true"
+	if err := s.manager.Cancel(r.Context(), id, deleteFiles); err != nil {
+		writeError(w, http.StatusInternalServerError, "CANCEL_ERROR", err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) listHistory(w http.ResponseWriter, r *http.Request) {
