@@ -75,46 +75,6 @@ type Downloader interface {
 	Remove(ctx context.Context, clientID string, deleteFiles bool) error
 }
 
-// SABnzbdClient interacts with SABnzbd.
-type SABnzbdClient struct {
-	baseURL  string
-	apiKey   string
-	category string
-}
-
-// NewSABnzbdClient creates a new SABnzbd client.
-func NewSABnzbdClient(baseURL, apiKey, category string) *SABnzbdClient {
-	return &SABnzbdClient{
-		baseURL:  baseURL,
-		apiKey:   apiKey,
-		category: category,
-	}
-}
-
-// Add sends an NZB URL to SABnzbd.
-func (c *SABnzbdClient) Add(ctx context.Context, url, category string) (string, error) {
-	// TODO: implement SABnzbd API call
-	return "", nil
-}
-
-// Status gets the status of a download.
-func (c *SABnzbdClient) Status(ctx context.Context, clientID string) (*ClientStatus, error) {
-	// TODO: implement
-	return nil, nil
-}
-
-// List returns all SABnzbd downloads.
-func (c *SABnzbdClient) List(ctx context.Context) ([]*ClientStatus, error) {
-	// TODO: implement
-	return nil, nil
-}
-
-// Remove cancels a download.
-func (c *SABnzbdClient) Remove(ctx context.Context, clientID string, deleteFiles bool) error {
-	// TODO: implement
-	return nil
-}
-
 // Store persists download records.
 type Store struct {
 	db *sql.DB
