@@ -217,15 +217,104 @@ func contentToResponse(c *library.Content) contentResponse {
 }
 
 func (s *Server) addContent(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "Not yet implemented")
+	var req addContentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	// Validate type
+	contentType := library.ContentType(req.Type)
+	if contentType != library.ContentTypeMovie && contentType != library.ContentTypeSeries {
+		writeError(w, http.StatusBadRequest, "INVALID_TYPE", "type must be 'movie' or 'series'")
+		return
+	}
+
+	// Default root path based on type
+	rootPath := req.RootPath
+	if rootPath == "" {
+		if contentType == library.ContentTypeMovie {
+			rootPath = s.cfg.MovieRoot
+		} else {
+			rootPath = s.cfg.SeriesRoot
+		}
+	}
+
+	c := &library.Content{
+		Type:           contentType,
+		TMDBID:         req.TMDBID,
+		TVDBID:         req.TVDBID,
+		Title:          req.Title,
+		Year:           req.Year,
+		Status:         library.StatusWanted,
+		QualityProfile: req.QualityProfile,
+		RootPath:       rootPath,
+	}
+
+	if err := s.library.AddContent(c); err != nil {
+		if errors.Is(err, library.ErrDuplicate) {
+			writeError(w, http.StatusConflict, "DUPLICATE", "Content already exists")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, contentToResponse(c))
 }
 
 func (s *Server) updateContent(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "Not yet implemented")
+	id, err := pathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
+		return
+	}
+
+	var req updateContentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	c, err := s.library.GetContent(id)
+	if err != nil {
+		if errors.Is(err, library.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "Content not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	// Apply updates
+	if req.Status != nil {
+		c.Status = library.ContentStatus(*req.Status)
+	}
+	if req.QualityProfile != nil {
+		c.QualityProfile = *req.QualityProfile
+	}
+
+	if err := s.library.UpdateContent(c); err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, contentToResponse(c))
 }
 
 func (s *Server) deleteContent(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "Not yet implemented")
+	id, err := pathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
+		return
+	}
+
+	if err := s.library.DeleteContent(id); err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) listEpisodes(w http.ResponseWriter, r *http.Request) {

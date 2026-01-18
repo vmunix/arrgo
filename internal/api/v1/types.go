@@ -25,3 +25,20 @@ type listContentResponse struct {
 	Limit  int               `json:"limit"`
 	Offset int               `json:"offset"`
 }
+
+// addContentRequest is the request body for POST /content.
+type addContentRequest struct {
+	Type           string `json:"type"`
+	TMDBID         *int64 `json:"tmdb_id,omitempty"`
+	TVDBID         *int64 `json:"tvdb_id,omitempty"`
+	Title          string `json:"title"`
+	Year           int    `json:"year"`
+	QualityProfile string `json:"quality_profile"`
+	RootPath       string `json:"root_path,omitempty"`
+}
+
+// updateContentRequest is the request body for PUT /content/:id.
+type updateContentRequest struct {
+	Status         *string `json:"status,omitempty"`
+	QualityProfile *string `json:"quality_profile,omitempty"`
+}

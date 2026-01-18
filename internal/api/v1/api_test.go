@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/arrgo/arrgo/internal/library"
@@ -221,5 +223,125 @@ func TestGetContent_NotFound(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+func TestAddContent(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{MovieRoot: "/movies", SeriesRoot: "/tv"})
+
+	body := `{"type":"movie","title":"New Movie","year":2024,"quality_profile":"hd"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/content", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	srv.addContent(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Errorf("status = %d, want %d: %s", w.Code, http.StatusCreated, w.Body.String())
+	}
+
+	var resp contentResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.ID == 0 {
+		t.Error("ID should be set")
+	}
+	if resp.Title != "New Movie" {
+		t.Errorf("title = %q, want %q", resp.Title, "New Movie")
+	}
+	if resp.Status != "wanted" {
+		t.Errorf("status = %q, want wanted", resp.Status)
+	}
+	if resp.RootPath != "/movies" {
+		t.Errorf("root_path = %q, want /movies", resp.RootPath)
+	}
+}
+
+func TestAddContent_InvalidType(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	body := `{"type":"invalid","title":"Test","year":2024,"quality_profile":"hd"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/content", strings.NewReader(body))
+	w := httptest.NewRecorder()
+
+	srv.addContent(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestUpdateContent(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	// Add content first
+	c := &library.Content{
+		Type:           library.ContentTypeMovie,
+		Title:          "Test",
+		Year:           2024,
+		Status:         library.StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/movies",
+	}
+	if err := srv.library.AddContent(c); err != nil {
+		t.Fatalf("add content: %v", err)
+	}
+
+	body := `{"status":"available"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/content/1", strings.NewReader(body))
+	req.SetPathValue("id", "1")
+	w := httptest.NewRecorder()
+
+	srv.updateContent(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	// Verify update
+	updated, err := srv.library.GetContent(1)
+	if err != nil {
+		t.Fatalf("get content: %v", err)
+	}
+	if updated.Status != library.StatusAvailable {
+		t.Errorf("status = %q, want available", updated.Status)
+	}
+}
+
+func TestDeleteContent(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	// Add content first
+	c := &library.Content{
+		Type:           library.ContentTypeMovie,
+		Title:          "Test",
+		Year:           2024,
+		Status:         library.StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/movies",
+	}
+	if err := srv.library.AddContent(c); err != nil {
+		t.Fatalf("add content: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/content/1", nil)
+	req.SetPathValue("id", "1")
+	w := httptest.NewRecorder()
+
+	srv.deleteContent(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+
+	// Verify deleted
+	_, err := srv.library.GetContent(1)
+	if !errors.Is(err, library.ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
