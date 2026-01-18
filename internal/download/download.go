@@ -4,6 +4,8 @@ package download
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -124,25 +126,168 @@ func NewStore(db *sql.DB) *Store {
 }
 
 // Add records a new download.
+// This method is idempotent: if a download with the same content_id and release_name
+// already exists, it returns the existing record's ID instead of creating a duplicate.
 func (s *Store) Add(d *Download) error {
-	// TODO: implement
+	// Check for existing download with same content_id and release_name
+	var existingID int64
+	var existingAddedAt time.Time
+	err := s.db.QueryRow(`
+		SELECT id, added_at FROM downloads
+		WHERE content_id = ? AND release_name = ?`,
+		d.ContentID, d.ReleaseName,
+	).Scan(&existingID, &existingAddedAt)
+
+	if err == nil {
+		// Found existing record, return it
+		d.ID = existingID
+		d.AddedAt = existingAddedAt
+		return nil
+	}
+	if err != sql.ErrNoRows {
+		return fmt.Errorf("check existing download: %w", err)
+	}
+
+	// No existing record, insert new one
+	now := time.Now()
+	result, err := s.db.Exec(`
+		INSERT INTO downloads (content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		d.ContentID, d.EpisodeID, d.Client, d.ClientID, d.Status, d.ReleaseName, d.Indexer, now, d.CompletedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("insert download: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("get last insert id: %w", err)
+	}
+
+	d.ID = id
+	d.AddedAt = now
 	return nil
 }
 
 // Get retrieves a download by ID.
+// Returns ErrNotFound if the download does not exist.
 func (s *Store) Get(id int64) (*Download, error) {
-	// TODO: implement
-	return nil, nil
+	d := &Download{}
+	err := s.db.QueryRow(`
+		SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at
+		FROM downloads WHERE id = ?`, id,
+	).Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("get download %d: %w", id, ErrNotFound)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get download %d: %w", id, err)
+	}
+	return d, nil
 }
 
-// UpdateStatus updates download status.
-func (s *Store) UpdateStatus(id int64, status Status, completedAt *time.Time) error {
-	// TODO: implement
+// GetByClientID retrieves a download by its client type and client-specific ID.
+// Returns ErrNotFound if no matching download exists.
+func (s *Store) GetByClientID(client Client, clientID string) (*Download, error) {
+	d := &Download{}
+	err := s.db.QueryRow(`
+		SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at
+		FROM downloads WHERE client = ? AND client_id = ?`, client, clientID,
+	).Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("get download by client %s/%s: %w", client, clientID, ErrNotFound)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get download by client %s/%s: %w", client, clientID, err)
+	}
+	return d, nil
+}
+
+// Update updates a download's status and completed_at fields.
+// Returns ErrNotFound if the download does not exist.
+func (s *Store) Update(d *Download) error {
+	result, err := s.db.Exec(`
+		UPDATE downloads SET status = ?, completed_at = ?
+		WHERE id = ?`,
+		d.Status, d.CompletedAt, d.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("update download %d: %w", d.ID, err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("update download %d: %w", d.ID, ErrNotFound)
+	}
 	return nil
 }
 
-// ListActive returns non-imported downloads.
-func (s *Store) ListActive() ([]*Download, error) {
-	// TODO: implement
-	return nil, nil
+// List returns downloads matching the specified filter.
+// If Active is true, downloads with "imported" status are excluded.
+func (s *Store) List(f DownloadFilter) ([]*Download, error) {
+	var conditions []string
+	var args []any
+
+	if f.ContentID != nil {
+		conditions = append(conditions, "content_id = ?")
+		args = append(args, *f.ContentID)
+	}
+	if f.EpisodeID != nil {
+		conditions = append(conditions, "episode_id = ?")
+		args = append(args, *f.EpisodeID)
+	}
+	if f.Status != nil {
+		conditions = append(conditions, "status = ?")
+		args = append(args, *f.Status)
+	}
+	if f.Client != nil {
+		conditions = append(conditions, "client = ?")
+		args = append(args, *f.Client)
+	}
+	if f.Active {
+		conditions = append(conditions, "status != ?")
+		args = append(args, StatusImported)
+	}
+
+	whereClause := ""
+	if len(conditions) > 0 {
+		whereClause = "WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	query := "SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at FROM downloads " + whereClause + " ORDER BY id"
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list downloads: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var results []*Download
+	for rows.Next() {
+		d := &Download{}
+		if err := rows.Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt); err != nil {
+			return nil, fmt.Errorf("scan download: %w", err)
+		}
+		results = append(results, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate downloads: %w", err)
+	}
+
+	return results, nil
+}
+
+// Delete removes a download by ID.
+// This operation is idempotent - no error is returned if the download does not exist.
+func (s *Store) Delete(id int64) error {
+	_, err := s.db.Exec("DELETE FROM downloads WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("delete download %d: %w", id, err)
+	}
+	return nil
 }
