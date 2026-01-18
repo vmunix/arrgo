@@ -32,7 +32,7 @@ func main() {
 	case "search":
 		fmt.Println("arrgo search: not yet implemented")
 	case "queue":
-		fmt.Println("arrgo queue: not yet implemented")
+		runQueue(os.Args[2:])
 	case "chat":
 		fmt.Println("arrgo chat: not yet implemented")
 	case "ask":
