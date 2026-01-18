@@ -3,11 +3,14 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/arrgo/arrgo/internal/api/compat"
+	v1 "github.com/arrgo/arrgo/internal/api/v1"
 	"github.com/arrgo/arrgo/internal/config"
 	"github.com/arrgo/arrgo/internal/download"
 	"github.com/arrgo/arrgo/internal/importer"
@@ -88,43 +91,44 @@ func runServe(configPath string) error {
 		searcher = search.NewSearcher(prowlarrClient, scorer)
 	}
 
-	imp := importer.New(db, importer.Config{
-		MovieRoot:      cfg.Libraries.Movies.Root,
-		SeriesRoot:     cfg.Libraries.Series.Root,
-		MovieTemplate:  cfg.Libraries.Movies.Naming,
-		SeriesTemplate: cfg.Libraries.Series.Naming,
-		PlexURL:        plexURL(cfg),
-		PlexToken:      plexToken(cfg),
-	})
+	// === HTTP Setup ===
+	mux := http.NewServeMux()
 
-	// Log what's configured
-	fmt.Printf("arrgo starting on %s:%d\n", cfg.Server.Host, cfg.Server.Port)
+	// Build quality profiles map for API
+	profiles := make(map[string][]string)
+	for name, p := range cfg.Quality.Profiles {
+		profiles[name] = p.Accept
+	}
+
+	// Native API v1
+	apiV1 := v1.New(db, v1.Config{
+		MovieRoot:       cfg.Libraries.Movies.Root,
+		SeriesRoot:      cfg.Libraries.Series.Root,
+		QualityProfiles: profiles,
+	})
+	apiV1.SetSearcher(searcher)
+	apiV1.SetManager(downloadManager)
+	apiV1.SetPlex(plexClient)
+	apiV1.RegisterRoutes(mux)
+
+	// Compat API (if enabled)
+	if cfg.Compat.Radarr || cfg.Compat.Sonarr {
+		apiCompat := compat.New(cfg.Compat.APIKey)
+		apiCompat.RegisterRoutes(mux)
+	}
+
+	// Start server
+	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
+	fmt.Printf("arrgo listening on %s\n", addr)
 	fmt.Printf("  database: %s\n", cfg.Database.Path)
 	fmt.Printf("  sabnzbd: %v\n", sabClient != nil)
 	fmt.Printf("  prowlarr: %v\n", prowlarrClient != nil)
 	fmt.Printf("  plex: %v\n", plexClient != nil)
 
-	// Silence unused variable warnings (will be used in next task)
+	// Silence unused variable warnings for stores not yet wired up
 	_ = libraryStore
 	_ = historyStore
-	_ = downloadManager
-	_ = searcher
-	_ = imp
-	_ = plexClient
 
-	return nil
-}
-
-func plexURL(cfg *config.Config) string {
-	if cfg.Notifications.Plex != nil {
-		return cfg.Notifications.Plex.URL
-	}
-	return ""
-}
-
-func plexToken(cfg *config.Config) string {
-	if cfg.Notifications.Plex != nil {
-		return cfg.Notifications.Plex.Token
-	}
-	return ""
+	srv := &http.Server{Addr: addr, Handler: mux}
+	return srv.ListenAndServe()
 }
