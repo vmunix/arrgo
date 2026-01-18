@@ -1,10 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
+
+	"github.com/arrgo/arrgo/pkg/release"
 )
 
 // Common flags
@@ -88,5 +93,153 @@ func printQueueHuman(d *ListDownloadsResponse) {
 			title = title[:37] + "..."
 		}
 		fmt.Printf(" %2d │ %-40s │ %-12s │ %s\n", i+1, title, dl.Status, dl.Indexer)
+	}
+}
+
+func formatSize(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+func prompt(message string) string {
+	fmt.Print(message)
+	reader := bufio.NewReader(os.Stdin)
+	input, _ := reader.ReadString('\n')
+	return strings.TrimSpace(input)
+}
+
+func runSearch(args []string) {
+	fs := flag.NewFlagSet("search", flag.ExitOnError)
+	var contentType, profile, grabFlag string
+	fs.StringVar(&contentType, "type", "", "Content type (movie or series)")
+	fs.StringVar(&profile, "profile", "", "Quality profile")
+	fs.StringVar(&grabFlag, "grab", "", "Grab release: number or 'best'")
+	flags := parseCommonFlags(fs, args)
+
+	remaining := fs.Args()
+	if len(remaining) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: arrgo search <query> [--type movie|series] [--grab N|best]")
+		os.Exit(1)
+	}
+	query := strings.Join(remaining, " ")
+
+	client := NewClient(flags.server)
+	results, err := client.Search(query, contentType, profile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if flags.json {
+		printJSON(results)
+		return
+	}
+
+	if len(results.Releases) == 0 {
+		fmt.Println("No releases found")
+		return
+	}
+
+	printSearchHuman(query, results)
+
+	// Handle grab
+	var grabIndex int
+	if grabFlag == "best" {
+		grabIndex = 1
+	} else if grabFlag != "" {
+		grabIndex, _ = strconv.Atoi(grabFlag)
+	} else if !flags.json {
+		// Interactive prompt
+		input := prompt(fmt.Sprintf("\nGrab? [1-%d, n]: ", len(results.Releases)))
+		if input == "" || input == "n" || input == "N" {
+			return
+		}
+		grabIndex, _ = strconv.Atoi(input)
+	}
+
+	if grabIndex < 1 || grabIndex > len(results.Releases) {
+		return
+	}
+
+	// Grab the selected release
+	selected := results.Releases[grabIndex-1]
+	grabRelease(client, selected, contentType, profile)
+}
+
+func printSearchHuman(query string, r *SearchResponse) {
+	fmt.Printf("Found %d releases for %q:\n\n", len(r.Releases), query)
+	fmt.Printf("  # │ %-42s │ %8s │ %-10s │ %5s\n", "TITLE", "SIZE", "INDEXER", "SCORE")
+	fmt.Println("────┼────────────────────────────────────────────┼──────────┼────────────┼───────")
+
+	for i, rel := range r.Releases {
+		title := rel.Title
+		if len(title) > 42 {
+			title = title[:39] + "..."
+		}
+		fmt.Printf(" %2d │ %-42s │ %8s │ %-10s │ %5d\n",
+			i+1, title, formatSize(rel.Size), rel.Indexer, rel.Score)
+	}
+
+	if len(r.Errors) > 0 {
+		fmt.Printf("\nWarnings: %s\n", strings.Join(r.Errors, ", "))
+	}
+}
+
+func grabRelease(client *Client, rel ReleaseResponse, contentType, profile string) {
+	// Parse release name to get title/year
+	info := release.Parse(rel.Title)
+	if info.Title == "" {
+		fmt.Fprintln(os.Stderr, "Error: Could not parse release title")
+		return
+	}
+
+	// Determine content type if not specified
+	if contentType == "" {
+		if info.Season > 0 || info.Episode > 0 {
+			contentType = "series"
+		} else {
+			contentType = "movie"
+		}
+	}
+
+	// Show what we parsed
+	fmt.Printf("\nParsed: %s (%d)\n", info.Title, info.Year)
+
+	input := prompt("Confirm? [Y/n]: ")
+	if input != "" && input != "y" && input != "Y" {
+		fmt.Println("Cancelled")
+		return
+	}
+
+	// Default profile
+	if profile == "" {
+		profile = "hd"
+	}
+
+	// Create content entry
+	content, err := client.AddContent(contentType, info.Title, info.Year, profile)
+	if err != nil {
+		// Might already exist, try to proceed anyway
+		fmt.Printf("Note: %v\n", err)
+	} else {
+		fmt.Printf("Added to library (ID: %d)\n", content.ID)
+	}
+
+	// Grab the release
+	if content != nil {
+		grab, err := client.Grab(content.ID, rel.DownloadURL, rel.Title, rel.Indexer)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error grabbing: %v\n", err)
+			return
+		}
+		fmt.Printf("Download started (ID: %d)\n", grab.DownloadID)
 	}
 }
