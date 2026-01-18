@@ -21,4 +21,7 @@ var (
 
 	// ErrPathTraversal indicates a path traversal attack was detected.
 	ErrPathTraversal = errors.New("path traversal detected")
+
+	// ErrEpisodeNotSpecified indicates a series download is missing the episode ID.
+	ErrEpisodeNotSpecified = errors.New("episode not specified for series download")
 )

@@ -100,13 +100,24 @@ func (i *Importer) Import(ctx context.Context, downloadID int64, downloadPath st
 	ext := strings.TrimPrefix(filepath.Ext(srcPath), ".")
 	var relPath string
 	var root string
+	var episode *library.Episode
 
 	if content.Type == library.ContentTypeMovie {
 		relPath = i.renamer.MoviePath(content.Title, content.Year, quality, ext)
 		root = i.movieRoot
 	} else {
-		// For series, we'd need episode info - simplified for now
-		return nil, fmt.Errorf("series import not yet implemented")
+		// Series: require episode to be specified
+		if dl.EpisodeID == nil {
+			return nil, ErrEpisodeNotSpecified
+		}
+
+		episode, err = i.library.GetEpisode(*dl.EpisodeID)
+		if err != nil {
+			return nil, fmt.Errorf("get episode: %w", err)
+		}
+
+		relPath = i.renamer.EpisodePath(content.Title, episode.Season, episode.Episode, quality, ext)
+		root = i.seriesRoot
 	}
 
 	destPath := filepath.Join(root, relPath)
@@ -132,6 +143,7 @@ func (i *Importer) Import(ctx context.Context, downloadID int64, downloadPath st
 	// Insert file record
 	file := &library.File{
 		ContentID: content.ID,
+		EpisodeID: dl.EpisodeID,
 		Path:      destPath,
 		SizeBytes: size,
 		Quality:   quality,
@@ -141,11 +153,18 @@ func (i *Importer) Import(ctx context.Context, downloadID int64, downloadPath st
 		return nil, fmt.Errorf("add file: %w", err)
 	}
 
-	// Update content status
-	content.Status = library.StatusAvailable
-	content.UpdatedAt = time.Now()
-	if err := tx.UpdateContent(content); err != nil {
-		return nil, fmt.Errorf("update content: %w", err)
+	// Update status: content for movies, episode for series
+	if episode != nil {
+		episode.Status = library.StatusAvailable
+		if err := tx.UpdateEpisode(episode); err != nil {
+			return nil, fmt.Errorf("update episode: %w", err)
+		}
+	} else {
+		content.Status = library.StatusAvailable
+		content.UpdatedAt = time.Now()
+		if err := tx.UpdateContent(content); err != nil {
+			return nil, fmt.Errorf("update content: %w", err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -159,16 +178,22 @@ func (i *Importer) Import(ctx context.Context, downloadID int64, downloadPath st
 	_ = i.downloads.Update(dl) // Log but don't fail
 
 	// Add history entry
-	historyData, _ := json.Marshal(map[string]any{
+	historyMap := map[string]any{
 		"source_path":  srcPath,
 		"dest_path":    destPath,
 		"size_bytes":   size,
 		"quality":      quality,
 		"indexer":      dl.Indexer,
 		"release_name": dl.ReleaseName,
-	})
+	}
+	if episode != nil {
+		historyMap["season"] = episode.Season
+		historyMap["episode"] = episode.Episode
+	}
+	historyData, _ := json.Marshal(historyMap)
 	_ = i.history.Add(&HistoryEntry{
 		ContentID: content.ID,
+		EpisodeID: dl.EpisodeID,
 		Event:     EventImported,
 		Data:      string(historyData),
 	})

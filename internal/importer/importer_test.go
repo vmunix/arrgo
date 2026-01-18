@@ -244,3 +244,198 @@ func TestImporter_Import_DestinationExists(t *testing.T) {
 		t.Errorf("expected ErrDestinationExists, got %v", err)
 	}
 }
+
+// Helper to create series content
+func insertTestSeries(t *testing.T, db *sql.DB, title string) int64 {
+	t.Helper()
+	result, err := db.Exec(`
+		INSERT INTO content (type, title, year, status, quality_profile, root_path)
+		VALUES ('series', ?, 2024, 'wanted', 'hd', '/tv')`,
+		title,
+	)
+	if err != nil {
+		t.Fatalf("insert test series: %v", err)
+	}
+	id, _ := result.LastInsertId()
+	return id
+}
+
+// Helper to create episode
+func insertTestEpisode(t *testing.T, db *sql.DB, contentID int64, season, episode int) int64 {
+	t.Helper()
+	result, err := db.Exec(`
+		INSERT INTO episodes (content_id, season, episode, title, status)
+		VALUES (?, ?, ?, 'Test Episode', 'wanted')`,
+		contentID, season, episode,
+	)
+	if err != nil {
+		t.Fatalf("insert test episode: %v", err)
+	}
+	id, _ := result.LastInsertId()
+	return id
+}
+
+// Helper to create download with episode ID
+func createTestEpisodeDownload(t *testing.T, db *sql.DB, contentID, episodeID int64, status download.Status) int64 {
+	t.Helper()
+	result, err := db.Exec(`
+		INSERT INTO downloads (content_id, episode_id, client, client_id, status, release_name, indexer, added_at)
+		VALUES (?, ?, 'sabnzbd', 'nzo_test', ?, 'Test.Show.S01E05.1080p.WEB', 'TestIndexer', CURRENT_TIMESTAMP)`,
+		contentID, episodeID, status,
+	)
+	if err != nil {
+		t.Fatalf("create episode download: %v", err)
+	}
+	id, _ := result.LastInsertId()
+	return id
+}
+
+func TestImporter_Import_Episode(t *testing.T) {
+	imp, db, downloadDir, _ := setupTestImporter(t)
+
+	// Create series and episode
+	seriesID := insertTestSeries(t, db, "Test Show")
+	episodeID := insertTestEpisode(t, db, seriesID, 1, 5)
+
+	// Create completed download with episode ID
+	downloadID := createTestEpisodeDownload(t, db, seriesID, episodeID, download.StatusCompleted)
+
+	// Create download directory with video
+	downloadPath := filepath.Join(downloadDir, "Test.Show.S01E05.1080p.WEB")
+	if err := os.MkdirAll(downloadPath, 0755); err != nil {
+		t.Fatalf("create download dir: %v", err)
+	}
+	videoPath := filepath.Join(downloadPath, "test.show.s01e05.mkv")
+	if err := os.WriteFile(videoPath, make([]byte, 1000), 0644); err != nil {
+		t.Fatalf("create video: %v", err)
+	}
+
+	// Import
+	result, err := imp.Import(context.Background(), downloadID, downloadPath)
+	if err != nil {
+		t.Fatalf("Import: %v", err)
+	}
+
+	// Verify destination path uses series template
+	if !strings.Contains(result.DestPath, "Test Show") {
+		t.Errorf("DestPath should contain series title: %s", result.DestPath)
+	}
+	if !strings.Contains(result.DestPath, "Season 01") {
+		t.Errorf("DestPath should contain season folder: %s", result.DestPath)
+	}
+	if !strings.Contains(result.DestPath, "S01E05") {
+		t.Errorf("DestPath should contain episode number: %s", result.DestPath)
+	}
+
+	// Verify file was copied
+	if _, err := os.Stat(result.DestPath); os.IsNotExist(err) {
+		t.Error("destination file should exist")
+	}
+
+	// Verify episode status updated to available
+	var epStatus string
+	if err := db.QueryRow("SELECT status FROM episodes WHERE id = ?", episodeID).Scan(&epStatus); err != nil {
+		t.Fatalf("query episode status: %v", err)
+	}
+	if epStatus != "available" {
+		t.Errorf("episode status = %q, want available", epStatus)
+	}
+
+	// Verify series status unchanged (still wanted)
+	var seriesStatus string
+	if err := db.QueryRow("SELECT status FROM content WHERE id = ?", seriesID).Scan(&seriesStatus); err != nil {
+		t.Fatalf("query series status: %v", err)
+	}
+	if seriesStatus != "wanted" {
+		t.Errorf("series status = %q, want wanted (unchanged)", seriesStatus)
+	}
+
+	// Verify file record has episode ID
+	var fileEpisodeID sql.NullInt64
+	if err := db.QueryRow("SELECT episode_id FROM files WHERE content_id = ?", seriesID).Scan(&fileEpisodeID); err != nil {
+		t.Fatalf("query file episode_id: %v", err)
+	}
+	if !fileEpisodeID.Valid || fileEpisodeID.Int64 != episodeID {
+		t.Errorf("file episode_id = %v, want %d", fileEpisodeID, episodeID)
+	}
+
+	// Verify history entry has episode ID
+	entries, _ := imp.history.List(HistoryFilter{ContentID: &seriesID})
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 history entry, got %d", len(entries))
+	}
+	if entries[0].EpisodeID == nil || *entries[0].EpisodeID != episodeID {
+		t.Errorf("history episode_id = %v, want %d", entries[0].EpisodeID, episodeID)
+	}
+}
+
+func TestImporter_Import_Episode_NoEpisodeID(t *testing.T) {
+	imp, db, downloadDir, _ := setupTestImporter(t)
+
+	// Create series (no episode)
+	seriesID := insertTestSeries(t, db, "Test Show")
+
+	// Create download WITHOUT episode ID
+	result, err := db.Exec(`
+		INSERT INTO downloads (content_id, client, client_id, status, release_name, indexer, added_at)
+		VALUES (?, 'sabnzbd', 'nzo_test', 'completed', 'Test.Show.S01E05.1080p', 'Indexer', CURRENT_TIMESTAMP)`,
+		seriesID,
+	)
+	if err != nil {
+		t.Fatalf("create download: %v", err)
+	}
+	downloadID, _ := result.LastInsertId()
+
+	// Create download directory with video
+	downloadPath := filepath.Join(downloadDir, "download")
+	if err := os.MkdirAll(downloadPath, 0755); err != nil {
+		t.Fatalf("create download dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(downloadPath, "episode.mkv"), make([]byte, 100), 0644); err != nil {
+		t.Fatalf("create video: %v", err)
+	}
+
+	_, err = imp.Import(context.Background(), downloadID, downloadPath)
+	if !errors.Is(err, ErrEpisodeNotSpecified) {
+		t.Errorf("expected ErrEpisodeNotSpecified, got %v", err)
+	}
+}
+
+func TestImporter_Import_Episode_EpisodeNotFound(t *testing.T) {
+	imp, db, downloadDir, _ := setupTestImporter(t)
+
+	// Create series and episode
+	seriesID := insertTestSeries(t, db, "Test Show")
+	episodeID := insertTestEpisode(t, db, seriesID, 1, 5)
+
+	// Create download with valid episode ID
+	downloadID := createTestEpisodeDownload(t, db, seriesID, episodeID, download.StatusCompleted)
+
+	// Disable foreign keys temporarily to simulate data inconsistency
+	if _, err := db.Exec("PRAGMA foreign_keys = OFF"); err != nil {
+		t.Fatalf("disable foreign keys: %v", err)
+	}
+	defer func() { _, _ = db.Exec("PRAGMA foreign_keys = ON") }()
+
+	// Delete the episode (with FK disabled, download stays)
+	if _, err := db.Exec("DELETE FROM episodes WHERE id = ?", episodeID); err != nil {
+		t.Fatalf("delete episode: %v", err)
+	}
+
+	// Create download directory with video
+	downloadPath := filepath.Join(downloadDir, "download")
+	if err := os.MkdirAll(downloadPath, 0755); err != nil {
+		t.Fatalf("create download dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(downloadPath, "episode.mkv"), make([]byte, 100), 0644); err != nil {
+		t.Fatalf("create video: %v", err)
+	}
+
+	_, err := imp.Import(context.Background(), downloadID, downloadPath)
+	if err == nil {
+		t.Error("expected error for non-existent episode")
+	}
+	if !strings.Contains(err.Error(), "get episode") {
+		t.Errorf("expected 'get episode' error, got %v", err)
+	}
+}
