@@ -22,7 +22,6 @@ are full of both deeply bizarre and subtly inconsistent expectations. Nothing
 is well specified. In other words the kind of work I avoid doing for fun at all
 costs.. the kind of thing I would intuitively say a LLMs would suck at. 
 
-
 **Arrgo: Unified media automation in Go. A single, coherent replacement for the *arr stack.**
 
 ## Status
