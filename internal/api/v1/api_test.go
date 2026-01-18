@@ -610,3 +610,66 @@ func TestDeleteFile(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusNoContent)
 	}
 }
+
+func TestGetStatus(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/status", nil)
+	w := httptest.NewRecorder()
+
+	srv.getStatus(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp statusResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if resp.Status != "ok" {
+		t.Errorf("status = %q, want ok", resp.Status)
+	}
+}
+
+func TestListProfiles(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{
+		QualityProfiles: map[string][]string{
+			"hd":  {"1080p bluray", "1080p webdl"},
+			"uhd": {"2160p bluray"},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/profiles", nil)
+	w := httptest.NewRecorder()
+
+	srv.listProfiles(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp listProfilesResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Profiles) != 2 {
+		t.Errorf("profiles = %d, want 2", len(resp.Profiles))
+	}
+}
+
+func TestTriggerScan_NoPlex(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/scan", strings.NewReader("{}"))
+	w := httptest.NewRecorder()
+
+	srv.triggerScan(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
+	}
+}

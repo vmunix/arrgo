@@ -640,13 +640,42 @@ func (s *Server) deleteFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, statusResponse{
+		Status:  "ok",
+		Version: "0.1.0",
+	})
 }
 
 func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, []any{})
+	profiles := make([]profileResponse, 0, len(s.cfg.QualityProfiles))
+	for name, accept := range s.cfg.QualityProfiles {
+		profiles = append(profiles, profileResponse{
+			Name:   name,
+			Accept: accept,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, listProfilesResponse{Profiles: profiles})
 }
 
 func (s *Server) triggerScan(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "Not yet implemented")
+	if s.plex == nil {
+		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Plex not configured")
+		return
+	}
+
+	var req scanRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	if req.Path != "" {
+		if err := s.plex.ScanPath(r.Context(), req.Path); err != nil {
+			writeError(w, http.StatusInternalServerError, "SCAN_ERROR", err.Error())
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "scan triggered"})
 }

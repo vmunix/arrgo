@@ -161,3 +161,25 @@ type listFilesResponse struct {
 	Items []fileResponse `json:"items"`
 	Total int            `json:"total"`
 }
+
+// statusResponse is the response for GET /status.
+type statusResponse struct {
+	Status  string `json:"status"`
+	Version string `json:"version,omitempty"`
+}
+
+// profileResponse is the API representation of a quality profile.
+type profileResponse struct {
+	Name   string   `json:"name"`
+	Accept []string `json:"accept"`
+}
+
+// listProfilesResponse is the response for GET /profiles.
+type listProfilesResponse struct {
+	Profiles []profileResponse `json:"profiles"`
+}
+
+// scanRequest is the request body for POST /scan.
+type scanRequest struct {
+	Path string `json:"path,omitempty"`
+}
