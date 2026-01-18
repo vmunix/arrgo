@@ -42,3 +42,25 @@ type updateContentRequest struct {
 	Status         *string `json:"status,omitempty"`
 	QualityProfile *string `json:"quality_profile,omitempty"`
 }
+
+// episodeResponse is the API representation of an episode.
+type episodeResponse struct {
+	ID        int64      `json:"id"`
+	ContentID int64      `json:"content_id"`
+	Season    int        `json:"season"`
+	Episode   int        `json:"episode"`
+	Title     string     `json:"title"`
+	Status    string     `json:"status"`
+	AirDate   *time.Time `json:"air_date,omitempty"`
+}
+
+// listEpisodesResponse is the response for GET /content/:id/episodes.
+type listEpisodesResponse struct {
+	Items []episodeResponse `json:"items"`
+	Total int               `json:"total"`
+}
+
+// updateEpisodeRequest is the request body for PUT /episodes/:id.
+type updateEpisodeRequest struct {
+	Status *string `json:"status,omitempty"`
+}

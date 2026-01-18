@@ -318,11 +318,76 @@ func (s *Server) deleteContent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listEpisodes(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, []any{})
+	contentID, err := pathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
+		return
+	}
+
+	filter := library.EpisodeFilter{ContentID: &contentID}
+	episodes, total, err := s.library.ListEpisodes(filter)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	resp := listEpisodesResponse{
+		Items: make([]episodeResponse, len(episodes)),
+		Total: total,
+	}
+
+	for i, ep := range episodes {
+		resp.Items[i] = episodeToResponse(ep)
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func episodeToResponse(ep *library.Episode) episodeResponse {
+	return episodeResponse{
+		ID:        ep.ID,
+		ContentID: ep.ContentID,
+		Season:    ep.Season,
+		Episode:   ep.Episode,
+		Title:     ep.Title,
+		Status:    string(ep.Status),
+		AirDate:   ep.AirDate,
+	}
 }
 
 func (s *Server) updateEpisode(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "Not yet implemented")
+	id, err := pathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
+		return
+	}
+
+	var req updateEpisodeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	ep, err := s.library.GetEpisode(id)
+	if err != nil {
+		if errors.Is(err, library.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "Episode not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	if req.Status != nil {
+		ep.Status = library.ContentStatus(*req.Status)
+	}
+
+	if err := s.library.UpdateEpisode(ep); err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, episodeToResponse(ep))
 }
 
 func (s *Server) search(w http.ResponseWriter, r *http.Request) {

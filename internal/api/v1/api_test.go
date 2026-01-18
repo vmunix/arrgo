@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -343,5 +344,104 @@ func TestDeleteContent(t *testing.T) {
 	_, err := srv.library.GetContent(1)
 	if !errors.Is(err, library.ErrNotFound) {
 		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestListEpisodes(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	// Add series
+	series := &library.Content{
+		Type:           library.ContentTypeSeries,
+		Title:          "Test Series",
+		Year:           2024,
+		Status:         library.StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	if err := srv.library.AddContent(series); err != nil {
+		t.Fatalf("add series: %v", err)
+	}
+
+	// Add episodes
+	for i := 1; i <= 3; i++ {
+		ep := &library.Episode{
+			ContentID: series.ID,
+			Season:    1,
+			Episode:   i,
+			Title:     fmt.Sprintf("Episode %d", i),
+			Status:    library.StatusWanted,
+		}
+		if err := srv.library.AddEpisode(ep); err != nil {
+			t.Fatalf("add episode: %v", err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/content/1/episodes", nil)
+	req.SetPathValue("id", "1")
+	w := httptest.NewRecorder()
+
+	srv.listEpisodes(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp listEpisodesResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Items) != 3 {
+		t.Errorf("items = %d, want 3", len(resp.Items))
+	}
+}
+
+func TestUpdateEpisode(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	// Add series and episode
+	series := &library.Content{
+		Type:           library.ContentTypeSeries,
+		Title:          "Test Series",
+		Year:           2024,
+		Status:         library.StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	if err := srv.library.AddContent(series); err != nil {
+		t.Fatalf("add series: %v", err)
+	}
+
+	ep := &library.Episode{
+		ContentID: series.ID,
+		Season:    1,
+		Episode:   1,
+		Title:     "Pilot",
+		Status:    library.StatusWanted,
+	}
+	if err := srv.library.AddEpisode(ep); err != nil {
+		t.Fatalf("add episode: %v", err)
+	}
+
+	body := `{"status":"available"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/episodes/1", strings.NewReader(body))
+	req.SetPathValue("id", "1")
+	w := httptest.NewRecorder()
+
+	srv.updateEpisode(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+
+	// Verify update
+	updated, err := srv.library.GetEpisode(1)
+	if err != nil {
+		t.Fatalf("get episode: %v", err)
+	}
+	if updated.Status != library.StatusAvailable {
+		t.Errorf("status = %q, want available", updated.Status)
 	}
 }
