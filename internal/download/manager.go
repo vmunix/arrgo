@@ -103,6 +103,11 @@ func (m *Manager) Cancel(ctx context.Context, downloadID int64, deleteFiles bool
 	return nil
 }
 
+// Client returns the underlying download client.
+func (m *Manager) Client() Downloader {
+	return m.client
+}
+
 // GetActive returns active downloads with live status from the client.
 func (m *Manager) GetActive(ctx context.Context) ([]*ActiveDownload, error) {
 	downloads, err := m.store.List(DownloadFilter{Active: true})

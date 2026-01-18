@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 
@@ -91,6 +93,24 @@ func runServe(configPath string) error {
 		searcher = search.NewSearcher(prowlarrClient, scorer)
 	}
 
+	// Create importer
+	imp := importer.New(db, importer.Config{
+		MovieRoot:      cfg.Libraries.Movies.Root,
+		SeriesRoot:     cfg.Libraries.Series.Root,
+		MovieTemplate:  cfg.Libraries.Movies.Naming,
+		SeriesTemplate: cfg.Libraries.Series.Naming,
+		PlexURL:        plexURLFromConfig(cfg),
+		PlexToken:      plexTokenFromConfig(cfg),
+	})
+
+	// === Background Jobs ===
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if downloadManager != nil {
+		go runPoller(ctx, downloadManager, imp, downloadStore)
+	}
+
 	// === HTTP Setup ===
 	mux := http.NewServeMux()
 
@@ -128,7 +148,74 @@ func runServe(configPath string) error {
 	// Silence unused variable warnings for stores not yet wired up
 	_ = libraryStore
 	_ = historyStore
+	_ = imp
 
 	srv := &http.Server{Addr: addr, Handler: mux}
 	return srv.ListenAndServe()
+}
+
+func plexURLFromConfig(cfg *config.Config) string {
+	if cfg.Notifications.Plex != nil {
+		return cfg.Notifications.Plex.URL
+	}
+	return ""
+}
+
+func plexTokenFromConfig(cfg *config.Config) string {
+	if cfg.Notifications.Plex != nil {
+		return cfg.Notifications.Plex.Token
+	}
+	return ""
+}
+
+func runPoller(ctx context.Context, manager *download.Manager, imp *importer.Importer, store *download.Store) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	fmt.Println("poller: started (30s interval)")
+
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Println("poller: stopped")
+			return
+		case <-ticker.C:
+			poll(ctx, manager, imp, store)
+		}
+	}
+}
+
+func poll(ctx context.Context, manager *download.Manager, imp *importer.Importer, store *download.Store) {
+	// Refresh download statuses from client
+	if err := manager.Refresh(ctx); err != nil {
+		fmt.Printf("poller: refresh error: %v\n", err)
+	}
+
+	// Find completed downloads
+	status := download.StatusCompleted
+	completed, err := store.List(download.DownloadFilter{Status: &status})
+	if err != nil {
+		fmt.Printf("poller: list error: %v\n", err)
+		return
+	}
+
+	// Import each one
+	for _, dl := range completed {
+		clientStatus, err := manager.Client().Status(ctx, dl.ClientID)
+		if err != nil || clientStatus == nil || clientStatus.Path == "" {
+			continue
+		}
+
+		fmt.Printf("poller: importing download %d from %s\n", dl.ID, clientStatus.Path)
+
+		if _, err := imp.Import(ctx, dl.ID, clientStatus.Path); err != nil {
+			fmt.Printf("poller: import %d failed: %v\n", dl.ID, err)
+			continue
+		}
+
+		dl.Status = download.StatusImported
+		if err := store.Update(dl); err != nil {
+			fmt.Printf("poller: update %d failed: %v\n", dl.ID, err)
+		}
+	}
 }
