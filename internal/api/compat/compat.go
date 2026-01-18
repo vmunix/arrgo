@@ -114,13 +114,19 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 // authMiddleware validates the X-Api-Key header.
 func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Require API key to be configured
+		if s.cfg.APIKey == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "API key not configured"})
+			return
+		}
 		apiKey := r.Header.Get("X-Api-Key")
 		if apiKey == "" {
 			apiKey = r.URL.Query().Get("apikey")
 		}
 		if apiKey != s.cfg.APIKey {
 			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid API key"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "Invalid API key"})
 			return
 		}
 		next(w, r)
@@ -130,7 +136,7 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 func writeJSON(w http.ResponseWriter, code int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 // Radarr handlers
