@@ -28,7 +28,7 @@ func main() {
 	case "init":
 		fmt.Println("arrgo init: not yet implemented")
 	case "status":
-		fmt.Println("arrgo status: not yet implemented")
+		runStatus(os.Args[2:])
 	case "search":
 		fmt.Println("arrgo search: not yet implemented")
 	case "queue":
