@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -150,8 +152,35 @@ func runServe(configPath string) error {
 	_ = historyStore
 	_ = imp
 
+	// === HTTP Server ===
 	srv := &http.Server{Addr: addr, Handler: mux}
-	return srv.ListenAndServe()
+
+	// Start server in goroutine
+	go func() {
+		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+			fmt.Printf("server error: %v\n", err)
+		}
+	}()
+
+	// Wait for interrupt signal
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	sig := <-sigCh
+	fmt.Printf("\nreceived %v, shutting down...\n", sig)
+
+	// Cancel background jobs (this stops the poller)
+	cancel()
+
+	// Graceful HTTP shutdown with 30s timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("shutdown: %w", err)
+	}
+
+	fmt.Println("arrgo stopped")
+	return nil
 }
 
 func plexURLFromConfig(cfg *config.Config) string {
