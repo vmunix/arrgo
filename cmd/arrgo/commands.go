@@ -50,3 +50,43 @@ func printJSON(v any) {
 	enc.SetIndent("", "  ")
 	enc.Encode(v)
 }
+
+func runQueue(args []string) {
+	fs := flag.NewFlagSet("queue", flag.ExitOnError)
+	var showAll bool
+	fs.BoolVar(&showAll, "all", false, "Include completed/imported downloads")
+	flags := parseCommonFlags(fs, args)
+
+	client := NewClient(flags.server)
+	downloads, err := client.Downloads(!showAll)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if flags.json {
+		printJSON(downloads)
+		return
+	}
+
+	printQueueHuman(downloads)
+}
+
+func printQueueHuman(d *ListDownloadsResponse) {
+	if len(d.Items) == 0 {
+		fmt.Println("No downloads in queue")
+		return
+	}
+
+	fmt.Printf("Downloads (%d):\n\n", d.Total)
+	fmt.Printf("  # │ %-40s │ %-12s │ %s\n", "TITLE", "STATUS", "INDEXER")
+	fmt.Println("────┼──────────────────────────────────────────┼──────────────┼─────────")
+
+	for i, dl := range d.Items {
+		title := dl.ReleaseName
+		if len(title) > 40 {
+			title = title[:37] + "..."
+		}
+		fmt.Printf(" %2d │ %-40s │ %-12s │ %s\n", i+1, title, dl.Status, dl.Indexer)
+	}
+}
