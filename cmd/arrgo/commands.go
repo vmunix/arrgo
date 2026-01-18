@@ -22,7 +22,7 @@ func parseCommonFlags(fs *flag.FlagSet, args []string) commonFlags {
 	var f commonFlags
 	fs.StringVar(&f.server, "server", "http://localhost:8484", "Server URL")
 	fs.BoolVar(&f.json, "json", false, "Output as JSON")
-	fs.Parse(args)
+	_ = fs.Parse(args)
 	return f
 }
 
@@ -53,7 +53,7 @@ func printStatusHuman(server string, s *StatusResponse) {
 func printJSON(v any) {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
-	enc.Encode(v)
+	_ = enc.Encode(v)
 }
 
 func runQueue(args []string) {
