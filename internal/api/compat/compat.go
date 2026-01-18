@@ -102,19 +102,35 @@ func (s *Server) addMovie(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listRootFolders(w http.ResponseWriter, r *http.Request) {
-	// Return configured movie root
-	writeJSON(w, http.StatusOK, []map[string]any{
-		{"id": 1, "path": "/srv/data/media/movies", "freeSpace": 0},
-	})
+	folders := []map[string]any{}
+
+	if s.cfg.MovieRoot != "" {
+		folders = append(folders, map[string]any{
+			"id":        1,
+			"path":      s.cfg.MovieRoot,
+			"freeSpace": 0,
+		})
+	}
+	if s.cfg.SeriesRoot != "" {
+		folders = append(folders, map[string]any{
+			"id":        2,
+			"path":      s.cfg.SeriesRoot,
+			"freeSpace": 0,
+		})
+	}
+
+	writeJSON(w, http.StatusOK, folders)
 }
 
 func (s *Server) listQualityProfiles(w http.ResponseWriter, r *http.Request) {
-	// Return profiles in Radarr format
-	writeJSON(w, http.StatusOK, []map[string]any{
-		{"id": 1, "name": "hd"},
-		{"id": 2, "name": "uhd"},
-		{"id": 3, "name": "any"},
-	})
+	profiles := make([]map[string]any, 0, len(s.cfg.QualityProfiles))
+	for name, id := range s.cfg.QualityProfiles {
+		profiles = append(profiles, map[string]any{
+			"id":   id,
+			"name": name,
+		})
+	}
+	writeJSON(w, http.StatusOK, profiles)
 }
 
 func (s *Server) listQueue(w http.ResponseWriter, r *http.Request) {
