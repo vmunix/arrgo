@@ -4,17 +4,46 @@ package compat
 import (
 	"encoding/json"
 	"net/http"
+
+	"github.com/arrgo/arrgo/internal/download"
+	"github.com/arrgo/arrgo/internal/library"
+	"github.com/arrgo/arrgo/internal/search"
 )
+
+// Config holds compat API configuration.
+type Config struct {
+	APIKey          string
+	MovieRoot       string
+	SeriesRoot      string
+	QualityProfiles map[string]int // name -> id mapping
+}
 
 // Server provides Radarr/Sonarr API compatibility.
 type Server struct {
-	apiKey string
-	// TODO: add dependencies
+	cfg       Config
+	library   *library.Store
+	downloads *download.Store
+	searcher  *search.Searcher
+	manager   *download.Manager
 }
 
 // New creates a new compatibility server.
-func New(apiKey string) *Server {
-	return &Server{apiKey: apiKey}
+func New(cfg Config, lib *library.Store, dl *download.Store) *Server {
+	return &Server{
+		cfg:       cfg,
+		library:   lib,
+		downloads: dl,
+	}
+}
+
+// SetSearcher configures the searcher (optional).
+func (s *Server) SetSearcher(searcher *search.Searcher) {
+	s.searcher = searcher
+}
+
+// SetManager configures the download manager (optional).
+func (s *Server) SetManager(manager *download.Manager) {
+	s.manager = manager
 }
 
 // RegisterRoutes registers compatibility API routes.
@@ -41,7 +70,7 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		if apiKey == "" {
 			apiKey = r.URL.Query().Get("apikey")
 		}
-		if apiKey != s.apiKey {
+		if apiKey != s.cfg.APIKey {
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Invalid API key"})
 			return
