@@ -231,12 +231,29 @@ func (s *Server) listQualityProfiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listQueue(w http.ResponseWriter, r *http.Request) {
-	// TODO: translate from native downloads
+	downloads, err := s.downloads.List(download.DownloadFilter{Active: true})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	records := make([]map[string]any, 0, len(downloads))
+	for _, dl := range downloads {
+		records = append(records, map[string]any{
+			"id":                    dl.ID,
+			"movieId":               dl.ContentID,
+			"title":                 dl.ReleaseName,
+			"status":                string(dl.Status),
+			"trackedDownloadStatus": "ok",
+			"indexer":               dl.Indexer,
+		})
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"page":          1,
-		"pageSize":      20,
-		"totalRecords":  0,
-		"records":       []any{},
+		"page":         1,
+		"pageSize":     len(records),
+		"totalRecords": len(records),
+		"records":      records,
 	})
 }
 
