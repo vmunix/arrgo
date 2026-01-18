@@ -60,3 +60,21 @@ func ValidatePath(path, expectedRoot string) error {
 
 	return nil
 }
+
+// VideoExtensions is the list of recognized video file extensions.
+var VideoExtensions = map[string]bool{
+	".mkv":  true,
+	".mp4":  true,
+	".avi":  true,
+	".m4v":  true,
+	".mov":  true,
+	".wmv":  true,
+	".ts":   true,
+	".webm": true,
+}
+
+// IsVideoFile checks if a path is a video file.
+func IsVideoFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return VideoExtensions[ext]
+}
