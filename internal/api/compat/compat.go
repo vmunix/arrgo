@@ -2,7 +2,9 @@
 package compat
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/arrgo/arrgo/internal/download"
@@ -16,6 +18,29 @@ type Config struct {
 	MovieRoot       string
 	SeriesRoot      string
 	QualityProfiles map[string]int // name -> id mapping
+}
+
+// radarrAddRequest is the Radarr format for adding a movie.
+type radarrAddRequest struct {
+	TMDBID           int64  `json:"tmdbId"`
+	Title            string `json:"title"`
+	Year             int    `json:"year"`
+	QualityProfileID int    `json:"qualityProfileId"`
+	RootFolderPath   string `json:"rootFolderPath"`
+	Monitored        bool   `json:"monitored"`
+	AddOptions       struct {
+		SearchForMovie bool `json:"searchForMovie"`
+	} `json:"addOptions"`
+}
+
+// radarrMovieResponse is the Radarr format for a movie.
+type radarrMovieResponse struct {
+	ID        int64  `json:"id"`
+	TMDBID    int64  `json:"tmdbId"`
+	Title     string `json:"title"`
+	Year      int    `json:"year"`
+	Monitored bool   `json:"monitored"`
+	Status    string `json:"status"`
 }
 
 // Server provides Radarr/Sonarr API compatibility.
@@ -97,8 +122,57 @@ func (s *Server) getMovie(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) addMovie(w http.ResponseWriter, r *http.Request) {
-	// TODO: translate request, call native API
-	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "Not implemented"})
+	var req radarrAddRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+		return
+	}
+
+	// Map quality profile ID to name
+	profileName := "hd" // default
+	for name, id := range s.cfg.QualityProfiles {
+		if id == req.QualityProfileID {
+			profileName = name
+			break
+		}
+	}
+
+	// Determine root path
+	rootPath := req.RootFolderPath
+	if rootPath == "" {
+		rootPath = s.cfg.MovieRoot
+	}
+
+	// Add to library
+	tmdbID := req.TMDBID
+	content := &library.Content{
+		Type:           library.ContentTypeMovie,
+		TMDBID:         &tmdbID,
+		Title:          req.Title,
+		Year:           req.Year,
+		Status:         library.StatusWanted,
+		QualityProfile: profileName,
+		RootPath:       rootPath,
+	}
+
+	if err := s.library.AddContent(content); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Auto-search if requested and searcher available
+	if req.AddOptions.SearchForMovie && s.searcher != nil && s.manager != nil {
+		go s.searchAndGrab(content.ID, req.Title, req.Year, profileName)
+	}
+
+	writeJSON(w, http.StatusCreated, radarrMovieResponse{
+		ID:        content.ID,
+		TMDBID:    req.TMDBID,
+		Title:     req.Title,
+		Year:      req.Year,
+		Monitored: req.Monitored,
+		Status:    "announced",
+	})
 }
 
 func (s *Server) listRootFolders(w http.ResponseWriter, r *http.Request) {
@@ -173,4 +247,23 @@ func (s *Server) getSeries(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "Not implemented"})
+}
+
+// searchAndGrab performs a background search and grabs the best result.
+func (s *Server) searchAndGrab(contentID int64, title string, year int, profile string) {
+	ctx := context.Background()
+
+	query := search.Query{
+		Text: fmt.Sprintf("%s %d", title, year),
+		Type: "movie",
+	}
+
+	result, err := s.searcher.Search(ctx, query, profile)
+	if err != nil || len(result.Releases) == 0 {
+		return
+	}
+
+	// Grab the best match (first result after scoring/sorting)
+	best := result.Releases[0]
+	_, _ = s.manager.Grab(ctx, contentID, nil, best.DownloadURL, best.Title, best.Indexer)
 }
