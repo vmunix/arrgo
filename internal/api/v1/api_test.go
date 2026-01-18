@@ -527,3 +527,86 @@ func TestDeleteDownload_NoManager(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
 	}
 }
+
+func TestListHistory_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/history", nil)
+	w := httptest.NewRecorder()
+
+	srv.listHistory(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp listHistoryResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Items) != 0 {
+		t.Errorf("items = %d, want 0", len(resp.Items))
+	}
+}
+
+func TestListFiles_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/files", nil)
+	w := httptest.NewRecorder()
+
+	srv.listFiles(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+
+	var resp listFilesResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(resp.Items) != 0 {
+		t.Errorf("items = %d, want 0", len(resp.Items))
+	}
+}
+
+func TestDeleteFile(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	// Add content and file
+	c := &library.Content{
+		Type:           library.ContentTypeMovie,
+		Title:          "Test",
+		Year:           2024,
+		Status:         library.StatusAvailable,
+		QualityProfile: "hd",
+		RootPath:       "/movies",
+	}
+	if err := srv.library.AddContent(c); err != nil {
+		t.Fatalf("add content: %v", err)
+	}
+
+	f := &library.File{
+		ContentID: c.ID,
+		Path:      "/movies/test.mkv",
+		SizeBytes: 1000,
+		Quality:   "1080p",
+		Source:    "test",
+	}
+	if err := srv.library.AddFile(f); err != nil {
+		t.Fatalf("add file: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/1", nil)
+	req.SetPathValue("id", "1")
+	w := httptest.NewRecorder()
+
+	srv.deleteFile(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusNoContent)
+	}
+}

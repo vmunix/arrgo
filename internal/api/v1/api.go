@@ -556,15 +556,87 @@ func (s *Server) deleteDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listHistory(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, []any{})
+	filter := importer.HistoryFilter{
+		Limit: queryInt(r, "limit", 50),
+	}
+
+	if contentIDStr := r.URL.Query().Get("content_id"); contentIDStr != "" {
+		id, _ := strconv.ParseInt(contentIDStr, 10, 64)
+		filter.ContentID = &id
+	}
+
+	entries, err := s.history.List(filter)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	resp := listHistoryResponse{
+		Items: make([]historyResponse, len(entries)),
+		Total: len(entries),
+	}
+
+	for i, h := range entries {
+		resp.Items[i] = historyResponse{
+			ID:        h.ID,
+			ContentID: h.ContentID,
+			EpisodeID: h.EpisodeID,
+			Event:     h.Event,
+			Data:      h.Data,
+			CreatedAt: h.CreatedAt,
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, []any{})
+	filter := library.FileFilter{}
+	if contentIDStr := r.URL.Query().Get("content_id"); contentIDStr != "" {
+		id, _ := strconv.ParseInt(contentIDStr, 10, 64)
+		filter.ContentID = &id
+	}
+
+	files, _, err := s.library.ListFiles(filter)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	resp := listFilesResponse{
+		Items: make([]fileResponse, len(files)),
+		Total: len(files),
+	}
+
+	for i, f := range files {
+		resp.Items[i] = fileResponse{
+			ID:        f.ID,
+			ContentID: f.ContentID,
+			EpisodeID: f.EpisodeID,
+			Path:      f.Path,
+			SizeBytes: f.SizeBytes,
+			Quality:   f.Quality,
+			Source:    f.Source,
+			AddedAt:   f.AddedAt,
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) deleteFile(w http.ResponseWriter, r *http.Request) {
-	writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "Not yet implemented")
+	id, err := pathID(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
+		return
+	}
+
+	if err := s.library.DeleteFile(id); err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {

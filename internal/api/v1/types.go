@@ -127,3 +127,37 @@ type listDownloadsResponse struct {
 	Items []downloadResponse `json:"items"`
 	Total int                `json:"total"`
 }
+
+// historyResponse is the API representation of a history entry.
+type historyResponse struct {
+	ID        int64     `json:"id"`
+	ContentID int64     `json:"content_id"`
+	EpisodeID *int64    `json:"episode_id,omitempty"`
+	Event     string    `json:"event"`
+	Data      string    `json:"data"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// listHistoryResponse is the response for GET /history.
+type listHistoryResponse struct {
+	Items []historyResponse `json:"items"`
+	Total int               `json:"total"`
+}
+
+// fileResponse is the API representation of a file.
+type fileResponse struct {
+	ID        int64     `json:"id"`
+	ContentID int64     `json:"content_id"`
+	EpisodeID *int64    `json:"episode_id,omitempty"`
+	Path      string    `json:"path"`
+	SizeBytes int64     `json:"size_bytes"`
+	Quality   string    `json:"quality"`
+	Source    string    `json:"source"`
+	AddedAt   time.Time `json:"added_at"`
+}
+
+// listFilesResponse is the response for GET /files.
+type listFilesResponse struct {
+	Items []fileResponse `json:"items"`
+	Total int            `json:"total"`
+}
