@@ -2,18 +2,59 @@
 package v1
 
 import (
+	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
+
+	"github.com/arrgo/arrgo/internal/download"
+	"github.com/arrgo/arrgo/internal/importer"
+	"github.com/arrgo/arrgo/internal/library"
+	"github.com/arrgo/arrgo/internal/search"
 )
+
+// Config holds API server configuration.
+type Config struct {
+	MovieRoot       string
+	SeriesRoot      string
+	QualityProfiles map[string][]string
+}
 
 // Server is the v1 API server.
 type Server struct {
-	// TODO: add dependencies (library store, search, download, etc.)
+	library   *library.Store
+	downloads *download.Store
+	manager   *download.Manager
+	searcher  *search.Searcher
+	history   *importer.HistoryStore
+	plex      *importer.PlexClient
+	cfg       Config
 }
 
 // New creates a new v1 API server.
-func New() *Server {
-	return &Server{}
+func New(db *sql.DB, cfg Config) *Server {
+	return &Server{
+		library:   library.NewStore(db),
+		downloads: download.NewStore(db),
+		history:   importer.NewHistoryStore(db),
+		cfg:       cfg,
+	}
+}
+
+// SetSearcher configures the searcher (requires external Prowlarr client).
+func (s *Server) SetSearcher(searcher *search.Searcher) {
+	s.searcher = searcher
+}
+
+// SetManager configures the download manager (requires external SABnzbd client).
+func (s *Server) SetManager(manager *download.Manager) {
+	s.manager = manager
+}
+
+// SetPlex configures the Plex client for library scans.
+func (s *Server) SetPlex(plex *importer.PlexClient) {
+	s.plex = plex
 }
 
 // RegisterRoutes registers API routes on the given mux.
@@ -60,13 +101,50 @@ type errorResponse struct {
 func writeError(w http.ResponseWriter, code int, errCode, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(errorResponse{Error: message, Code: errCode})
+	_ = json.NewEncoder(w).Encode(errorResponse{Error: message, Code: errCode})
 }
 
 func writeJSON(w http.ResponseWriter, code int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
+}
+
+// pathID extracts an integer ID from the URL path.
+//
+//nolint:unused // Used by future endpoint implementations
+func pathID(r *http.Request, name string) (int64, error) {
+	idStr := r.PathValue(name)
+	if idStr == "" {
+		return 0, fmt.Errorf("missing path parameter: %s", name)
+	}
+	return strconv.ParseInt(idStr, 10, 64)
+}
+
+// queryInt extracts an optional integer from query string.
+//
+//nolint:unused // Used by future endpoint implementations
+func queryInt(r *http.Request, name string, defaultVal int) int {
+	val := r.URL.Query().Get(name)
+	if val == "" {
+		return defaultVal
+	}
+	i, err := strconv.Atoi(val)
+	if err != nil {
+		return defaultVal
+	}
+	return i
+}
+
+// queryString extracts an optional string from query string.
+//
+//nolint:unused // Used by future endpoint implementations
+func queryString(r *http.Request, name string) *string {
+	val := r.URL.Query().Get(name)
+	if val == "" {
+		return nil
+	}
+	return &val
 }
 
 // Handlers (stubs)
