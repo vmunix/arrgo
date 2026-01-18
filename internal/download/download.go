@@ -40,6 +40,15 @@ type Download struct {
 	CompletedAt *time.Time
 }
 
+// DownloadFilter specifies criteria for listing downloads.
+type DownloadFilter struct {
+	ContentID *int64
+	EpisodeID *int64
+	Status    *Status
+	Client    *Client
+	Active    bool // If true, exclude "imported" status
+}
+
 // ClientStatus is the status from a download client.
 type ClientStatus struct {
 	ID       string
