@@ -190,3 +190,26 @@ func TestPlexClient_GetSections_WithMetadata(t *testing.T) {
 		t.Errorf("refreshing[1]: got %v, want true", sections[1].Refreshing())
 	}
 }
+
+func TestPlexClient_GetLibraryCount(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/library/sections/1/all" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<MediaContainer size="0" totalSize="42">
+</MediaContainer>`))
+	}))
+	defer server.Close()
+
+	client := NewPlexClient(server.URL, "test-token")
+	count, err := client.GetLibraryCount(context.Background(), "1")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if count != 42 {
+		t.Errorf("count: got %d, want 42", count)
+	}
+}
