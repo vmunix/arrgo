@@ -179,8 +179,8 @@ func (c *PlexClient) GetIdentity(ctx context.Context) (*Identity, error) {
 
 // countResponse is the XML response for getting library item count.
 type countResponse struct {
-	XMLName   xml.Name `xml:"MediaContainer"`
-	TotalSize int      `xml:"totalSize,attr"`
+	XMLName xml.Name `xml:"MediaContainer"`
+	Size    int      `xml:"size,attr"`
 }
 
 // GetLibraryCount returns the number of items in a library section.
@@ -210,5 +210,5 @@ func (c *PlexClient) GetLibraryCount(ctx context.Context, sectionKey string) (in
 		return 0, fmt.Errorf("decode response: %w", err)
 	}
 
-	return result.TotalSize, nil
+	return result.Size, nil
 }
