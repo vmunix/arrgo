@@ -9,16 +9,15 @@ import (
 
 // Base scores for resolutions.
 const (
-	scoreResolution2160p  = 100
-	scoreResolution1080p  = 80
-	scoreResolution720p   = 60
-	scoreResolutionOther  = 40
-	scoreRejectPenalty    = -10000
-	bonusSource           = 10
-	bonusCodec            = 10
-	bonusHDR              = 15
-	bonusAudio            = 15
-	bonusRemux            = 20
+	scoreResolution2160p = 100
+	scoreResolution1080p = 80
+	scoreResolution720p  = 60
+	scoreResolutionOther = 40
+	bonusSource          = 10
+	bonusCodec           = 10
+	bonusHDR             = 15
+	bonusAudio           = 15
+	bonusRemux           = 20
 )
 
 // Scorer scores releases against quality profiles.
@@ -263,11 +262,13 @@ func matchesRejectList(info release.Info, rejectList []string) bool {
 }
 
 // rejectMatchesSpecial handles special reject list matching.
+// Note: cam, camrip, ts, telesync, hdcam are not currently tracked by the parser.
+// These would require extending pkg/release to detect these low-quality sources.
 func rejectMatchesSpecial(info release.Info, reject string) bool {
 	// Handle common reject patterns
 	switch reject {
-	case "cam", "camrip":
-		// Not explicitly tracked, but could be inferred from source
+	case "cam", "camrip", "ts", "telesync", "hdcam":
+		// Low-quality sources not currently tracked by parser - future enhancement
 		return false
 	case "hdtv":
 		return info.Source == release.SourceHDTV
