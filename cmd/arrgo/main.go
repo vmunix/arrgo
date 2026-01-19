@@ -50,7 +50,7 @@ Setup:
 
 Commands:
   status             System status (health, disk, queue summary)
-  search <query>     Search indexers for content
+  search [flags] <query>  Search indexers for content
   parse <release>    Parse release name (local, no server needed)
   queue              Show active downloads
 

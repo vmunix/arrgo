@@ -128,7 +128,7 @@ func runSearch(args []string) {
 
 	remaining := fs.Args()
 	if len(remaining) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: arrgo search <query> [--type movie|series] [--grab N|best]")
+		fmt.Fprintln(os.Stderr, "Usage: arrgo search [--verbose] [--type movie|series] [--grab N|best] <query>")
 		os.Exit(1)
 	}
 	query := strings.Join(remaining, " ")
