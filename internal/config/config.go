@@ -74,9 +74,11 @@ type DownloadersConfig struct {
 }
 
 type SABnzbdConfig struct {
-	URL      string `toml:"url"`
-	APIKey   string `toml:"api_key"`
-	Category string `toml:"category"`
+	URL        string `toml:"url"`
+	APIKey     string `toml:"api_key"`
+	Category   string `toml:"category"`
+	RemotePath string `toml:"remote_path"` // Path prefix as seen by SABnzbd (e.g., /data/usenet)
+	LocalPath  string `toml:"local_path"`  // Corresponding path on this machine (e.g., /srv/data/usenet)
 }
 
 type QBittorrentConfig struct {
