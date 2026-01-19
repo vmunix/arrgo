@@ -15,6 +15,45 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// Test constants
+const (
+	testAPIKey     = "test-api-key"
+	testMovieRoot  = "/movies"
+	testSeriesRoot = "/series"
+)
+
+// Test response structs for type-safe assertions
+type testQualityProfile struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+type testRootFolder struct {
+	ID        int    `json:"id"`
+	Path      string `json:"path"`
+	FreeSpace int64  `json:"freeSpace"`
+}
+
+type testQueueRecord struct {
+	ID       int    `json:"id"`
+	Title    string `json:"title"`
+	Indexer  string `json:"indexer"`
+	MovieID  int    `json:"movieId"`
+	Protocol string `json:"protocol"`
+	Status   string `json:"status"`
+}
+
+type testQueueResponse struct {
+	Page         int               `json:"page"`
+	PageSize     int               `json:"pageSize"`
+	TotalRecords int               `json:"totalRecords"`
+	Records      []testQueueRecord `json:"records"`
+}
+
+type testErrorResponse struct {
+	Error string `json:"error"`
+}
+
 //go:embed testdata/schema.sql
 var testSchema string
 
@@ -40,8 +79,8 @@ func setupServer(t *testing.T, apiKey string) (*Server, *http.ServeMux, *sql.DB)
 
 	cfg := Config{
 		APIKey:          apiKey,
-		MovieRoot:       "/movies",
-		SeriesRoot:      "/series",
+		MovieRoot:       testMovieRoot,
+		SeriesRoot:      testSeriesRoot,
 		QualityProfiles: map[string]int{"hd": 1, "uhd": 2},
 	}
 
@@ -55,7 +94,7 @@ func setupServer(t *testing.T, apiKey string) (*Server, *http.ServeMux, *sql.DB)
 // Auth Middleware Tests
 
 func TestAuthMiddleware_NoAPIKey(t *testing.T) {
-	_, mux, _ := setupServer(t, "test-api-key")
+	_, mux, _ := setupServer(t, testAPIKey)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v3/movie", nil)
 	w := httptest.NewRecorder()
@@ -66,12 +105,12 @@ func TestAuthMiddleware_NoAPIKey(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusUnauthorized)
 	}
 
-	var resp map[string]string
+	var resp testErrorResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if resp["error"] != "Invalid API key" {
-		t.Errorf("error = %q, want %q", resp["error"], "Invalid API key")
+	if resp.Error != "Invalid API key" {
+		t.Errorf("error = %q, want %q", resp.Error, "Invalid API key")
 	}
 }
 
@@ -88,20 +127,20 @@ func TestAuthMiddleware_WrongAPIKey(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusUnauthorized)
 	}
 
-	var resp map[string]string
+	var resp testErrorResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if resp["error"] != "Invalid API key" {
-		t.Errorf("error = %q, want %q", resp["error"], "Invalid API key")
+	if resp.Error != "Invalid API key" {
+		t.Errorf("error = %q, want %q", resp.Error, "Invalid API key")
 	}
 }
 
 func TestAuthMiddleware_CorrectAPIKey(t *testing.T) {
-	_, mux, _ := setupServer(t, "test-api-key")
+	_, mux, _ := setupServer(t, testAPIKey)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v3/movie", nil)
-	req.Header.Set("X-Api-Key", "test-api-key")
+	req.Header.Set("X-Api-Key", testAPIKey)
 	w := httptest.NewRecorder()
 
 	mux.ServeHTTP(w, req)
@@ -112,9 +151,9 @@ func TestAuthMiddleware_CorrectAPIKey(t *testing.T) {
 }
 
 func TestAuthMiddleware_APIKeyQueryParam(t *testing.T) {
-	_, mux, _ := setupServer(t, "test-api-key")
+	_, mux, _ := setupServer(t, testAPIKey)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v3/movie?apikey=test-api-key", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v3/movie?apikey="+testAPIKey, nil)
 	w := httptest.NewRecorder()
 
 	mux.ServeHTTP(w, req)
@@ -127,10 +166,10 @@ func TestAuthMiddleware_APIKeyQueryParam(t *testing.T) {
 // Quality Profiles Tests
 
 func TestListQualityProfiles_ReturnsConfiguredProfiles(t *testing.T) {
-	_, mux, _ := setupServer(t, "test-api-key")
+	_, mux, _ := setupServer(t, testAPIKey)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v3/qualityprofile", nil)
-	req.Header.Set("X-Api-Key", "test-api-key")
+	req.Header.Set("X-Api-Key", testAPIKey)
 	w := httptest.NewRecorder()
 
 	mux.ServeHTTP(w, req)
@@ -139,7 +178,7 @@ func TestListQualityProfiles_ReturnsConfiguredProfiles(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	var profiles []map[string]any
+	var profiles []testQualityProfile
 	if err := json.Unmarshal(w.Body.Bytes(), &profiles); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -150,39 +189,27 @@ func TestListQualityProfiles_ReturnsConfiguredProfiles(t *testing.T) {
 }
 
 func TestListQualityProfiles_IncludesIDAndName(t *testing.T) {
-	_, mux, _ := setupServer(t, "test-api-key")
+	_, mux, _ := setupServer(t, testAPIKey)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v3/qualityprofile", nil)
-	req.Header.Set("X-Api-Key", "test-api-key")
+	req.Header.Set("X-Api-Key", testAPIKey)
 	w := httptest.NewRecorder()
 
 	mux.ServeHTTP(w, req)
 
-	var profiles []map[string]any
+	var profiles []testQualityProfile
 	if err := json.Unmarshal(w.Body.Bytes(), &profiles); err != nil {
 		t.Fatalf("unmarshal: %v", err)
-	}
-
-	// Check that each profile has id and name
-	for _, profile := range profiles {
-		if _, ok := profile["id"]; !ok {
-			t.Error("profile missing 'id' field")
-		}
-		if _, ok := profile["name"]; !ok {
-			t.Error("profile missing 'name' field")
-		}
 	}
 
 	// Verify specific mappings exist
 	foundHD := false
 	foundUHD := false
 	for _, profile := range profiles {
-		name, _ := profile["name"].(string)
-		id, _ := profile["id"].(float64)
-		if name == "hd" && id == 1 {
+		if profile.Name == "hd" && profile.ID == 1 {
 			foundHD = true
 		}
-		if name == "uhd" && id == 2 {
+		if profile.Name == "uhd" && profile.ID == 2 {
 			foundUHD = true
 		}
 	}
@@ -197,10 +224,10 @@ func TestListQualityProfiles_IncludesIDAndName(t *testing.T) {
 // Root Folders Tests
 
 func TestListRootFolders_ReturnsConfiguredRoots(t *testing.T) {
-	_, mux, _ := setupServer(t, "test-api-key")
+	_, mux, _ := setupServer(t, testAPIKey)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v3/rootfolder", nil)
-	req.Header.Set("X-Api-Key", "test-api-key")
+	req.Header.Set("X-Api-Key", testAPIKey)
 	w := httptest.NewRecorder()
 
 	mux.ServeHTTP(w, req)
@@ -209,7 +236,7 @@ func TestListRootFolders_ReturnsConfiguredRoots(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	var folders []map[string]any
+	var folders []testRootFolder
 	if err := json.Unmarshal(w.Body.Bytes(), &folders); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -221,36 +248,34 @@ func TestListRootFolders_ReturnsConfiguredRoots(t *testing.T) {
 	// Verify paths
 	paths := make(map[string]bool)
 	for _, folder := range folders {
-		if path, ok := folder["path"].(string); ok {
-			paths[path] = true
-		}
+		paths[folder.Path] = true
 	}
-	if !paths["/movies"] {
-		t.Error("/movies root folder not found")
+	if !paths[testMovieRoot] {
+		t.Errorf("%s root folder not found", testMovieRoot)
 	}
-	if !paths["/series"] {
-		t.Error("/series root folder not found")
+	if !paths[testSeriesRoot] {
+		t.Errorf("%s root folder not found", testSeriesRoot)
 	}
 }
 
 func TestListRootFolders_EmptyWhenNoRootsConfigured(t *testing.T) {
 	db := setupTestDB(t)
 	lib := library.NewStore(db)
-	dl := download.NewStore(db)
+	dlStore := download.NewStore(db)
 
 	cfg := Config{
-		APIKey:          "test-api-key",
+		APIKey:          testAPIKey,
 		MovieRoot:       "", // Empty roots
 		SeriesRoot:      "",
 		QualityProfiles: map[string]int{"hd": 1},
 	}
 
-	srv := New(cfg, lib, dl)
+	srv := New(cfg, lib, dlStore)
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v3/rootfolder", nil)
-	req.Header.Set("X-Api-Key", "test-api-key")
+	req.Header.Set("X-Api-Key", testAPIKey)
 	w := httptest.NewRecorder()
 
 	mux.ServeHTTP(w, req)
@@ -259,7 +284,7 @@ func TestListRootFolders_EmptyWhenNoRootsConfigured(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	var folders []map[string]any
+	var folders []testRootFolder
 	if err := json.Unmarshal(w.Body.Bytes(), &folders); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -272,8 +297,7 @@ func TestListRootFolders_EmptyWhenNoRootsConfigured(t *testing.T) {
 // Add Movie Tests
 
 func TestAddMovie_CreatesContentInLibrary(t *testing.T) {
-	srv, mux, db := setupServer(t, "test-api-key")
-	_ = srv // silence unused variable
+	_, mux, db := setupServer(t, testAPIKey)
 
 	body := `{
 		"tmdbId": 12345,
@@ -286,7 +310,7 @@ func TestAddMovie_CreatesContentInLibrary(t *testing.T) {
 	}`
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v3/movie", strings.NewReader(body))
-	req.Header.Set("X-Api-Key", "test-api-key")
+	req.Header.Set("X-Api-Key", testAPIKey)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -318,7 +342,7 @@ func TestAddMovie_CreatesContentInLibrary(t *testing.T) {
 }
 
 func TestAddMovie_ReturnsRadarrFormatResponse(t *testing.T) {
-	_, mux, _ := setupServer(t, "test-api-key")
+	_, mux, _ := setupServer(t, testAPIKey)
 
 	body := `{
 		"tmdbId": 67890,
@@ -331,7 +355,7 @@ func TestAddMovie_ReturnsRadarrFormatResponse(t *testing.T) {
 	}`
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v3/movie", strings.NewReader(body))
-	req.Header.Set("X-Api-Key", "test-api-key")
+	req.Header.Set("X-Api-Key", testAPIKey)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -358,7 +382,7 @@ func TestAddMovie_ReturnsRadarrFormatResponse(t *testing.T) {
 	if resp.Year != 2023 {
 		t.Errorf("year = %d, want 2023", resp.Year)
 	}
-	if resp.Monitored != true {
+	if !resp.Monitored {
 		t.Error("monitored = false, want true")
 	}
 	if resp.Status != "announced" {
@@ -367,12 +391,12 @@ func TestAddMovie_ReturnsRadarrFormatResponse(t *testing.T) {
 }
 
 func TestAddMovie_InvalidJSON(t *testing.T) {
-	_, mux, _ := setupServer(t, "test-api-key")
+	_, mux, _ := setupServer(t, testAPIKey)
 
 	body := `{invalid json}`
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v3/movie", strings.NewReader(body))
-	req.Header.Set("X-Api-Key", "test-api-key")
+	req.Header.Set("X-Api-Key", testAPIKey)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -382,17 +406,17 @@ func TestAddMovie_InvalidJSON(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusBadRequest)
 	}
 
-	var resp map[string]string
+	var resp testErrorResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if resp["error"] != "Invalid request" {
-		t.Errorf("error = %q, want %q", resp["error"], "Invalid request")
+	if resp.Error != "Invalid request" {
+		t.Errorf("error = %q, want %q", resp.Error, "Invalid request")
 	}
 }
 
 func TestAddMovie_QualityProfileMappedCorrectly(t *testing.T) {
-	_, mux, db := setupServer(t, "test-api-key")
+	_, mux, db := setupServer(t, testAPIKey)
 
 	// Add movie with qualityProfileId=2 which maps to "uhd"
 	body := `{
@@ -406,7 +430,7 @@ func TestAddMovie_QualityProfileMappedCorrectly(t *testing.T) {
 	}`
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v3/movie", strings.NewReader(body))
-	req.Header.Set("X-Api-Key", "test-api-key")
+	req.Header.Set("X-Api-Key", testAPIKey)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 
@@ -430,7 +454,7 @@ func TestAddMovie_QualityProfileMappedCorrectly(t *testing.T) {
 // List Queue Tests
 
 func TestListQueue_ReturnsDownloadsInRadarrFormat(t *testing.T) {
-	srv, mux, db := setupServer(t, "test-api-key")
+	srv, mux, db := setupServer(t, testAPIKey)
 	lib := library.NewStore(db)
 
 	// Create content first
@@ -440,7 +464,7 @@ func TestListQueue_ReturnsDownloadsInRadarrFormat(t *testing.T) {
 		Year:           2024,
 		Status:         library.StatusWanted,
 		QualityProfile: "hd",
-		RootPath:       "/movies",
+		RootPath:       testMovieRoot,
 	}
 	if err := lib.AddContent(content); err != nil {
 		t.Fatalf("add content: %v", err)
@@ -460,7 +484,7 @@ func TestListQueue_ReturnsDownloadsInRadarrFormat(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v3/queue", nil)
-	req.Header.Set("X-Api-Key", "test-api-key")
+	req.Header.Set("X-Api-Key", testAPIKey)
 	w := httptest.NewRecorder()
 
 	mux.ServeHTTP(w, req)
@@ -469,41 +493,37 @@ func TestListQueue_ReturnsDownloadsInRadarrFormat(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	var resp map[string]any
+	var resp testQueueResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
 	// Verify queue response structure
-	if resp["page"] != float64(1) {
-		t.Errorf("page = %v, want 1", resp["page"])
+	if resp.Page != 1 {
+		t.Errorf("page = %d, want 1", resp.Page)
 	}
-	if resp["totalRecords"] != float64(1) {
-		t.Errorf("totalRecords = %v, want 1", resp["totalRecords"])
-	}
-
-	records, ok := resp["records"].([]any)
-	if !ok {
-		t.Fatal("records is not an array")
-	}
-	if len(records) != 1 {
-		t.Errorf("records count = %d, want 1", len(records))
+	if resp.TotalRecords != 1 {
+		t.Errorf("totalRecords = %d, want 1", resp.TotalRecords)
 	}
 
-	record := records[0].(map[string]any)
-	if record["title"] != "Test.Movie.2024.1080p.BluRay.x264" {
-		t.Errorf("title = %v, want Test.Movie.2024.1080p.BluRay.x264", record["title"])
+	if len(resp.Records) != 1 {
+		t.Errorf("records count = %d, want 1", len(resp.Records))
 	}
-	if record["indexer"] != "NZBgeek" {
-		t.Errorf("indexer = %v, want NZBgeek", record["indexer"])
+
+	record := resp.Records[0]
+	if record.Title != "Test.Movie.2024.1080p.BluRay.x264" {
+		t.Errorf("title = %q, want %q", record.Title, "Test.Movie.2024.1080p.BluRay.x264")
+	}
+	if record.Indexer != "NZBgeek" {
+		t.Errorf("indexer = %q, want %q", record.Indexer, "NZBgeek")
 	}
 }
 
 func TestListQueue_EmptyQueueReturnsEmptyRecords(t *testing.T) {
-	_, mux, _ := setupServer(t, "test-api-key")
+	_, mux, _ := setupServer(t, testAPIKey)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v3/queue", nil)
-	req.Header.Set("X-Api-Key", "test-api-key")
+	req.Header.Set("X-Api-Key", testAPIKey)
 	w := httptest.NewRecorder()
 
 	mux.ServeHTTP(w, req)
@@ -512,30 +532,26 @@ func TestListQueue_EmptyQueueReturnsEmptyRecords(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	var resp map[string]any
+	var resp testQueueResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	records, ok := resp["records"].([]any)
-	if !ok {
-		t.Fatal("records is not an array")
+	if len(resp.Records) != 0 {
+		t.Errorf("records count = %d, want 0", len(resp.Records))
 	}
-	if len(records) != 0 {
-		t.Errorf("records count = %d, want 0", len(records))
-	}
-	if resp["totalRecords"] != float64(0) {
-		t.Errorf("totalRecords = %v, want 0", resp["totalRecords"])
+	if resp.TotalRecords != 0 {
+		t.Errorf("totalRecords = %d, want 0", resp.TotalRecords)
 	}
 }
 
 // List Movies Tests
 
 func TestListMovies_ReturnsEmptyArray(t *testing.T) {
-	_, mux, _ := setupServer(t, "test-api-key")
+	_, mux, _ := setupServer(t, testAPIKey)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v3/movie", nil)
-	req.Header.Set("X-Api-Key", "test-api-key")
+	req.Header.Set("X-Api-Key", testAPIKey)
 	w := httptest.NewRecorder()
 
 	mux.ServeHTTP(w, req)
@@ -544,7 +560,7 @@ func TestListMovies_ReturnsEmptyArray(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	var resp []any
+	var resp []radarrMovieResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -556,10 +572,10 @@ func TestListMovies_ReturnsEmptyArray(t *testing.T) {
 // Get Movie Tests
 
 func TestGetMovie_NotFound(t *testing.T) {
-	_, mux, _ := setupServer(t, "test-api-key")
+	_, mux, _ := setupServer(t, testAPIKey)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v3/movie/999", nil)
-	req.Header.Set("X-Api-Key", "test-api-key")
+	req.Header.Set("X-Api-Key", testAPIKey)
 	w := httptest.NewRecorder()
 
 	mux.ServeHTTP(w, req)
@@ -574,16 +590,16 @@ func TestGetMovie_NotFound(t *testing.T) {
 func TestAuthMiddleware_APIKeyNotConfigured(t *testing.T) {
 	db := setupTestDB(t)
 	lib := library.NewStore(db)
-	dl := download.NewStore(db)
+	dlStore := download.NewStore(db)
 
 	cfg := Config{
 		APIKey:          "", // Empty API key
-		MovieRoot:       "/movies",
-		SeriesRoot:      "/series",
+		MovieRoot:       testMovieRoot,
+		SeriesRoot:      testSeriesRoot,
 		QualityProfiles: map[string]int{"hd": 1},
 	}
 
-	srv := New(cfg, lib, dl)
+	srv := New(cfg, lib, dlStore)
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)
 
@@ -597,11 +613,11 @@ func TestAuthMiddleware_APIKeyNotConfigured(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusUnauthorized)
 	}
 
-	var resp map[string]string
+	var resp testErrorResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if resp["error"] != "API key not configured" {
-		t.Errorf("error = %q, want %q", resp["error"], "API key not configured")
+	if resp.Error != "API key not configured" {
+		t.Errorf("error = %q, want %q", resp.Error, "API key not configured")
 	}
 }
