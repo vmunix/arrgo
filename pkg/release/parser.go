@@ -10,6 +10,7 @@ import (
 // Pre-compiled regex patterns (compiled once at package init)
 var (
 	yearRegex        = regexp.MustCompile(`\b(19|20)\d{2}\b`)
+	dailyRegex       = regexp.MustCompile(`\b(20\d{2})\.(\d{2})\.(\d{2})\b`)
 	seasonEpRegex    = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,2})`)
 	titleMarkerRegex = regexp.MustCompile(`(?i)\b(19|20)\d{2}\b|\b\d{3,4}p\b|\bS\d{1,2}E\d{1,2}\b|\b4K\b|\bUHD\b`)
 	hdrRegex         = regexp.MustCompile(`(?i)\bHDR10\+|\b(HDR10Plus|HDR10|HDR|DV|Dolby\.?Vision|HLG)\b`)
@@ -75,10 +76,15 @@ func Parse(name string) *Info {
 	info.Proper = containsAny(normalized, "proper")
 	info.Repack = containsAny(normalized, "repack", "rerip")
 
-	// Year - use pre-compiled
-	if match := yearRegex.FindString(normalized); match != "" {
-		if year, err := strconv.Atoi(match); err == nil {
-			info.Year = year
+	// Daily show date (check before year extraction)
+	info.DailyDate = parseDailyDate(name)
+
+	// Year (only if not a daily show)
+	if info.DailyDate == "" {
+		if match := yearRegex.FindString(normalized); match != "" {
+			if year, err := strconv.Atoi(match); err == nil {
+				info.Year = year
+			}
 		}
 	}
 
@@ -310,6 +316,21 @@ func parseService(name string) string {
 			strings.Contains(lower, " "+code+" ") ||
 			strings.HasPrefix(lower, code+".") {
 			return service
+		}
+	}
+	return ""
+}
+
+// parseDailyDate detects daily show date format (YYYY.MM.DD) from release name.
+// Returns date in YYYY-MM-DD format if valid, empty string otherwise.
+func parseDailyDate(name string) string {
+	matches := dailyRegex.FindStringSubmatch(name)
+	if len(matches) == 4 {
+		// Validate it's a reasonable date (month 01-12, day 01-31)
+		month := matches[2]
+		day := matches[3]
+		if month >= "01" && month <= "12" && day >= "01" && day <= "31" {
+			return matches[1] + "-" + month + "-" + day
 		}
 	}
 	return ""
