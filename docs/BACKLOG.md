@@ -5,6 +5,7 @@ Future work items, organized by category.
 ## v2 Features
 
 - **Subprocess smoke test** - Full end-to-end test starting `arrgo serve` as subprocess with real ports, validating live system health before releases
+- **Config init connection validation** - Test Prowlarr/SABnzbd reachability before writing config.toml, with clear error messages if services are unreachable
 
 ## Tech Debt
 
