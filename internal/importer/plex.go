@@ -176,3 +176,39 @@ func (c *PlexClient) GetIdentity(ctx context.Context) (*Identity, error) {
 		Version: result.Version,
 	}, nil
 }
+
+// countResponse is the XML response for getting library item count.
+type countResponse struct {
+	XMLName   xml.Name `xml:"MediaContainer"`
+	TotalSize int      `xml:"totalSize,attr"`
+}
+
+// GetLibraryCount returns the number of items in a library section.
+func (c *PlexClient) GetLibraryCount(ctx context.Context, sectionKey string) (int, error) {
+	// Use X-Plex-Container-Size=0 to get just the count without items
+	reqURL := fmt.Sprintf("%s/library/sections/%s/all?X-Plex-Container-Size=0", c.baseURL, sectionKey)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return 0, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("X-Plex-Token", c.token)
+	req.Header.Set("Accept", "application/xml")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	var result countResponse
+	if err := xml.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("decode response: %w", err)
+	}
+
+	return result.TotalSize, nil
+}
