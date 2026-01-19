@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/arrgo/arrgo/internal/download"
 	"github.com/arrgo/arrgo/internal/importer"
@@ -30,6 +32,7 @@ type Server struct {
 	searcher  *search.Searcher
 	history   *importer.HistoryStore
 	plex      *importer.PlexClient
+	importer  *importer.Importer
 	cfg       Config
 }
 
@@ -56,6 +59,11 @@ func (s *Server) SetManager(manager *download.Manager) {
 // SetPlex configures the Plex client for library scans.
 func (s *Server) SetPlex(plex *importer.PlexClient) {
 	s.plex = plex
+}
+
+// SetImporter configures the importer for file imports.
+func (s *Server) SetImporter(imp *importer.Importer) {
+	s.importer = imp
 }
 
 // RegisterRoutes registers API routes on the given mux.
@@ -94,6 +102,10 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// Plex
 	mux.HandleFunc("GET /api/v1/plex/status", s.getPlexStatus)
+	mux.HandleFunc("POST /api/v1/plex/scan", s.scanPlexLibraries)
+
+	// Import
+	mux.HandleFunc("POST /api/v1/import", s.importContent)
 }
 
 // Error response
@@ -743,4 +755,249 @@ func (s *Server) getPlexStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) scanPlexLibraries(w http.ResponseWriter, r *http.Request) {
+	if s.plex == nil {
+		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Plex not configured")
+		return
+	}
+
+	var req plexScanRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	ctx := r.Context()
+
+	// Get all sections
+	sections, err := s.plex.GetSections(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "PLEX_ERROR", err.Error())
+		return
+	}
+
+	// Build map of title -> section key
+	sectionMap := make(map[string]string)
+	for _, sec := range sections {
+		sectionMap[sec.Title] = sec.Key
+	}
+
+	// Determine which libraries to scan
+	var toScan []string
+	if len(req.Libraries) == 0 {
+		// Scan all
+		for _, sec := range sections {
+			toScan = append(toScan, sec.Title)
+		}
+	} else {
+		// Validate requested libraries exist
+		for _, name := range req.Libraries {
+			if _, ok := sectionMap[name]; !ok {
+				var available []string
+				for _, sec := range sections {
+					available = append(available, sec.Title)
+				}
+				writeError(w, http.StatusBadRequest, "LIBRARY_NOT_FOUND",
+					fmt.Sprintf("library %q not found, available: %v", name, available))
+				return
+			}
+			toScan = append(toScan, name)
+		}
+	}
+
+	// Trigger scans
+	var scanned []string
+	for _, name := range toScan {
+		key := sectionMap[name]
+		if err := s.plex.RefreshLibrary(ctx, key); err != nil {
+			writeError(w, http.StatusInternalServerError, "SCAN_ERROR",
+				fmt.Sprintf("failed to scan %q: %v", name, err))
+			return
+		}
+		scanned = append(scanned, name)
+	}
+
+	writeJSON(w, http.StatusOK, plexScanResponse{Scanned: scanned})
+}
+
+func (s *Server) importContent(w http.ResponseWriter, r *http.Request) {
+	if s.importer == nil {
+		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Importer not configured")
+		return
+	}
+
+	var req importRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	// Route to appropriate handler based on mode
+	if req.DownloadID != nil {
+		s.importTracked(w, r, req)
+	} else {
+		s.importManual(w, r, req)
+	}
+}
+
+// importTracked handles import of a tracked download.
+func (s *Server) importTracked(w http.ResponseWriter, _ *http.Request, _ importRequest) {
+	// Not implemented yet - will be added in a future task
+	writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "Tracked import not yet implemented")
+}
+
+// importManual handles manual file import with metadata.
+func (s *Server) importManual(w http.ResponseWriter, r *http.Request, req importRequest) {
+	ctx := r.Context()
+
+	// Validate required fields
+	if req.Path == "" {
+		writeError(w, http.StatusBadRequest, "MISSING_FIELD", "path is required")
+		return
+	}
+	if req.Title == "" {
+		writeError(w, http.StatusBadRequest, "MISSING_FIELD", "title is required")
+		return
+	}
+	if req.Year == 0 {
+		writeError(w, http.StatusBadRequest, "MISSING_FIELD", "year is required")
+		return
+	}
+	if req.Type == "" {
+		writeError(w, http.StatusBadRequest, "MISSING_FIELD", "type is required")
+		return
+	}
+
+	// Validate type
+	contentType := library.ContentType(req.Type)
+	if contentType != library.ContentTypeMovie && contentType != library.ContentTypeSeries {
+		writeError(w, http.StatusBadRequest, "INVALID_TYPE", "type must be 'movie' or 'series'")
+		return
+	}
+
+	// Validate path is absolute
+	if !filepath.IsAbs(req.Path) {
+		writeError(w, http.StatusBadRequest, "INVALID_PATH", "path must be absolute")
+		return
+	}
+
+	// Find or create content record
+	// Note: GetByTitleYear returns nil, nil when not found
+	content, err := s.library.GetByTitleYear(req.Title, req.Year)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+	if content == nil {
+		// Create new content
+		rootPath := s.cfg.MovieRoot
+		if contentType == library.ContentTypeSeries {
+			rootPath = s.cfg.SeriesRoot
+		}
+
+		content = &library.Content{
+			Type:           contentType,
+			Title:          req.Title,
+			Year:           req.Year,
+			Status:         library.StatusWanted,
+			QualityProfile: "hd",
+			RootPath:       rootPath,
+		}
+		if err := s.library.AddContent(content); err != nil {
+			writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+			return
+		}
+	}
+
+	// For series, we need season and episode
+	var episodeID *int64
+	if contentType == library.ContentTypeSeries {
+		if req.Season == nil || req.Episode == nil {
+			writeError(w, http.StatusBadRequest, "MISSING_FIELD", "season and episode are required for series")
+			return
+		}
+
+		// Find or create episode
+		ep, err := s.findOrCreateEpisode(content.ID, *req.Season, *req.Episode)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+			return
+		}
+		episodeID = &ep.ID
+	}
+
+	// Build release name for audit trail
+	releaseName := req.Title
+	if req.Quality != "" {
+		releaseName = req.Title + " " + req.Quality
+	}
+
+	// Create download record for audit trail
+	now := time.Now()
+	dl := &download.Download{
+		ContentID:   content.ID,
+		EpisodeID:   episodeID,
+		Client:      download.ClientManual,
+		ClientID:    fmt.Sprintf("manual-%d", now.UnixNano()),
+		Status:      download.StatusCompleted,
+		ReleaseName: releaseName,
+		Indexer:     "manual",
+		CompletedAt: &now,
+	}
+	if err := s.downloads.Add(dl); err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	// Call importer
+	result, err := s.importer.Import(ctx, dl.ID, req.Path)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, importResponse{
+		FileID:       result.FileID,
+		ContentID:    content.ID,
+		SourcePath:   result.SourcePath,
+		DestPath:     result.DestPath,
+		SizeBytes:    result.SizeBytes,
+		PlexNotified: result.PlexNotified,
+	})
+}
+
+// findOrCreateEpisode finds an episode by content ID, season, and episode number,
+// creating it if it doesn't exist.
+func (s *Server) findOrCreateEpisode(contentID int64, season, episode int) (*library.Episode, error) {
+	// List episodes for this content/season
+	filter := library.EpisodeFilter{
+		ContentID: &contentID,
+		Season:    &season,
+	}
+	episodes, _, err := s.library.ListEpisodes(filter)
+	if err != nil {
+		return nil, fmt.Errorf("list episodes: %w", err)
+	}
+
+	// Find matching episode number
+	for _, ep := range episodes {
+		if ep.Episode == episode {
+			return ep, nil
+		}
+	}
+
+	// Not found, create it
+	ep := &library.Episode{
+		ContentID: contentID,
+		Season:    season,
+		Episode:   episode,
+		Status:    library.StatusWanted,
+	}
+	if err := s.library.AddEpisode(ep); err != nil {
+		return nil, fmt.Errorf("add episode: %w", err)
+	}
+
+	return ep, nil
 }
