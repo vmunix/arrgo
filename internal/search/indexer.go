@@ -3,7 +3,9 @@ package search
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/arrgo/arrgo/pkg/newznab"
 )
@@ -14,16 +16,20 @@ var ErrNoIndexers = errors.New("no indexers configured")
 // IndexerPool manages multiple Newznab indexers and searches them in parallel.
 type IndexerPool struct {
 	clients []*newznab.Client
+	log     *slog.Logger
 }
 
 // NewIndexerPool creates a pool from the given clients.
-func NewIndexerPool(clients []*newznab.Client) *IndexerPool {
-	return &IndexerPool{clients: clients}
+func NewIndexerPool(clients []*newznab.Client, log *slog.Logger) *IndexerPool {
+	return &IndexerPool{clients: clients, log: log}
 }
 
 // Search queries all indexers in parallel and merges results.
 // Returns releases from all indexers and any errors encountered.
 func (p *IndexerPool) Search(ctx context.Context, q Query) ([]Release, []error) {
+	p.log.Debug("search started", "query", q.Text, "type", q.Type, "indexers", len(p.clients))
+	start := time.Now()
+
 	if len(p.clients) == 0 {
 		return nil, []error{ErrNoIndexers}
 	}
@@ -50,7 +56,13 @@ func (p *IndexerPool) Search(ctx context.Context, q Query) ([]Release, []error) 
 		wg.Add(1)
 		go func(c *newznab.Client) {
 			defer wg.Done()
+			indexerStart := time.Now()
 			releases, err := c.Search(ctx, q.Text, categories)
+			if err != nil {
+				p.log.Warn("indexer failed", "indexer", c.Name(), "error", err, "duration_ms", time.Since(indexerStart).Milliseconds())
+			} else {
+				p.log.Debug("indexer returned", "indexer", c.Name(), "results", len(releases), "duration_ms", time.Since(indexerStart).Milliseconds())
+			}
 			results <- result{releases: releases, err: err}
 		}(client)
 	}
@@ -82,5 +94,6 @@ func (p *IndexerPool) Search(ctx context.Context, q Query) ([]Release, []error) 
 		}
 	}
 
+	p.log.Info("search complete", "query", q.Text, "results", len(allReleases), "errors", len(errs), "duration_ms", time.Since(start).Milliseconds())
 	return allReleases, errs
 }
