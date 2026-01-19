@@ -27,12 +27,32 @@ var plexScanCmd = &cobra.Command{
 
 var plexScanAll bool
 
+var plexListCmd = &cobra.Command{
+	Use:   "list [library]",
+	Short: "List Plex library contents",
+	Long:  "List items in a Plex library with arrgo tracking status. If no library specified, lists all libraries.",
+	RunE:  runPlexListCmd,
+}
+
+var plexListVerbose bool
+
+var plexSearchCmd = &cobra.Command{
+	Use:   "search <query>",
+	Short: "Search Plex libraries",
+	Long:  "Search for items across all Plex libraries.",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runPlexSearchCmd,
+}
+
 func init() {
 	rootCmd.AddCommand(plexCmd)
 	plexCmd.AddCommand(plexStatusCmd)
 	plexCmd.AddCommand(plexScanCmd)
+	plexCmd.AddCommand(plexListCmd)
+	plexCmd.AddCommand(plexSearchCmd)
 
 	plexScanCmd.Flags().BoolVar(&plexScanAll, "all", false, "Scan all libraries")
+	plexListCmd.Flags().BoolVarP(&plexListVerbose, "verbose", "v", false, "Show detailed output")
 }
 
 func runPlexStatusCmd(cmd *cobra.Command, args []string) error {
@@ -84,6 +104,102 @@ func runPlexScanCmd(cmd *cobra.Command, args []string) error {
 	for _, lib := range resp.Scanned {
 		fmt.Printf("  %s\n", lib)
 	}
+	return nil
+}
+
+func runPlexListCmd(cmd *cobra.Command, args []string) error {
+	client := NewClient(serverURL)
+
+	// If no library specified, show all libraries with counts
+	if len(args) == 0 {
+		status, err := client.PlexStatus()
+		if err != nil {
+			return fmt.Errorf("plex status failed: %w", err)
+		}
+
+		if jsonOutput {
+			printJSON(status.Libraries)
+			return nil
+		}
+
+		fmt.Println("Libraries:")
+		for _, lib := range status.Libraries {
+			fmt.Printf("  %-12s %4d items\n", lib.Title, lib.ItemCount)
+		}
+		fmt.Println("\nUse 'arrgo plex list <library>' to see contents")
+		return nil
+	}
+
+	// List specific library
+	library := args[0]
+	resp, err := client.PlexListLibrary(library)
+	if err != nil {
+		return fmt.Errorf("plex list failed: %w", err)
+	}
+
+	if jsonOutput {
+		printJSON(resp)
+		return nil
+	}
+
+	fmt.Printf("%s (%d items):\n", resp.Library, resp.Total)
+	for _, item := range resp.Items {
+		status := "✗ not tracked"
+		if item.Tracked {
+			status = "✓ tracked"
+		}
+
+		if plexListVerbose {
+			fmt.Printf("\n  %s (%d)\n", item.Title, item.Year)
+			fmt.Printf("    Path: %s\n", item.FilePath)
+			fmt.Printf("    Added: %s | %s\n", formatTimeAgo(item.AddedAt), status)
+			if item.ContentID != nil {
+				fmt.Printf("    Content ID: %d\n", *item.ContentID)
+			}
+		} else {
+			fmt.Printf("  %-45s %s\n", fmt.Sprintf("%s (%d)", item.Title, item.Year), status)
+		}
+	}
+
+	return nil
+}
+
+func runPlexSearchCmd(cmd *cobra.Command, args []string) error {
+	query := args[0]
+	client := NewClient(serverURL)
+
+	resp, err := client.PlexSearch(query)
+	if err != nil {
+		return fmt.Errorf("plex search failed: %w", err)
+	}
+
+	if jsonOutput {
+		printJSON(resp)
+		return nil
+	}
+
+	if resp.Total == 0 {
+		fmt.Printf("No results for %q\n", query)
+		return nil
+	}
+
+	fmt.Printf("Results for %q (%d items):\n", query, resp.Total)
+	for _, item := range resp.Items {
+		status := "✗ not tracked"
+		if item.Tracked {
+			status = "✓ tracked"
+		}
+
+		fmt.Printf("\n  %s (%d)\n", item.Title, item.Year)
+		if item.FilePath != "" {
+			fmt.Printf("    Path: %s\n", item.FilePath)
+		}
+		fmt.Printf("    Added: %s | %s\n", formatTimeAgo(item.AddedAt), status)
+		if item.ContentID != nil {
+			fmt.Printf("    Content ID: %d\n", *item.ContentID)
+		}
+	}
+
 	return nil
 }
 
