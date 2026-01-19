@@ -30,6 +30,21 @@ func NewPlexClient(baseURL, token string) *PlexClient {
 	}
 }
 
+// Identity holds Plex server identity information.
+type Identity struct {
+	Name    string
+	Version string
+}
+
+// identityResponse is the XML response from /identity.
+type identityResponse struct {
+	XMLName xml.Name `xml:"MediaContainer"`
+	Version string   `xml:"version,attr"`
+	Server  struct {
+		Name string `xml:"name,attr"`
+	} `xml:"Server"`
+}
+
 // Section represents a Plex library section.
 type Section struct {
 	Key       string     `xml:"key,attr"`
@@ -125,4 +140,34 @@ func (c *PlexClient) ScanPath(ctx context.Context, filePath string) error {
 	}
 
 	return nil
+}
+
+// GetIdentity returns the Plex server name and version.
+func (c *PlexClient) GetIdentity(ctx context.Context) (*Identity, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/identity", nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("X-Plex-Token", c.token)
+	req.Header.Set("Accept", "application/xml")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	var result identityResponse
+	if err := xml.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	return &Identity{
+		Name:    result.Server.Name,
+		Version: result.Version,
+	}, nil
 }
