@@ -1,5 +1,7 @@
 # Serve Command Implementation Plan
 
+**Status:** ✅ Complete
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Implement `arrgo serve` to start the HTTP server and background download poller.

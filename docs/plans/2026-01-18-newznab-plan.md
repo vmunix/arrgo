@@ -1,5 +1,7 @@
 # Direct Newznab Support Implementation Plan
 
+**Status:** ✅ Complete
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Replace Prowlarr with direct Newznab protocol support for usenet indexers.

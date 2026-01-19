@@ -1,5 +1,7 @@
 # CLI Commands Implementation Plan
 
+**Status:** ✅ Complete
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Implement status, search, and queue CLI commands as HTTP clients to the running arrgo server.
