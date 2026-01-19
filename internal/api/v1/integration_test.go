@@ -128,3 +128,63 @@ func (e *testEnv) mockSABnzbdServer() *httptest.Server {
 		}
 	}))
 }
+
+func setupIntegrationTest(t *testing.T) *testEnv {
+	t.Helper()
+
+	env := &testEnv{t: t}
+	t.Cleanup(env.cleanup)
+
+	// Create in-memory database
+	db, err := sql.Open("sqlite3", ":memory:?_foreign_keys=on")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	env.db = db
+
+	// Apply schema
+	if _, err := db.Exec(testSchema); err != nil {
+		t.Fatalf("apply schema: %v", err)
+	}
+
+	// Create mock external services
+	env.prowlarr = env.mockProwlarrServer()
+	env.sabnzbd = env.mockSABnzbdServer()
+
+	// Create Prowlarr client pointing to mock
+	prowlarrClient := search.NewProwlarrClient(env.prowlarr.URL, "test-api-key")
+
+	// Create scorer with default profiles
+	profiles := map[string][]string{
+		"hd":  {"1080p bluray", "1080p webdl", "720p bluray", "720p webdl"},
+		"any": {"2160p", "1080p", "720p", "480p"},
+	}
+	scorer := search.NewScorer(profiles)
+
+	// Create searcher
+	searcher := search.NewSearcher(prowlarrClient, scorer)
+
+	// Create SABnzbd client pointing to mock
+	sabnzbdClient := download.NewSABnzbdClient(env.sabnzbd.URL, "test-api-key", "arrgo")
+
+	// Create download store and manager
+	downloadStore := download.NewStore(db)
+	manager := download.NewManager(sabnzbdClient, downloadStore)
+
+	// Create API server
+	cfg := Config{
+		MovieRoot:       "/movies",
+		SeriesRoot:      "/tv",
+		QualityProfiles: profiles,
+	}
+	srv := New(db, cfg)
+	srv.SetSearcher(searcher)
+	srv.SetManager(manager)
+
+	// Create HTTP test server
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+	env.api = httptest.NewServer(mux)
+
+	return env
+}
