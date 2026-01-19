@@ -9,14 +9,14 @@ import (
 	"github.com/arrgo/arrgo/pkg/release"
 )
 
-// mockProwlarrAPI implements ProwlarrAPI for testing.
-type mockProwlarrAPI struct {
-	releases []ProwlarrRelease
-	err      error
+// mockIndexerAPI implements IndexerAPI for testing.
+type mockIndexerAPI struct {
+	releases []Release
+	errs     []error
 }
 
-func (m *mockProwlarrAPI) Search(ctx context.Context, q Query) ([]ProwlarrRelease, error) {
-	return m.releases, m.err
+func (m *mockIndexerAPI) Search(ctx context.Context, q Query) ([]Release, []error) {
+	return m.releases, m.errs
 }
 
 func TestSearcher_Search(t *testing.T) {
@@ -25,8 +25,8 @@ func TestSearcher_Search(t *testing.T) {
 	}
 	scorer := NewScorer(profiles)
 
-	mockClient := &mockProwlarrAPI{
-		releases: []ProwlarrRelease{
+	mockClient := &mockIndexerAPI{
+		releases: []Release{
 			{Title: "Movie.2024.1080p.BluRay.x264-GROUP", GUID: "1", Indexer: "nzbgeek"},
 			{Title: "Movie.2024.720p.BluRay.x264-OTHER", GUID: "2", Indexer: "nzbgeek"},
 			{Title: "Movie.2024.480p.DVDRip.x264-BAD", GUID: "3", Indexer: "nzbgeek"},   // should be filtered
@@ -77,8 +77,8 @@ func TestSearcher_Search_ParsesQualityInfo(t *testing.T) {
 	}
 	scorer := NewScorer(profiles)
 
-	mockClient := &mockProwlarrAPI{
-		releases: []ProwlarrRelease{
+	mockClient := &mockIndexerAPI{
+		releases: []Release{
 			{
 				Title:       "Movie.2024.1080p.BluRay.x264-GROUP",
 				GUID:        "1",
@@ -138,9 +138,9 @@ func TestSearcher_Search_ClientError(t *testing.T) {
 	scorer := NewScorer(profiles)
 
 	expectedErr := errors.New("connection refused")
-	mockClient := &mockProwlarrAPI{
+	mockClient := &mockIndexerAPI{
 		releases: nil,
-		err:      expectedErr,
+		errs:     []error{expectedErr},
 	}
 
 	searcher := NewSearcher(mockClient, scorer)
@@ -172,9 +172,9 @@ func TestSearcher_Search_EmptyResults(t *testing.T) {
 	}
 	scorer := NewScorer(profiles)
 
-	mockClient := &mockProwlarrAPI{
-		releases: []ProwlarrRelease{},
-		err:      nil,
+	mockClient := &mockIndexerAPI{
+		releases: []Release{},
+		errs:     nil,
 	}
 
 	searcher := NewSearcher(mockClient, scorer)
@@ -199,8 +199,8 @@ func TestSearcher_Search_AllFiltered(t *testing.T) {
 	}
 	scorer := NewScorer(profiles)
 
-	mockClient := &mockProwlarrAPI{
-		releases: []ProwlarrRelease{
+	mockClient := &mockIndexerAPI{
+		releases: []Release{
 			{Title: "Movie.2024.1080p.BluRay.x264-GROUP", GUID: "1"},
 			{Title: "Movie.2024.720p.BluRay.x264-OTHER", GUID: "2"},
 		},
@@ -225,8 +225,8 @@ func TestSearcher_Search_UnknownProfile(t *testing.T) {
 	}
 	scorer := NewScorer(profiles)
 
-	mockClient := &mockProwlarrAPI{
-		releases: []ProwlarrRelease{
+	mockClient := &mockIndexerAPI{
+		releases: []Release{
 			{Title: "Movie.2024.1080p.BluRay.x264-GROUP", GUID: "1"},
 		},
 	}
@@ -251,8 +251,8 @@ func TestSearcher_Search_SortStability(t *testing.T) {
 	}
 	scorer := NewScorer(profiles)
 
-	mockClient := &mockProwlarrAPI{
-		releases: []ProwlarrRelease{
+	mockClient := &mockIndexerAPI{
+		releases: []Release{
 			{Title: "Movie.2024.1080p.BluRay.x264-AAA", GUID: "1"},
 			{Title: "Movie.2024.1080p.WEB-DL.x264-BBB", GUID: "2"},
 			{Title: "Movie.2024.1080p.BluRay.x265-CCC", GUID: "3"},
