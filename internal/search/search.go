@@ -38,27 +38,27 @@ type SearchResult struct {
 	Errors   []error
 }
 
-// ProwlarrAPI defines the interface for Prowlarr API operations.
+// IndexerAPI defines the interface for indexer operations.
 // This allows for easy mocking in tests.
-type ProwlarrAPI interface {
-	Search(ctx context.Context, q Query) ([]ProwlarrRelease, error)
+type IndexerAPI interface {
+	Search(ctx context.Context, q Query) ([]Release, []error)
 }
 
 // Searcher orchestrates searches across indexers with quality scoring.
 type Searcher struct {
-	client ProwlarrAPI
-	scorer *Scorer
+	indexers IndexerAPI
+	scorer   *Scorer
 }
 
-// NewSearcher creates a new Searcher with the given Prowlarr client and scorer.
-func NewSearcher(client ProwlarrAPI, scorer *Scorer) *Searcher {
+// NewSearcher creates a new Searcher with the given indexer pool and scorer.
+func NewSearcher(indexers IndexerAPI, scorer *Scorer) *Searcher {
 	return &Searcher{
-		client: client,
-		scorer: scorer,
+		indexers: indexers,
+		scorer:   scorer,
 	}
 }
 
-// Search queries the indexer for releases matching the query,
+// Search queries the indexers for releases matching the query,
 // parses quality information, scores against the profile,
 // filters out zero-score releases, and sorts by score descending.
 func (s *Searcher) Search(ctx context.Context, q Query, profile string) (*SearchResult, error) {
@@ -67,17 +67,14 @@ func (s *Searcher) Search(ctx context.Context, q Query, profile string) (*Search
 		Errors:   make([]error, 0),
 	}
 
-	// Query the indexer
-	prowlarrReleases, err := s.client.Search(ctx, q)
-	if err != nil {
-		result.Errors = append(result.Errors, err)
-		return result, nil
-	}
+	// Query the indexers
+	releases, errs := s.indexers.Search(ctx, q)
+	result.Errors = append(result.Errors, errs...)
 
 	// Process each release: parse, score, and filter
-	for _, pr := range prowlarrReleases {
+	for _, rel := range releases {
 		// Parse quality info from release name
-		info := release.Parse(pr.Title)
+		info := release.Parse(rel.Title)
 
 		// Score against the quality profile
 		score := s.scorer.Score(*info, profile)
@@ -87,14 +84,14 @@ func (s *Searcher) Search(ctx context.Context, q Query, profile string) (*Search
 			continue
 		}
 
-		// Convert to our Release type
+		// Create a copy with quality info and score
 		r := &Release{
-			Title:       pr.Title,
-			Indexer:     pr.Indexer,
-			GUID:        pr.GUID,
-			DownloadURL: pr.DownloadURL,
-			Size:        pr.Size,
-			PublishDate: pr.PublishDate,
+			Title:       rel.Title,
+			Indexer:     rel.Indexer,
+			GUID:        rel.GUID,
+			DownloadURL: rel.DownloadURL,
+			Size:        rel.Size,
+			PublishDate: rel.PublishDate,
 			Quality:     info,
 			Score:       score,
 		}
