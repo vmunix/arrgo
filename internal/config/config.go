@@ -22,6 +22,7 @@ type Config struct {
 	Overseerr     OverseerrConfig     `toml:"overseerr"`
 	Compat        CompatConfig        `toml:"compat"`
 	AI            AIConfig            `toml:"ai"`
+	Importer      ImporterConfig      `toml:"importer"`
 }
 
 type ServerConfig struct {
@@ -127,6 +128,19 @@ type OllamaConfig struct {
 type AnthropicConfig struct {
 	APIKey string `toml:"api_key"`
 	Model  string `toml:"model"`
+}
+
+type ImporterConfig struct {
+	CleanupSource *bool `toml:"cleanup_source"`
+}
+
+// ShouldCleanupSource returns whether to delete source files after import.
+// Defaults to true if not explicitly configured.
+func (c *ImporterConfig) ShouldCleanupSource() bool {
+	if c.CleanupSource == nil {
+		return true // default
+	}
+	return *c.CleanupSource
 }
 
 // Load reads, parses, and validates the configuration file.
