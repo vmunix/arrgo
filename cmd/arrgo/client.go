@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -114,6 +115,13 @@ type ContentResponse struct {
 	RootPath       string `json:"root_path"`
 }
 
+type ListContentResponse struct {
+	Items  []ContentResponse `json:"items"`
+	Total  int               `json:"total"`
+	Limit  int               `json:"limit"`
+	Offset int               `json:"offset"`
+}
+
 type GrabResponse struct {
 	DownloadID int64  `json:"download_id"`
 	Status     string `json:"status"`
@@ -172,6 +180,20 @@ func (c *Client) AddContent(contentType, title string, year int, profile string)
 		return nil, err
 	}
 	return &resp, nil
+}
+
+func (c *Client) FindContent(contentType, title string, year int) (*ContentResponse, error) {
+	path := fmt.Sprintf("/api/v1/content?type=%s&title=%s&year=%d&limit=1",
+		contentType, url.QueryEscape(title), year)
+
+	var resp ListContentResponse
+	if err := c.get(path, &resp); err != nil {
+		return nil, err
+	}
+	if len(resp.Items) == 0 {
+		return nil, nil // Not found
+	}
+	return &resp.Items[0], nil
 }
 
 func (c *Client) Grab(contentID int64, downloadURL, title, indexer string) (*GrabResponse, error) {
