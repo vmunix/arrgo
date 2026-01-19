@@ -1,35 +1,26 @@
+# Air configuration for arrgod live reload
+# See: https://github.com/air-verse/air
+
 root = "."
 tmp_dir = "tmp"
 
 [build]
-  bin = "./tmp/arrgo"
-  cmd = "go build -o ./tmp/arrgo ./cmd/arrgo"
-  delay = 1000
-  exclude_dir = ["tmp", "vendor", "data", ".git"]
-  exclude_file = []
-  exclude_regex = ["_test.go"]
-  exclude_unchanged = false
-  follow_symlink = false
-  full_bin = ""
-  include_dir = []
-  include_ext = ["go", "toml"]
-  kill_delay = "2s"
-  log = "build-errors.log"
-  send_interrupt = false
-  stop_on_error = true
-
-[color]
-  app = ""
-  build = "yellow"
-  main = "magenta"
-  runner = "green"
-  watcher = "cyan"
+cmd = "go build -o ./tmp/arrgod ./cmd/arrgod"
+bin = "./tmp/arrgod"
+full_bin = "./tmp/arrgod"
+include_ext = ["go", "toml"]
+exclude_dir = ["tmp", "docs", "cmd/arrgo", ".git"]
+exclude_regex = ["_test\\.go$"]
+delay = 1000
 
 [log]
-  time = false
+time = false
+
+[color]
+main = "magenta"
+watcher = "cyan"
+build = "yellow"
+runner = "green"
 
 [misc]
-  clean_on_exit = true
-
-[screen]
-  clear_on_rebuild = true
+clean_on_exit = true
