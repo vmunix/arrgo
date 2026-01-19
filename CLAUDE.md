@@ -75,6 +75,25 @@ export SABNZBD_API_KEY="your-key"
 
 Or use defaults syntax in config: `${VAR:-default_value}`
 
+### Running the Application
+
+```bash
+# Start the server (required for most CLI commands)
+./arrgod                 # Or: task dev (with live reload)
+
+# In another terminal, use CLI commands
+./arrgo status           # Check server connection
+./arrgo plex status      # Check Plex connection
+./arrgo plex list movies # List Plex library contents
+./arrgo plex search "Movie Name"  # Search Plex
+./arrgo search "Movie Name"       # Search indexers
+./arrgo queue            # Show active downloads
+./arrgo import --manual "/path/to/file.mkv" --dry-run  # Preview import
+./arrgo parse "Release.Name.2024.1080p.WEB-DL.mkv"     # Parse release (no server needed)
+```
+
+Note: Most commands require `arrgod` running. Only `parse` works standalone.
+
 ## Module Responsibilities
 
 | Module | Purpose |
