@@ -139,11 +139,19 @@ func parseSource(name string) Source {
 }
 
 func parseCodec(name string) Codec {
-	name = strings.ToLower(name)
+	lower := strings.ToLower(name)
+
+	// Normalize H.264 -> h264, H.265 -> h265
+	// Handle both dot-separated (h.264) and space-separated (h 264) forms
+	lower = strings.ReplaceAll(lower, "h.264", "h264")
+	lower = strings.ReplaceAll(lower, "h.265", "h265")
+	lower = strings.ReplaceAll(lower, "h 264", "h264")
+	lower = strings.ReplaceAll(lower, "h 265", "h265")
+
 	switch {
-	case containsAny(name, "x265", "h265", "hevc"):
+	case containsAny(lower, "x265", "h265", "hevc"):
 		return CodecX265
-	case containsAny(name, "x264", "h264", "avc"):
+	case containsAny(lower, "x264", "h264", "avc"):
 		return CodecX264
 	default:
 		return CodecUnknown
