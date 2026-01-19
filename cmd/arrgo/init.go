@@ -40,9 +40,9 @@ accept = ["2160p bluray", "2160p webdl", "1080p bluray", "1080p webdl"]
 [quality.profiles.any]
 accept = ["2160p", "1080p", "720p", "480p"]
 
-[indexers.prowlarr]
-url = "{{.ProwlarrURL}}"
-api_key = "{{.ProwlarrAPIKey}}"
+[indexers.{{.IndexerName}}]
+url = "{{.IndexerURL}}"
+api_key = "{{.IndexerAPIKey}}"
 
 [downloaders.sabnzbd]
 url = "{{.SABnzbdURL}}"
@@ -64,8 +64,9 @@ model = "llama3.1:8b"
 `
 
 type initConfig struct {
-	ProwlarrURL     string
-	ProwlarrAPIKey  string
+	IndexerName     string
+	IndexerURL      string
+	IndexerAPIKey   string
 	SABnzbdURL      string
 	SABnzbdAPIKey   string
 	SABnzbdCategory string
@@ -124,8 +125,9 @@ func gatherConfig() initConfig {
 	var cfg initConfig
 	reader := bufio.NewReader(os.Stdin)
 
-	cfg.ProwlarrURL = promptWithDefault(reader, "Prowlarr URL", "http://localhost:9696")
-	cfg.ProwlarrAPIKey = promptRequired(reader, "Prowlarr API Key")
+	cfg.IndexerName = promptWithDefault(reader, "Indexer name", "nzbgeek")
+	cfg.IndexerURL = promptWithDefault(reader, "Indexer URL", "https://api.nzbgeek.info")
+	cfg.IndexerAPIKey = promptRequired(reader, "Indexer API Key")
 	fmt.Println()
 
 	cfg.SABnzbdURL = promptWithDefault(reader, "SABnzbd URL", "http://localhost:8085")
