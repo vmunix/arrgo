@@ -32,16 +32,17 @@ const (
 
 // Download represents an active or recent download.
 type Download struct {
-	ID          int64
-	ContentID   int64
-	EpisodeID   *int64
-	Client      Client
-	ClientID    string // ID in the download client
-	Status      Status
-	ReleaseName string
-	Indexer     string
-	AddedAt     time.Time
-	CompletedAt *time.Time
+	ID               int64
+	ContentID        int64
+	EpisodeID        *int64
+	Client           Client
+	ClientID         string // ID in the download client
+	Status           Status
+	ReleaseName      string
+	Indexer          string
+	AddedAt          time.Time
+	CompletedAt      *time.Time
+	LastTransitionAt time.Time
 }
 
 // DownloadFilter specifies criteria for listing downloads.
