@@ -22,6 +22,7 @@ import (
 	"github.com/arrgo/arrgo/internal/library"
 	"github.com/arrgo/arrgo/internal/migrations"
 	"github.com/arrgo/arrgo/internal/search"
+	"github.com/arrgo/arrgo/pkg/newznab"
 )
 
 func runServe(configPath string) error {
@@ -64,15 +65,14 @@ func runServe(configPath string) error {
 		)
 	}
 
-	// TODO: Replace with multi-indexer Newznab client when pkg/newznab is implemented
-	// For now, use the first configured indexer with ProwlarrClient (compatible API)
-	var prowlarrClient *search.ProwlarrClient
-	for _, indexer := range cfg.Indexers {
-		prowlarrClient = search.NewProwlarrClient(
-			indexer.URL,
-			indexer.APIKey,
-		)
-		break // Use first indexer for now
+	// Create Newznab clients for all configured indexers
+	var newznabClients []*newznab.Client
+	for name, indexer := range cfg.Indexers {
+		newznabClients = append(newznabClients, newznab.NewClient(name, indexer.URL, indexer.APIKey))
+	}
+	var indexerPool *search.IndexerPool
+	if len(newznabClients) > 0 {
+		indexerPool = search.NewIndexerPool(newznabClients)
 	}
 
 	var plexClient *importer.PlexClient
@@ -90,13 +90,13 @@ func runServe(configPath string) error {
 	}
 
 	var searcher *search.Searcher
-	if prowlarrClient != nil {
+	if indexerPool != nil {
 		profiles := make(map[string][]string)
 		for name, p := range cfg.Quality.Profiles {
 			profiles[name] = p.Accept
 		}
 		scorer := search.NewScorer(profiles)
-		searcher = search.NewSearcher(prowlarrClient, scorer)
+		searcher = search.NewSearcher(indexerPool, scorer)
 	}
 
 	// Create importer
