@@ -7,6 +7,13 @@ import (
 	"strings"
 )
 
+// Pre-compiled regex patterns (compiled once at package init)
+var (
+	yearRegex        = regexp.MustCompile(`\b(19|20)\d{2}\b`)
+	seasonEpRegex    = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,2})`)
+	titleMarkerRegex = regexp.MustCompile(`(?i)\b(19|20)\d{2}\b|\b\d{3,4}p\b|\bS\d{1,2}E\d{1,2}\b|\b4K\b|\bUHD\b`)
+)
+
 // Parse extracts information from a release name.
 func Parse(name string) *Info {
 	info := &Info{}
@@ -28,17 +35,15 @@ func Parse(name string) *Info {
 	info.Proper = containsAny(normalized, "proper")
 	info.Repack = containsAny(normalized, "repack", "rerip")
 
-	// Year
-	yearRe := regexp.MustCompile(`\b(19|20)\d{2}\b`)
-	if match := yearRe.FindString(normalized); match != "" {
+	// Year - use pre-compiled
+	if match := yearRegex.FindString(normalized); match != "" {
 		if year, err := strconv.Atoi(match); err == nil {
 			info.Year = year
 		}
 	}
 
-	// Season/Episode
-	seRe := regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,2})`)
-	if matches := seRe.FindStringSubmatch(normalized); len(matches) == 3 {
+	// Season/Episode - use pre-compiled
+	if matches := seasonEpRegex.FindStringSubmatch(normalized); len(matches) == 3 {
 		if season, err := strconv.Atoi(matches[1]); err == nil {
 			info.Season = season
 		}
@@ -118,8 +123,7 @@ func containsAny(s string, substrs ...string) bool {
 func parseTitle(name string) string {
 	// Find the first marker that indicates end of title
 	// Common markers: year (4 digits), resolution, S01E01, etc.
-	markers := regexp.MustCompile(`(?i)\b(19|20)\d{2}\b|\b\d{3,4}p\b|\bS\d{1,2}E\d{1,2}\b|\b4K\b|\bUHD\b`)
-	loc := markers.FindStringIndex(name)
+	loc := titleMarkerRegex.FindStringIndex(name)
 	if loc != nil {
 		title := strings.TrimSpace(name[:loc[0]])
 		return title
