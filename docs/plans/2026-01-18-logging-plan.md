@@ -1,5 +1,7 @@
 # Logging Implementation Plan
 
+**Status:** ✅ Complete
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Add structured logging (slog/logfmt) to arrgo serve for debugging and observability.

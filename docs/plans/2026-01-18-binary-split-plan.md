@@ -1,5 +1,7 @@
 # Binary Split Implementation Plan
 
+**Status:** ✅ Complete
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Split the single `arrgo` binary into `arrgod` (server daemon) and `arrgo` (CLI client).
