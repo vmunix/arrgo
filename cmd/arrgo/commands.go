@@ -196,7 +196,7 @@ func printSearchHuman(query string, r *SearchResponse, verbose bool) {
 			fmt.Printf("    │ %s\n", badges)
 		}
 
-		// Verbose mode: show indexer and group
+		// Verbose mode: show indexer, group, and service
 		if verbose {
 			var parts []string
 			if rel.Indexer != "" {
@@ -204,6 +204,9 @@ func printSearchHuman(query string, r *SearchResponse, verbose bool) {
 			}
 			if info.Group != "" {
 				parts = append(parts, "Group: "+info.Group)
+			}
+			if info.Service != "" {
+				parts = append(parts, "Service: "+info.Service)
 			}
 			if len(parts) > 0 {
 				fmt.Printf("    │ %s\n", strings.Join(parts, "  "))
