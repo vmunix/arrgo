@@ -274,3 +274,88 @@ func queryDownload(t *testing.T, db *sql.DB, contentID int64) *download.Download
 	}
 	return d
 }
+
+func TestIntegration_SearchAndGrab(t *testing.T) {
+	env := setupIntegrationTest(t)
+
+	// 1. Configure mock Prowlarr to return releases
+	env.prowlarrReleases = []search.ProwlarrRelease{
+		mockRelease("The.Matrix.1999.1080p.BluRay.x264", 12_000_000_000, "nzbgeek"),
+		mockRelease("The.Matrix.1999.720p.BluRay", 8_000_000_000, "drunken"),
+	}
+	env.sabnzbdClientID = "SABnzbd_nzo_abc123"
+
+	// 2. POST /api/v1/search - verify results returned
+	searchResp := httpPost(t, env.api.URL+"/api/v1/search", map[string]any{
+		"query":   "the matrix",
+		"type":    "movie",
+		"profile": "hd",
+	})
+	if searchResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(searchResp.Body)
+		t.Fatalf("search status = %d, want 200: %s", searchResp.StatusCode, body)
+	}
+
+	var searchResult searchResponse
+	decodeJSON(t, searchResp, &searchResult)
+
+	if len(searchResult.Releases) != 2 {
+		t.Errorf("releases = %d, want 2", len(searchResult.Releases))
+	}
+	if searchResult.Releases[0].Title != "The.Matrix.1999.1080p.BluRay.x264" {
+		t.Errorf("first release = %q, want 1080p version", searchResult.Releases[0].Title)
+	}
+
+	// 3. POST /api/v1/content - create content entry
+	contentResp := httpPost(t, env.api.URL+"/api/v1/content", map[string]any{
+		"type":            "movie",
+		"title":           "The Matrix",
+		"year":            1999,
+		"quality_profile": "hd",
+	})
+	if contentResp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(contentResp.Body)
+		t.Fatalf("add content status = %d, want 201: %s", contentResp.StatusCode, body)
+	}
+
+	var content contentResponse
+	decodeJSON(t, contentResp, &content)
+
+	if content.ID == 0 {
+		t.Fatal("content ID should be set")
+	}
+
+	// 4. POST /api/v1/grab - verify SABnzbd called, download record created
+	grabResp := httpPost(t, env.api.URL+"/api/v1/grab", map[string]any{
+		"content_id":   content.ID,
+		"download_url": searchResult.Releases[0].DownloadURL,
+		"title":        searchResult.Releases[0].Title,
+		"indexer":      searchResult.Releases[0].Indexer,
+	})
+	if grabResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(grabResp.Body)
+		t.Fatalf("grab status = %d, want 200: %s", grabResp.StatusCode, body)
+	}
+
+	var grab grabResponse
+	decodeJSON(t, grabResp, &grab)
+
+	if grab.DownloadID == 0 {
+		t.Error("download ID should be set")
+	}
+	if grab.Status != "queued" {
+		t.Errorf("status = %q, want queued", grab.Status)
+	}
+
+	// 5. Verify DB state
+	dl := queryDownload(t, env.db, content.ID)
+	if dl.ClientID != "SABnzbd_nzo_abc123" {
+		t.Errorf("client_id = %q, want SABnzbd_nzo_abc123", dl.ClientID)
+	}
+	if dl.Status != download.StatusQueued {
+		t.Errorf("status = %q, want queued", dl.Status)
+	}
+	if dl.ReleaseName != "The.Matrix.1999.1080p.BluRay.x264" {
+		t.Errorf("release_name = %q, want The.Matrix.1999.1080p.BluRay.x264", dl.ReleaseName)
+	}
+}
