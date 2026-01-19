@@ -79,6 +79,11 @@ type newznabAttr struct {
 
 // Search queries the indexer for releases.
 func (c *Client) Search(ctx context.Context, query string, categories []int) ([]Release, error) {
+	return c.SearchWithOffset(ctx, query, categories, 100, 0)
+}
+
+// SearchWithOffset queries the indexer with pagination support.
+func (c *Client) SearchWithOffset(ctx context.Context, query string, categories []int, limit, offset int) ([]Release, error) {
 	// Build URL
 	reqURL, err := url.Parse(c.baseURL + "/api")
 	if err != nil {
@@ -98,6 +103,12 @@ func (c *Client) Search(ctx context.Context, query string, categories []int) ([]
 			cats[i] = strconv.Itoa(cat)
 		}
 		params.Set("cat", strings.Join(cats, ","))
+	}
+	if limit > 0 {
+		params.Set("limit", strconv.Itoa(limit))
+	}
+	if offset > 0 {
+		params.Set("offset", strconv.Itoa(offset))
 	}
 	reqURL.RawQuery = params.Encode()
 
