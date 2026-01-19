@@ -227,3 +227,13 @@ type importResponse struct {
 	SizeBytes    int64  `json:"size_bytes"`
 	PlexNotified bool   `json:"plex_notified"`
 }
+
+// plexScanRequest is the request body for POST /plex/scan.
+type plexScanRequest struct {
+	Libraries []string `json:"libraries"` // Empty = all libraries
+}
+
+// plexScanResponse is the response for POST /plex/scan.
+type plexScanResponse struct {
+	Scanned []string `json:"scanned"`
+}

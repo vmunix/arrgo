@@ -102,6 +102,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// Plex
 	mux.HandleFunc("GET /api/v1/plex/status", s.getPlexStatus)
+	mux.HandleFunc("POST /api/v1/plex/scan", s.scanPlexLibraries)
 
 	// Import
 	mux.HandleFunc("POST /api/v1/import", s.importContent)
@@ -754,6 +755,71 @@ func (s *Server) getPlexStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) scanPlexLibraries(w http.ResponseWriter, r *http.Request) {
+	if s.plex == nil {
+		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Plex not configured")
+		return
+	}
+
+	var req plexScanRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+
+	ctx := r.Context()
+
+	// Get all sections
+	sections, err := s.plex.GetSections(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "PLEX_ERROR", err.Error())
+		return
+	}
+
+	// Build map of title -> section key
+	sectionMap := make(map[string]string)
+	for _, sec := range sections {
+		sectionMap[sec.Title] = sec.Key
+	}
+
+	// Determine which libraries to scan
+	var toScan []string
+	if len(req.Libraries) == 0 {
+		// Scan all
+		for _, sec := range sections {
+			toScan = append(toScan, sec.Title)
+		}
+	} else {
+		// Validate requested libraries exist
+		for _, name := range req.Libraries {
+			if _, ok := sectionMap[name]; !ok {
+				var available []string
+				for _, sec := range sections {
+					available = append(available, sec.Title)
+				}
+				writeError(w, http.StatusBadRequest, "LIBRARY_NOT_FOUND",
+					fmt.Sprintf("library %q not found, available: %v", name, available))
+				return
+			}
+			toScan = append(toScan, name)
+		}
+	}
+
+	// Trigger scans
+	var scanned []string
+	for _, name := range toScan {
+		key := sectionMap[name]
+		if err := s.plex.RefreshLibrary(ctx, key); err != nil {
+			writeError(w, http.StatusInternalServerError, "SCAN_ERROR",
+				fmt.Sprintf("failed to scan %q: %v", name, err))
+			return
+		}
+		scanned = append(scanned, name)
+	}
+
+	writeJSON(w, http.StatusOK, plexScanResponse{Scanned: scanned})
 }
 
 func (s *Server) importContent(w http.ResponseWriter, r *http.Request) {

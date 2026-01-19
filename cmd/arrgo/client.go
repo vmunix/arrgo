@@ -264,3 +264,20 @@ func (c *Client) Import(req *ImportRequest) (*ImportResponse, error) {
 	}
 	return &resp, nil
 }
+
+type PlexScanRequest struct {
+	Libraries []string `json:"libraries"`
+}
+
+type PlexScanResponse struct {
+	Scanned []string `json:"scanned"`
+}
+
+func (c *Client) PlexScan(libraries []string) (*PlexScanResponse, error) {
+	req := PlexScanRequest{Libraries: libraries}
+	var resp PlexScanResponse
+	if err := c.post("/api/v1/plex/scan", req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
