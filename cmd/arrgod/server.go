@@ -440,12 +440,23 @@ func processImportedDownloads(ctx context.Context, store *download.Store, manage
 			continue
 		}
 
-		// Delete source directory (contains the downloaded file)
-		if err := os.RemoveAll(sourceDir); err != nil {
-			log.Error("cleanup failed", "download_id", dl.ID, "path", sourceDir, "error", err)
-			// Continue to mark as cleaned anyway - cleanup is best effort
+		// Two-stage cleanup: delete file first, then directory only if empty
+		if err := os.Remove(sourceFile); err != nil && !os.IsNotExist(err) {
+			log.Error("cleanup file failed", "download_id", dl.ID, "path", sourceFile, "error", err)
 		} else {
-			log.Info("cleaned up source", "download_id", dl.ID, "path", sourceDir)
+			log.Info("cleaned up source file", "download_id", dl.ID, "path", sourceFile)
+
+			// Only remove directory if it's now empty
+			entries, err := os.ReadDir(sourceDir)
+			if err == nil && len(entries) == 0 {
+				if err := os.Remove(sourceDir); err != nil {
+					log.Warn("cleanup dir failed", "download_id", dl.ID, "path", sourceDir, "error", err)
+				} else {
+					log.Info("cleaned up empty source dir", "download_id", dl.ID, "path", sourceDir)
+				}
+			} else if err == nil && len(entries) > 0 {
+				log.Info("source dir not empty, leaving", "download_id", dl.ID, "path", sourceDir, "remaining", len(entries))
+			}
 		}
 
 		if err := store.Transition(dl, download.StatusCleaned); err != nil {
