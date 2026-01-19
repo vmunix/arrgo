@@ -419,23 +419,33 @@ func processImportedDownloads(ctx context.Context, store *download.Store, manage
 			continue
 		}
 
-		sourcePath := translatePath(clientStatus.Path, sabCfg)
+		sourceFile := translatePath(clientStatus.Path, sabCfg)
+		sourceDir := filepath.Dir(sourceFile)
 
-		// Safety check: ensure path is under expected download directory
-		if sabCfg == nil || sabCfg.LocalPath == "" || !strings.HasPrefix(sourcePath, sabCfg.LocalPath) {
-			log.Warn("path not under download root, skipping cleanup", "download_id", dl.ID, "path", sourcePath)
+		// Safety checks:
+		// 1. Path must be under download root
+		// 2. Directory must not BE the download root (don't delete everything!)
+		if sabCfg == nil || sabCfg.LocalPath == "" {
+			log.Warn("no download root configured, skipping cleanup", "download_id", dl.ID)
+			if err := store.Transition(dl, download.StatusCleaned); err != nil {
+				log.Error("transition failed", "download_id", dl.ID, "error", err)
+			}
+			continue
+		}
+		if !strings.HasPrefix(sourceDir, sabCfg.LocalPath) || sourceDir == sabCfg.LocalPath {
+			log.Warn("path not safe for cleanup", "download_id", dl.ID, "path", sourceDir, "root", sabCfg.LocalPath)
 			if err := store.Transition(dl, download.StatusCleaned); err != nil {
 				log.Error("transition failed", "download_id", dl.ID, "error", err)
 			}
 			continue
 		}
 
-		// Delete source directory
-		if err := os.RemoveAll(sourcePath); err != nil {
-			log.Error("cleanup failed", "download_id", dl.ID, "path", sourcePath, "error", err)
+		// Delete source directory (contains the downloaded file)
+		if err := os.RemoveAll(sourceDir); err != nil {
+			log.Error("cleanup failed", "download_id", dl.ID, "path", sourceDir, "error", err)
 			// Continue to mark as cleaned anyway - cleanup is best effort
 		} else {
-			log.Info("cleaned up source", "download_id", dl.ID, "path", sourcePath)
+			log.Info("cleaned up source", "download_id", dl.ID, "path", sourceDir)
 		}
 
 		if err := store.Transition(dl, download.StatusCleaned); err != nil {
