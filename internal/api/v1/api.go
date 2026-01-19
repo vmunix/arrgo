@@ -99,6 +99,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// System
 	mux.HandleFunc("GET /api/v1/status", s.getStatus)
 	mux.HandleFunc("GET /api/v1/dashboard", s.getDashboard)
+	mux.HandleFunc("GET /api/v1/verify", s.verify)
 	mux.HandleFunc("GET /api/v1/profiles", s.listProfiles)
 	mux.HandleFunc("POST /api/v1/scan", s.triggerScan)
 
