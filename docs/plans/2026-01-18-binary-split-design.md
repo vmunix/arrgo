@@ -1,5 +1,7 @@
 # Binary Split Design: arrgod + arrgo
 
+**Status:** ✅ Complete
+
 > **For Claude:** Use superpowers:writing-plans to create the implementation plan from this design.
 
 **Goal:** Split the single `arrgo` binary into two: `arrgod` (server daemon) and `arrgo` (CLI client).

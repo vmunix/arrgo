@@ -320,3 +320,181 @@ func TestParse_Title(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_HDR(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantHDR HDRFormat
+	}{
+		{"DV only", "Movie.2024.2160p.WEB-DL.DV.H265-GRP", DolbyVision},
+		{"HDR10", "Movie.2024.2160p.BluRay.HDR10.x265-GRP", HDR10},
+		{"HDR10+", "Movie.2024.2160p.UHD.BluRay.HDR10+.x265-GRP", HDR10Plus},
+		{"DV HDR combo", "Movie.2024.2160p.WEB-DL.DV.HDR.H265-GRP", DolbyVision},
+		{"Generic HDR", "Movie.2024.2160p.BluRay.HDR.x265-GRP", HDRGeneric},
+		{"HLG", "Movie.2024.2160p.BluRay.HLG.x265-GRP", HLG},
+		{"No HDR", "Movie.2024.1080p.BluRay.x264-GRP", HDRNone},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			if got.HDR != tt.wantHDR {
+				t.Errorf("HDR = %v, want %v", got.HDR, tt.wantHDR)
+			}
+		})
+	}
+}
+
+func TestParse_Audio(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantAudio AudioCodec
+	}{
+		{"DTS-HD MA", "Movie.2024.1080p.BluRay.DTS-HD.MA.5.1.x264-GRP", AudioDTSHD},
+		{"TrueHD Atmos", "Movie.2024.2160p.BluRay.TrueHD.Atmos.7.1.x265-GRP", AudioAtmos},
+		{"DD+ Atmos", "Movie.2024.2160p.WEB-DL.DDP5.1.Atmos.H265-GRP", AudioAtmos},
+		{"DDP", "Movie.2024.1080p.WEB-DL.DDP5.1.x264-GRP", AudioEAC3},
+		{"DD5.1", "Movie.2024.1080p.WEB-DL.DD5.1.x264-GRP", AudioAC3},
+		{"FLAC", "Movie.2024.1080p.BluRay.FLAC.2.0.x264-GRP", AudioFLAC},
+		{"AAC", "Movie.2024.1080p.WEB-DL.AAC2.0.x264-GRP", AudioAAC},
+		{"TrueHD no Atmos", "Movie.2024.1080p.BluRay.TrueHD.5.1.x264-GRP", AudioTrueHD},
+		{"Plain DTS", "Movie.2024.1080p.BluRay.DTS.5.1.x264-GRP", AudioDTS},
+		{"Opus", "Movie.2024.1080p.WEB.Opus.2.0.x264-GRP", AudioOpus},
+		{"No audio info", "Movie.2024.1080p.BluRay.x264-GRP", AudioUnknown},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			if got.Audio != tt.wantAudio {
+				t.Errorf("Audio = %v, want %v", got.Audio, tt.wantAudio)
+			}
+		})
+	}
+}
+
+func TestParse_Remux(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		wantRemux  bool
+		wantSource Source
+	}{
+		{"AVC REMUX", "Movie.2024.1080p.BluRay.AVC.REMUX-GRP", true, SourceBluRay},
+		{"REMUX standalone", "Movie.2024.2160p.UHD.BluRay.REMUX.HEVC-GRP", true, SourceBluRay},
+		{"Not remux", "Movie.2024.1080p.BluRay.x264-GRP", false, SourceBluRay},
+		{"BDRemux variant", "Movie.2024.1080p.BDRemux.x264-GRP", true, SourceBluRay},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			if got.IsRemux != tt.wantRemux {
+				t.Errorf("IsRemux = %v, want %v", got.IsRemux, tt.wantRemux)
+			}
+			if got.Source != tt.wantSource {
+				t.Errorf("Source = %v, want %v", got.Source, tt.wantSource)
+			}
+		})
+	}
+}
+
+func TestParse_Edition(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantEdition string
+	}{
+		{"Directors Cut", "Movie.2024.Directors.Cut.1080p.BluRay.x264-GRP", "Directors Cut"},
+		{"Extended", "Movie.2024.EXTENDED.1080p.BluRay.x264-GRP", "Extended"},
+		{"IMAX", "Movie.2024.IMAX.2160p.WEB-DL.x265-GRP", "IMAX"},
+		{"Theatrical", "Movie.2024.Theatrical.Cut.1080p.BluRay.x264-GRP", "Theatrical"},
+		{"Unrated", "Movie.2024.UNRATED.1080p.BluRay.x264-GRP", "Unrated"},
+		{"No edition", "Movie.2024.1080p.BluRay.x264-GRP", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			if got.Edition != tt.wantEdition {
+				t.Errorf("Edition = %q, want %q", got.Edition, tt.wantEdition)
+			}
+		})
+	}
+}
+
+func TestParse_Service(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantService string
+	}{
+		{"Netflix", "Movie.2024.1080p.NF.WEB-DL.x264-GRP", "Netflix"},
+		{"Amazon", "Movie.2024.1080p.AMZN.WEB-DL.x264-GRP", "Amazon"},
+		{"Disney+", "Movie.2024.2160p.DSNP.WEB-DL.x265-GRP", "Disney+"},
+		{"AppleTV+", "Movie.2024.2160p.ATVP.WEB-DL.x265-GRP", "Apple TV+"},
+		{"HBO Max", "Movie.2024.1080p.HMAX.WEB-DL.x264-GRP", "HBO Max"},
+		{"Peacock", "Movie.2024.1080p.PCOK.WEB-DL.x264-GRP", "Peacock"},
+		{"Hulu", "Movie.2024.1080p.HULU.WEB-DL.x264-GRP", "Hulu"},
+		{"No service", "Movie.2024.1080p.WEB-DL.x264-GRP", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			if got.Service != tt.wantService {
+				t.Errorf("Service = %q, want %q", got.Service, tt.wantService)
+			}
+		})
+	}
+}
+
+func TestParse_ImprovedCodec(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantCodec Codec
+	}{
+		{"H.264 with dot", "Movie.2024.1080p.WEB-DL.H.264-GRP", CodecX264},
+		{"H.265 with dot", "Movie.2024.2160p.WEB-DL.H.265-GRP", CodecX265},
+		{"AVC", "Movie.2024.1080p.BluRay.AVC-GRP", CodecX264},
+		{"HEVC uppercase", "Movie.2024.2160p.BluRay.HEVC-GRP", CodecX265},
+		{"XviD", "Movie.2024.DVDRip.XviD-GRP", CodecUnknown}, // We don't track XviD
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			if got.Codec != tt.wantCodec {
+				t.Errorf("Codec = %v, want %v", got.Codec, tt.wantCodec)
+			}
+		})
+	}
+}
+
+func TestParse_DailyShow(t *testing.T) {
+	tests := []struct {
+		name          string
+		input         string
+		wantDailyDate string
+		wantYear      int
+	}{
+		{"Daily show", "Show.2026.01.16.Episode.Title.720p.HDTV.x264-GRP", "2026-01-16", 0},
+		{"Not daily", "Show.S01E05.720p.HDTV.x264-GRP", "", 0},
+		{"Movie with year", "Movie.2024.1080p.BluRay.x264-GRP", "", 2024},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			if got.DailyDate != tt.wantDailyDate {
+				t.Errorf("DailyDate = %q, want %q", got.DailyDate, tt.wantDailyDate)
+			}
+			if got.Year != tt.wantYear {
+				t.Errorf("Year = %v, want %v", got.Year, tt.wantYear)
+			}
+		})
+	}
+}
