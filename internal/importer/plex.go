@@ -251,29 +251,6 @@ type libraryItemsResponse struct {
 	Items   []plexItemXML `xml:"Video"`
 }
 
-// RefreshLibrary triggers a full scan of a library section.
-func (c *PlexClient) RefreshLibrary(ctx context.Context, sectionKey string) error {
-	scanURL := fmt.Sprintf("%s/library/sections/%s/refresh", c.baseURL, sectionKey)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, scanURL, nil)
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("X-Plex-Token", c.token)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("refresh failed with status: %d", resp.StatusCode)
-	}
-
-	return nil
-}
-
 // GetLibraryCount returns the number of items in a library section.
 func (c *PlexClient) GetLibraryCount(ctx context.Context, sectionKey string) (int, error) {
 	// Use X-Plex-Container-Size=0 to get just the count without items
