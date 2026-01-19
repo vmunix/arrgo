@@ -114,7 +114,7 @@ func TestPlexClient_ConnectionError(t *testing.T) {
 
 func TestPlexClient_GetIdentity(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/identity" {
+		if r.URL.Path != "/" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		if r.Header.Get("X-Plex-Token") != "test-token" {
@@ -122,8 +122,7 @@ func TestPlexClient_GetIdentity(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/xml")
 		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
-<MediaContainer size="0" machineIdentifier="abc123" version="1.42.2.10156">
-<Server name="velcro"/>
+<MediaContainer friendlyName="velcro" version="1.42.2.10156">
 </MediaContainer>`))
 	}))
 	defer server.Close()
