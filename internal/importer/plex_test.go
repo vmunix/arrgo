@@ -149,3 +149,44 @@ func TestPlexClient_GetIdentity_ConnectionError(t *testing.T) {
 		t.Fatal("expected error, got nil")
 	}
 }
+
+func TestPlexClient_GetSections_WithMetadata(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/library/sections" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<MediaContainer size="2">
+<Directory key="1" type="movie" title="Movies" scannedAt="1737200000" refreshing="0">
+<Location path="/data/media/movies"/>
+</Directory>
+<Directory key="2" type="show" title="TV Shows" scannedAt="1737100000" refreshing="1">
+<Location path="/data/media/tv"/>
+</Directory>
+</MediaContainer>`))
+	}))
+	defer server.Close()
+
+	client := NewPlexClient(server.URL, "test-token")
+	sections, err := client.GetSections(context.Background())
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(sections) != 2 {
+		t.Fatalf("sections: got %d, want 2", len(sections))
+	}
+	if sections[0].ScannedAt != 1737200000 {
+		t.Errorf("scannedAt[0]: got %d, want 1737200000", sections[0].ScannedAt)
+	}
+	if sections[0].Refreshing() != false {
+		t.Errorf("refreshing[0]: got %v, want false", sections[0].Refreshing())
+	}
+	if sections[1].ScannedAt != 1737100000 {
+		t.Errorf("scannedAt[1]: got %d, want 1737100000", sections[1].ScannedAt)
+	}
+	if sections[1].Refreshing() != true {
+		t.Errorf("refreshing[1]: got %v, want true", sections[1].Refreshing())
+	}
+}
