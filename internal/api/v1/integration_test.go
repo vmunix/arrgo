@@ -4,6 +4,7 @@ package v1
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -20,34 +21,39 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// mockIndexerAPI implements search.IndexerAPI for testing.
+type mockIndexerAPI struct {
+	releases []search.Release
+}
+
+func (m *mockIndexerAPI) Search(ctx context.Context, q search.Query) ([]search.Release, []error) {
+	return m.releases, nil
+}
+
 // testEnv holds all components needed for integration tests.
 type testEnv struct {
 	t *testing.T
 
 	// Servers
-	api      *httptest.Server // arrgo API under test
-	prowlarr *httptest.Server // Mock Prowlarr
-	sabnzbd  *httptest.Server // Mock SABnzbd
+	api     *httptest.Server // arrgo API under test
+	sabnzbd *httptest.Server // Mock SABnzbd
 
 	// Database
 	db *sql.DB
 
 	// Components for direct access in tests
-	manager *download.Manager
+	manager     *download.Manager
+	mockIndexer *mockIndexerAPI
 
 	// Mock response configuration
-	prowlarrReleases []search.ProwlarrRelease
-	sabnzbdClientID  string
-	sabnzbdStatus    *download.ClientStatus
-	sabnzbdErr       error
+	sabnzbdClientID string
+	sabnzbdStatus   *download.ClientStatus
+	sabnzbdErr      error
 }
 
 func (e *testEnv) cleanup() {
 	if e.api != nil {
 		e.api.Close()
-	}
-	if e.prowlarr != nil {
-		e.prowlarr.Close()
 	}
 	if e.sabnzbd != nil {
 		e.sabnzbd.Close()
@@ -55,30 +61,6 @@ func (e *testEnv) cleanup() {
 	if e.db != nil {
 		_ = e.db.Close()
 	}
-}
-
-func (e *testEnv) mockProwlarrServer() *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/search" {
-			http.Error(w, "not found", http.StatusNotFound)
-			return
-		}
-
-		// Return configured releases
-		w.Header().Set("Content-Type", "application/json")
-		resp := make([]map[string]any, len(e.prowlarrReleases))
-		for i, rel := range e.prowlarrReleases {
-			resp[i] = map[string]any{
-				"title":       rel.Title,
-				"guid":        rel.GUID,
-				"indexer":     rel.Indexer,
-				"downloadUrl": rel.DownloadURL,
-				"size":        rel.Size,
-				"publishDate": rel.PublishDate.Format(time.RFC3339),
-			}
-		}
-		_ = json.NewEncoder(w).Encode(resp)
-	}))
 }
 
 func (e *testEnv) mockSABnzbdServer() *httptest.Server {
@@ -154,11 +136,8 @@ func setupIntegrationTest(t *testing.T) *testEnv {
 	}
 
 	// Create mock external services
-	env.prowlarr = env.mockProwlarrServer()
+	env.mockIndexer = &mockIndexerAPI{}
 	env.sabnzbd = env.mockSABnzbdServer()
-
-	// Create Prowlarr client pointing to mock
-	prowlarrClient := search.NewProwlarrClient(env.prowlarr.URL, "test-api-key")
 
 	// Create scorer with default profiles
 	profiles := map[string]config.QualityProfile{
@@ -172,8 +151,8 @@ func setupIntegrationTest(t *testing.T) *testEnv {
 	}
 	scorer := search.NewScorer(profiles)
 
-	// Create searcher
-	searcher := search.NewSearcher(prowlarrClient, scorer, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	// Create searcher with mock indexer
+	searcher := search.NewSearcher(env.mockIndexer, scorer, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	// Create SABnzbd client pointing to mock
 	sabnzbdClient := download.NewSABnzbdClient(env.sabnzbd.URL, "test-api-key", "arrgo")
@@ -239,8 +218,8 @@ func decodeJSON(t *testing.T, resp *http.Response, v any) {
 
 // Builder helpers
 
-func mockRelease(title string, size int64, indexer string) search.ProwlarrRelease {
-	return search.ProwlarrRelease{
+func mockRelease(title string, size int64, indexer string) search.Release {
+	return search.Release{
 		Title:       title,
 		GUID:        "guid-" + title,
 		Indexer:     indexer,
@@ -296,8 +275,8 @@ func queryDownload(t *testing.T, db *sql.DB, contentID int64) *download.Download
 func TestIntegration_SearchAndGrab(t *testing.T) {
 	env := setupIntegrationTest(t)
 
-	// 1. Configure mock Prowlarr to return releases
-	env.prowlarrReleases = []search.ProwlarrRelease{
+	// 1. Configure mock indexer to return releases
+	env.mockIndexer.releases = []search.Release{
 		mockRelease("The.Matrix.1999.1080p.BluRay.x264", 12_000_000_000, "nzbgeek"),
 		mockRelease("The.Matrix.1999.720p.BluRay", 8_000_000_000, "drunken"),
 	}
@@ -410,7 +389,7 @@ func TestIntegration_FullHappyPath(t *testing.T) {
 	env := setupIntegrationTest(t)
 
 	// Configure all mocks upfront
-	env.prowlarrReleases = []search.ProwlarrRelease{
+	env.mockIndexer.releases = []search.Release{
 		mockRelease("Inception.2010.1080p.BluRay.x264", 15_000_000_000, "nzbgeek"),
 	}
 	env.sabnzbdClientID = "SABnzbd_nzo_inception"
