@@ -40,7 +40,7 @@ func TestSearcher_Search(t *testing.T) {
 		releases: []Release{
 			{Title: "Movie.2024.1080p.BluRay.x264-GROUP", GUID: "1", Indexer: "nzbgeek"},
 			{Title: "Movie.2024.720p.BluRay.x264-OTHER", GUID: "2", Indexer: "nzbgeek"},
-			{Title: "Movie.2024.480p.DVDRip.x264-BAD", GUID: "3", Indexer: "nzbgeek"},   // should be filtered
+			{Title: "Movie.2024.480p.DVDRip.x264-BAD", GUID: "3", Indexer: "nzbgeek"}, // should be filtered
 			{Title: "Movie.2024.1080p.WEB-DL.x264-WEB", GUID: "4", Indexer: "nzbgeek"},
 		},
 	}
@@ -305,14 +305,14 @@ func TestHasSequelMismatch(t *testing.T) {
 		// Sequel in title but not query - mismatch
 		{"Back to the Future", "Back to the Future Part II", true},
 		{"Back to the Future", "Back to the Future Part III", true},
-		{"Back to the Future", "Back.to.the.Future.II.1989", true},   // Roman numeral only
-		{"The Matrix", "The.Matrix.III.2003", true},                  // Roman numeral only
+		{"Back to the Future", "Back.to.the.Future.II.1989", true}, // Roman numeral only
+		{"The Matrix", "The.Matrix.III.2003", true},                // Roman numeral only
 		// Sequel in both - matching numbers - no mismatch
 		{"Back to the Future Part II", "Back to the Future Part II", false},
 		{"Back to the Future Part 2", "Back to the Future Part II", false}, // Part 2 matches II
 		{"Back to the Future Part 2", "Back.to.the.Future.II.1989", false}, // Part 2 matches II
 		// Sequel in both - different numbers - mismatch
-		{"Back to the Future Part 2", "Back to the Future Part III", true}, // Part 2 != III
+		{"Back to the Future Part 2", "Back to the Future Part III", true},  // Part 2 != III
 		{"Back to the Future Part II", "Back.to.the.Future.III.1990", true}, // II != III
 		// Query has sequel, title doesn't - no mismatch (original is fine)
 		{"Back to the Future Part II", "Back to the Future", false},
