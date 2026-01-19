@@ -1,5 +1,7 @@
 # Import Command Implementation Plan
 
+**Status:** ✅ Complete
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Add `arrgo import` command to trigger file imports (tracked by download_id or manual from arbitrary path).

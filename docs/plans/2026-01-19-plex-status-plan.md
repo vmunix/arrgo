@@ -1,5 +1,7 @@
 # Plex Status Command Implementation Plan
 
+**Status:** ✅ Complete
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Add `arrgo plex status` command to verify Plex connection and display library information.
