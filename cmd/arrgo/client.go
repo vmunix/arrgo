@@ -127,6 +127,26 @@ type GrabResponse struct {
 	Status     string `json:"status"`
 }
 
+type ImportRequest struct {
+	DownloadID *int64 `json:"download_id,omitempty"`
+	Path       string `json:"path,omitempty"`
+	Title      string `json:"title,omitempty"`
+	Year       int    `json:"year,omitempty"`
+	Type       string `json:"type,omitempty"`
+	Quality    string `json:"quality,omitempty"`
+	Season     *int   `json:"season,omitempty"`
+	Episode    *int   `json:"episode,omitempty"`
+}
+
+type ImportResponse struct {
+	FileID       int64  `json:"file_id"`
+	ContentID    int64  `json:"content_id"`
+	SourcePath   string `json:"source_path"`
+	DestPath     string `json:"dest_path"`
+	SizeBytes    int64  `json:"size_bytes"`
+	PlexNotified bool   `json:"plex_notified"`
+}
+
 type PlexLibrary struct {
 	Key        string `json:"key"`
 	Title      string `json:"title"`
@@ -232,6 +252,31 @@ func (c *Client) Grab(contentID int64, downloadURL, title, indexer string) (*Gra
 func (c *Client) PlexStatus() (*PlexStatusResponse, error) {
 	var resp PlexStatusResponse
 	if err := c.get("/api/v1/plex/status", &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) Import(req *ImportRequest) (*ImportResponse, error) {
+	var resp ImportResponse
+	if err := c.post("/api/v1/import", req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+type PlexScanRequest struct {
+	Libraries []string `json:"libraries"`
+}
+
+type PlexScanResponse struct {
+	Scanned []string `json:"scanned"`
+}
+
+func (c *Client) PlexScan(libraries []string) (*PlexScanResponse, error) {
+	req := PlexScanRequest{Libraries: libraries}
+	var resp PlexScanResponse
+	if err := c.post("/api/v1/plex/scan", req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

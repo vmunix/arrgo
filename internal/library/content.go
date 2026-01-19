@@ -76,6 +76,19 @@ func (s *Store) GetContent(id int64) (*Content, error) { return getContent(s.db,
 // GetContent retrieves a content item by ID within a transaction.
 func (t *Tx) GetContent(id int64) (*Content, error) { return getContent(t.tx, id) }
 
+// GetByTitleYear finds content by title and year.
+// Returns nil, nil if not found.
+func (s *Store) GetByTitleYear(title string, year int) (*Content, error) {
+	contents, _, err := s.ListContent(ContentFilter{Title: &title, Year: &year, Limit: 1})
+	if err != nil {
+		return nil, err
+	}
+	if len(contents) == 0 {
+		return nil, nil
+	}
+	return contents[0], nil
+}
+
 func listContent(q querier, f ContentFilter) ([]*Content, int, error) {
 	var conditions []string
 	var args []any

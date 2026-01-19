@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS downloads (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     content_id      INTEGER NOT NULL REFERENCES content(id) ON DELETE CASCADE,
     episode_id      INTEGER REFERENCES episodes(id) ON DELETE CASCADE,
-    client          TEXT NOT NULL CHECK (client IN ('sabnzbd', 'qbittorrent')),
+    client          TEXT NOT NULL CHECK (client IN ('sabnzbd', 'qbittorrent', 'manual')),
     client_id       TEXT NOT NULL,
     status          TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'downloading', 'completed', 'failed', 'imported')),
     release_name    TEXT,
