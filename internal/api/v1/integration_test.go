@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -166,7 +167,7 @@ func setupIntegrationTest(t *testing.T) *testEnv {
 	scorer := search.NewScorer(profiles)
 
 	// Create searcher
-	searcher := search.NewSearcher(prowlarrClient, scorer)
+	searcher := search.NewSearcher(prowlarrClient, scorer, slog.New(slog.DiscardHandler))
 
 	// Create SABnzbd client pointing to mock
 	sabnzbdClient := download.NewSABnzbdClient(env.sabnzbd.URL, "test-api-key", "arrgo")

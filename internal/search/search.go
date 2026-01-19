@@ -3,6 +3,7 @@ package search
 
 import (
 	"context"
+	"log/slog"
 	"sort"
 	"time"
 
@@ -48,13 +49,15 @@ type IndexerAPI interface {
 type Searcher struct {
 	indexers IndexerAPI
 	scorer   *Scorer
+	log      *slog.Logger
 }
 
 // NewSearcher creates a new Searcher with the given indexer pool and scorer.
-func NewSearcher(indexers IndexerAPI, scorer *Scorer) *Searcher {
+func NewSearcher(indexers IndexerAPI, scorer *Scorer, log *slog.Logger) *Searcher {
 	return &Searcher{
 		indexers: indexers,
 		scorer:   scorer,
+		log:      log,
 	}
 }
 
@@ -62,6 +65,8 @@ func NewSearcher(indexers IndexerAPI, scorer *Scorer) *Searcher {
 // parses quality information, scores against the profile,
 // filters out zero-score releases, and sorts by score descending.
 func (s *Searcher) Search(ctx context.Context, q Query, profile string) (*SearchResult, error) {
+	s.log.Info("search started", "query", q.Text, "type", q.Type, "profile", profile)
+
 	result := &SearchResult{
 		Releases: make([]*Release, 0),
 		Errors:   make([]error, 0),
@@ -98,6 +103,8 @@ func (s *Searcher) Search(ctx context.Context, q Query, profile string) (*Search
 
 		result.Releases = append(result.Releases, r)
 	}
+
+	s.log.Debug("scoring complete", "raw", len(releases), "filtered", len(result.Releases))
 
 	// Sort by score descending (stable sort to preserve order for equal scores)
 	sort.SliceStable(result.Releases, func(i, j int) bool {
