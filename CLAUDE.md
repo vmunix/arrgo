@@ -12,7 +12,9 @@ See `docs/design.md` for the full design document.
 
 ```
 arrgo/
-├── cmd/arrgo/           # CLI entry point
+├── cmd/
+│   ├── arrgo/           # CLI client
+│   └── arrgod/          # Server daemon
 ├── internal/
 │   ├── library/         # Content tracking (movies, series, episodes)
 │   ├── search/          # Indexer queries (direct Newznab)
@@ -64,18 +66,21 @@ Ensure `~/go/bin` is in your PATH.
 
 Using Task (recommended):
 ```bash
-task              # List all tasks
-task build        # Build binary
+task build        # Build both arrgo and arrgod
+task build:client # Build arrgo (CLI) only
+task build:server # Build arrgod (server) only
 task test         # Run tests
 task lint         # Run linter
 task check        # fmt + lint + test
-task dev          # Live reload (air)
+task dev          # Run arrgod with live reload (air)
 task test:cover   # Tests with coverage report
 ```
 
 Or directly with Go:
 ```bash
-go build -o arrgo ./cmd/arrgo
+go build ./cmd/...              # Build both binaries
+go build -o arrgo ./cmd/arrgo   # Build CLI only
+go build -o arrgod ./cmd/arrgod # Build server only
 go test ./...
 golangci-lint run ./...
 ```

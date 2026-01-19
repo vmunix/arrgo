@@ -31,7 +31,8 @@ costs.. the kind of thing I would intuitively say an LLM would suck at.
 ## Goals
 
 - **One system** instead of 6+ services
-- **Single binary** with embedded SQLite
+- **Two binaries**: `arrgod` (server daemon) + `arrgo` (CLI client)
+- **Embedded SQLite** database
 - **Single config file** (TOML)
 - **Clean API design** with Radarr/Sonarr compatibility shim for Overseerr
 - **AI-powered CLI** for conversational management
@@ -39,17 +40,19 @@ costs.. the kind of thing I would intuitively say an LLM would suck at.
 ## Quick Start
 
 ```bash
-# Build
-go build -o arrgo ./cmd/arrgo
+# Build both binaries
+task build
+# Or: go build ./cmd/...
 
 # Initialize (interactive wizard)
 ./arrgo init
 
-# Start server
-./arrgo serve
+# Start server daemon
+./arrgod
 
-# Or use the AI chat
-./arrgo chat
+# In another terminal, use the CLI
+./arrgo status
+./arrgo search "The Matrix"
 ```
 
 ## Configuration
@@ -66,17 +69,17 @@ Environment variables can be referenced with `${VAR_NAME}` syntax.
 ## CLI Commands
 
 ```bash
-# Server
-arrgo serve              # Start API server + background jobs
+# Server daemon
+arrgod                   # Start API server + background jobs
+arrgod --config FILE     # Use custom config file
 
-# Management
+# CLI client
 arrgo status             # System health and queue summary
 arrgo search "Movie"     # Search indexers
 arrgo queue              # Show active downloads
-arrgo add movie 123456   # Add by TMDB ID
-arrgo add series 456789  # Add by TVDB ID
+arrgo init               # Interactive setup wizard
 
-# AI Assistant
+# AI Assistant (coming soon)
 arrgo chat               # Interactive conversation
 arrgo ask "why stuck?"   # One-shot question
 ```
@@ -84,20 +87,20 @@ arrgo ask "why stuck?"   # One-shot question
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│                    arrgo                        │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌────────┐ │
-│  │ Library │ │ Search  │ │Download │ │ Import │ │
-│  └─────────┘ └─────────┘ └─────────┘ └────────┘ │
-│  ┌─────────────────────────────────────────────┐│
-│  │        REST API  +  AI Chat  +  SQLite      ││
-│  └─────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────┘
-        │            │           │
-   ┌────▼────┐  ┌────▼────┐ ┌────▼────┐
-   │Indexers │  │SABnzbd  │ │  Plex   │
-   │(Newznab)│  └─────────┘ └─────────┘
-   └─────────┘
+┌──────────┐      ┌─────────────────────────────────────────┐
+│  arrgo   │ HTTP │                 arrgod                  │
+│  (CLI)   │─────▶│  ┌─────────┐ ┌─────────┐ ┌───────────┐  │
+└──────────┘      │  │ Library │ │ Search  │ │ Download  │  │
+                  │  └─────────┘ └─────────┘ └───────────┘  │
+                  │  ┌─────────────────────────────────────┐│
+                  │  │   REST API  +  Importer  +  SQLite  ││
+                  │  └─────────────────────────────────────┘│
+                  └─────────────────────────────────────────┘
+                          │            │           │
+                     ┌────▼────┐  ┌────▼────┐ ┌────▼────┐
+                     │Indexers │  │SABnzbd  │ │  Plex   │
+                     │(Newznab)│  └─────────┘ └─────────┘
+                     └─────────┘
 ```
 
 ## External Dependencies
