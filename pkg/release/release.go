@@ -70,16 +70,97 @@ func (c Codec) String() string {
 	}
 }
 
+// HDRFormat represents HDR/Dolby Vision formats.
+type HDRFormat int
+
+const (
+	HDRNone HDRFormat = iota
+	HDRGeneric  // "HDR" without specific version
+	HDR10
+	HDR10Plus
+	DolbyVision
+	HLG
+)
+
+func (h HDRFormat) String() string {
+	switch h {
+	case HDRGeneric:
+		return "HDR"
+	case HDR10:
+		return "HDR10"
+	case HDR10Plus:
+		return "HDR10+"
+	case DolbyVision:
+		return "DV"
+	case HLG:
+		return "HLG"
+	default:
+		return ""
+	}
+}
+
+// AudioCodec represents the audio format of a release.
+type AudioCodec int
+
+const (
+	AudioUnknown AudioCodec = iota
+	AudioAAC
+	AudioAC3      // Dolby Digital
+	AudioEAC3     // DD+, DDP
+	AudioDTS
+	AudioDTSHD    // DTS-HD MA
+	AudioTrueHD
+	AudioAtmos    // TrueHD Atmos or DD+ Atmos
+	AudioFLAC
+	AudioOpus
+)
+
+func (a AudioCodec) String() string {
+	switch a {
+	case AudioAAC:
+		return "AAC"
+	case AudioAC3:
+		return "DD"
+	case AudioEAC3:
+		return "DD+"
+	case AudioDTS:
+		return "DTS"
+	case AudioDTSHD:
+		return "DTS-HD MA"
+	case AudioTrueHD:
+		return "TrueHD"
+	case AudioAtmos:
+		return "Atmos"
+	case AudioFLAC:
+		return "FLAC"
+	case AudioOpus:
+		return "Opus"
+	default:
+		return ""
+	}
+}
+
 // Info contains parsed release information.
 type Info struct {
 	Title      string
 	Year       int
 	Season     int
 	Episode    int
+	DailyDate  string // Daily show date in YYYY-MM-DD format (e.g., "2026-01-16")
 	Resolution Resolution
 	Source     Source
 	Codec      Codec
 	Group      string
 	Proper     bool
 	Repack     bool
+
+	// Extended metadata
+	HDR     HDRFormat
+	Audio   AudioCodec
+	IsRemux bool
+	Edition string // "Directors Cut", "Extended", "IMAX", etc.
+	Service string // Streaming service: NF, AMZN, DSNP, etc.
+
+	// Normalized title for matching
+	CleanTitle string
 }

@@ -33,7 +33,7 @@ arrgo/
 
 ## Key Principles
 
-- **Modular monolith** — Clear module boundaries, but single binary
+- **Modular monolith** — Clear module boundaries, two binaries: `arrgod` (server daemon) + `arrgo` (CLI client)
 - **internal/** for project-specific code, **pkg/** for reusable libraries
 - **TOML configuration** with `${ENV_VAR}` substitution
 - **SQLite** embedded database
@@ -108,6 +108,8 @@ Or use defaults syntax in config: `${VAR:-default_value}`
 | api/compat | Radarr/Sonarr API translation for Overseerr |
 | ai | LLM tool definitions, chat mode, provider abstraction |
 | config | Load TOML, env substitution, validation |
+| pkg/newznab | Newznab protocol client |
+| pkg/release | Release name parsing (resolution, source, codec, HDR, audio, edition, service) |
 
 ## v1 Scope
 

@@ -89,7 +89,7 @@ func runServer(configPath string) error {
 	if err != nil {
 		return fmt.Errorf("open db: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Run migrations
 	if _, err := db.Exec(migrations.InitialSQL); err != nil {

@@ -1,7 +1,7 @@
 # CLI Commands Design
 
 **Date:** 2026-01-18
-**Status:** Approved
+**Status:** ✅ Complete
 
 ## Overview
 
