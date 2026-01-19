@@ -64,12 +64,15 @@ func runServe(configPath string) error {
 		)
 	}
 
+	// TODO: Replace with multi-indexer Newznab client when pkg/newznab is implemented
+	// For now, use the first configured indexer with ProwlarrClient (compatible API)
 	var prowlarrClient *search.ProwlarrClient
-	if cfg.Indexers.Prowlarr != nil {
+	for _, indexer := range cfg.Indexers {
 		prowlarrClient = search.NewProwlarrClient(
-			cfg.Indexers.Prowlarr.URL,
-			cfg.Indexers.Prowlarr.APIKey,
+			indexer.URL,
+			indexer.APIKey,
 		)
+		break // Use first indexer for now
 	}
 
 	var plexClient *importer.PlexClient
@@ -164,7 +167,7 @@ func runServe(configPath string) error {
 	fmt.Printf("arrgo listening on %s\n", addr)
 	fmt.Printf("  database: %s\n", cfg.Database.Path)
 	fmt.Printf("  sabnzbd: %v\n", sabClient != nil)
-	fmt.Printf("  prowlarr: %v\n", prowlarrClient != nil)
+	fmt.Printf("  indexers: %d configured\n", len(cfg.Indexers))
 	fmt.Printf("  plex: %v\n", plexClient != nil)
 
 	// Silence unused variable warnings for stores not yet wired up

@@ -15,7 +15,7 @@ func TestFullWorkflow(t *testing.T) {
 	}
 
 	// 2. Set required env vars (t.Setenv auto-restores on cleanup)
-	t.Setenv("PROWLARR_API_KEY", "test-prowlarr-key")
+	t.Setenv("NZBGEEK_API_KEY", "test-nzbgeek-key")
 	t.Setenv("SABNZBD_API_KEY", "test-sab-key")
 	t.Setenv("PLEX_TOKEN", "test-plex-token")
 	t.Setenv("OVERSEERR_API_KEY", "test-overseerr-key")
@@ -28,9 +28,13 @@ func TestFullWorkflow(t *testing.T) {
 		t.Fatalf("LoadWithoutValidation: %v", err)
 	}
 
-	// 4. Verify env substitution worked
-	if cfg.Indexers.Prowlarr.APIKey != "test-prowlarr-key" {
-		t.Errorf("expected prowlarr key substituted, got %q", cfg.Indexers.Prowlarr.APIKey)
+	// 4. Verify env substitution worked for indexer
+	nzbgeek, ok := cfg.Indexers["nzbgeek"]
+	if !ok {
+		t.Fatalf("expected nzbgeek indexer to be configured")
+	}
+	if nzbgeek.APIKey != "test-nzbgeek-key" {
+		t.Errorf("expected nzbgeek key substituted, got %q", nzbgeek.APIKey)
 	}
 
 	// 5. Verify defaults applied

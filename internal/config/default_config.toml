@@ -31,10 +31,16 @@ accept = ["2160p bluray", "2160p webdl", "1080p bluray", "1080p webdl"]
 [quality.profiles.any]
 accept = ["2160p", "1080p", "720p", "480p"]
 
-# Indexer configuration (Prowlarr initially)
-[indexers.prowlarr]
-url = "http://localhost:9696"
-api_key = "${PROWLARR_API_KEY}"
+# Newznab indexers (add as many as needed)
+# Each [indexers.NAME] section defines an indexer
+[indexers.nzbgeek]
+url = "https://api.nzbgeek.info"
+api_key = "${NZBGEEK_API_KEY}"
+
+# Add more indexers as needed:
+# [indexers.drunkenslug]
+# url = "https://api.drunkenslug.com"
+# api_key = "${DRUNKENSLUG_API_KEY}"
 
 # Download clients
 [downloaders.sabnzbd]

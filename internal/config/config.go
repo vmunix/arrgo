@@ -53,11 +53,11 @@ type QualityProfile struct {
 	Accept []string `toml:"accept"`
 }
 
-type IndexersConfig struct {
-	Prowlarr *ProwlarrConfig `toml:"prowlarr"`
-}
+// IndexersConfig is a map of indexer name to config.
+// Parsed from [indexers.NAME] sections in TOML.
+type IndexersConfig map[string]*NewznabConfig
 
-type ProwlarrConfig struct {
+type NewznabConfig struct {
 	URL    string `toml:"url"`
 	APIKey string `toml:"api_key"`
 }
