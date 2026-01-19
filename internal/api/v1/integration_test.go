@@ -12,11 +12,15 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/arrgo/arrgo/internal/config"
 	"github.com/arrgo/arrgo/internal/download"
+	"github.com/arrgo/arrgo/internal/importer"
 	"github.com/arrgo/arrgo/internal/search"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -539,5 +543,150 @@ func TestIntegration_FullHappyPath(t *testing.T) {
 	if getResp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(getResp.Body)
 		t.Fatalf("get content status = %d, want 200: %s", getResp.StatusCode, body)
+	}
+}
+
+func TestIntegration_ManualImport(t *testing.T) {
+	// Create temp directories for source and destination
+	sourceDir := t.TempDir()
+	movieRoot := t.TempDir()
+	seriesRoot := t.TempDir()
+
+	// Create a fake video file in a directory with a release name
+	releaseName := "Back.to.the.Future.1985.1080p.BluRay.x264"
+	releaseDir := filepath.Join(sourceDir, releaseName)
+	if err := os.MkdirAll(releaseDir, 0755); err != nil {
+		t.Fatalf("create release dir: %v", err)
+	}
+
+	videoPath := filepath.Join(releaseDir, "back.to.the.future.mkv")
+	videoContent := make([]byte, 5000) // 5KB fake video
+	if err := os.WriteFile(videoPath, videoContent, 0644); err != nil {
+		t.Fatalf("create video file: %v", err)
+	}
+
+	// Set up in-memory database
+	db, err := sql.Open("sqlite3", ":memory:?_foreign_keys=on")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	if _, err := db.Exec(testSchema); err != nil {
+		t.Fatalf("apply schema: %v", err)
+	}
+
+	// Create importer with test configuration
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	importerCfg := importer.Config{
+		MovieRoot:      movieRoot,
+		SeriesRoot:     seriesRoot,
+		MovieTemplate:  "", // Use default template
+		SeriesTemplate: "", // Use default template
+	}
+	imp := importer.New(db, importerCfg, logger)
+
+	// Create API server with importer configured
+	cfg := Config{
+		MovieRoot:  movieRoot,
+		SeriesRoot: seriesRoot,
+	}
+	srv := New(db, cfg)
+	srv.SetImporter(imp)
+
+	// Create HTTP test server
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+
+	// Make a manual import request
+	importReq := map[string]any{
+		"path":    releaseDir,
+		"title":   "Back to the Future",
+		"year":    1985,
+		"type":    "movie",
+		"quality": "1080p",
+	}
+
+	resp := httpPost(t, ts.URL+"/api/v1/import", importReq)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("import status = %d, want 200: %s", resp.StatusCode, body)
+	}
+
+	var importResp importResponse
+	decodeJSON(t, resp, &importResp)
+
+	// Verify the response has correct fields
+	if importResp.FileID == 0 {
+		t.Error("file_id should be set")
+	}
+	if importResp.ContentID == 0 {
+		t.Error("content_id should be set")
+	}
+	if importResp.SourcePath != videoPath {
+		t.Errorf("source_path = %q, want %q", importResp.SourcePath, videoPath)
+	}
+	if importResp.SizeBytes != int64(len(videoContent)) {
+		t.Errorf("size_bytes = %d, want %d", importResp.SizeBytes, len(videoContent))
+	}
+
+	// Verify dest_path is within movie root
+	if !strings.HasPrefix(importResp.DestPath, movieRoot) {
+		t.Errorf("dest_path = %q, should be under %q", importResp.DestPath, movieRoot)
+	}
+
+	// Verify dest_path contains expected elements
+	if !strings.Contains(importResp.DestPath, "Back to the Future") {
+		t.Errorf("dest_path should contain title: %s", importResp.DestPath)
+	}
+	if !strings.Contains(importResp.DestPath, "1985") {
+		t.Errorf("dest_path should contain year: %s", importResp.DestPath)
+	}
+
+	// Verify the file was copied to the destination
+	if _, err := os.Stat(importResp.DestPath); os.IsNotExist(err) {
+		t.Error("destination file should exist")
+	}
+
+	// Verify file content is correct
+	destContent, err := os.ReadFile(importResp.DestPath)
+	if err != nil {
+		t.Fatalf("read dest file: %v", err)
+	}
+	if len(destContent) != len(videoContent) {
+		t.Errorf("dest file size = %d, want %d", len(destContent), len(videoContent))
+	}
+
+	// Verify content record was created with correct status
+	var contentStatus string
+	if err := db.QueryRow("SELECT status FROM content WHERE id = ?", importResp.ContentID).Scan(&contentStatus); err != nil {
+		t.Fatalf("query content status: %v", err)
+	}
+	if contentStatus != "available" {
+		t.Errorf("content status = %q, want available", contentStatus)
+	}
+
+	// Verify file record was created in database
+	var filePath string
+	var fileQuality string
+	if err := db.QueryRow("SELECT path, quality FROM files WHERE id = ?", importResp.FileID).Scan(&filePath, &fileQuality); err != nil {
+		t.Fatalf("query file record: %v", err)
+	}
+	if filePath != importResp.DestPath {
+		t.Errorf("file path = %q, want %q", filePath, importResp.DestPath)
+	}
+	if fileQuality != "1080p" {
+		t.Errorf("file quality = %q, want 1080p", fileQuality)
+	}
+
+	// Verify history entry was created
+	var historyCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM history WHERE content_id = ?", importResp.ContentID).Scan(&historyCount); err != nil {
+		t.Fatalf("query history: %v", err)
+	}
+	if historyCount != 1 {
+		t.Errorf("history entries = %d, want 1", historyCount)
 	}
 }

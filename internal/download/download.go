@@ -15,6 +15,7 @@ type Client string
 const (
 	ClientSABnzbd     Client = "sabnzbd"
 	ClientQBittorrent Client = "qbittorrent"
+	ClientManual      Client = "manual"
 )
 
 // Status tracks download state.

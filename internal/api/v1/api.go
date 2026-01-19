@@ -818,28 +818,28 @@ func (s *Server) importManual(w http.ResponseWriter, r *http.Request, req import
 	}
 
 	// Find or create content record
+	// Note: GetByTitleYear returns nil, nil when not found
 	content, err := s.library.GetByTitleYear(req.Title, req.Year)
 	if err != nil {
-		if errors.Is(err, library.ErrNotFound) {
-			// Create new content
-			rootPath := s.cfg.MovieRoot
-			if contentType == library.ContentTypeSeries {
-				rootPath = s.cfg.SeriesRoot
-			}
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+	if content == nil {
+		// Create new content
+		rootPath := s.cfg.MovieRoot
+		if contentType == library.ContentTypeSeries {
+			rootPath = s.cfg.SeriesRoot
+		}
 
-			content = &library.Content{
-				Type:           contentType,
-				Title:          req.Title,
-				Year:           req.Year,
-				Status:         library.StatusWanted,
-				QualityProfile: "hd",
-				RootPath:       rootPath,
-			}
-			if err := s.library.AddContent(content); err != nil {
-				writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
-				return
-			}
-		} else {
+		content = &library.Content{
+			Type:           contentType,
+			Title:          req.Title,
+			Year:           req.Year,
+			Status:         library.StatusWanted,
+			QualityProfile: "hd",
+			RootPath:       rootPath,
+		}
+		if err := s.library.AddContent(content); err != nil {
 			writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 			return
 		}
@@ -873,7 +873,7 @@ func (s *Server) importManual(w http.ResponseWriter, r *http.Request, req import
 	dl := &download.Download{
 		ContentID:   content.ID,
 		EpisodeID:   episodeID,
-		Client:      download.Client("manual"),
+		Client:      download.ClientManual,
 		ClientID:    fmt.Sprintf("manual-%d", now.UnixNano()),
 		Status:      download.StatusCompleted,
 		ReleaseName: releaseName,
