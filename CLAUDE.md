@@ -43,24 +43,12 @@ arrgo/
 
 ### Required Tools
 
-```bash
-# Core (included with Go)
-go version  # Go 1.21+
+- Go 1.25+
+- golangci-lint (linting)
+- task (task runner, recommended)
+- mockgen (mock generation for tests)
 
-# Linting
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-
-# Task runner (optional but recommended)
-go install github.com/go-task/task/v3/cmd/task@latest
-
-# Live reload (optional)
-go install github.com/air-verse/air@latest
-
-# Mock generation (for testing)
-go install go.uber.org/mock/mockgen@latest
-```
-
-Ensure `~/go/bin` is in your PATH.
+See README.md for installation commands.
 
 ### Commands
 
@@ -74,15 +62,6 @@ task lint         # Run linter
 task check        # fmt + lint + test
 task dev          # Run arrgod with live reload (air)
 task test:cover   # Tests with coverage report
-```
-
-Or directly with Go:
-```bash
-go build ./cmd/...              # Build both binaries
-go build -o arrgo ./cmd/arrgo   # Build CLI only
-go build -o arrgod ./cmd/arrgod # Build server only
-go test ./...
-golangci-lint run ./...
 ```
 
 ### Configuration
@@ -152,6 +131,12 @@ Native API conventions:
 - Integration tests for API endpoints
 - Mock external services (indexers, SABnzbd, Plex)
 
+Follow Eskil Steenberg's black-box architecture:
+1. **Black Box Interfaces**: Every module has a clean API with hidden implementation
+2. **Replaceable Components**: Any module can be rewritten using only its interface
+3. **Single Responsibility**: One module = one person can build/maintain it
+4. **Primitive-First Design**: Core types flow consistently through the system
+
 ## GitHub Issues
 
 When code quality reviewers identify issues that aren't immediately addressed:
@@ -161,11 +146,3 @@ When code quality reviewers identify issues that aren't immediately addressed:
 When creating any GitHub issue:
 - Always add relevant labels via `gh issue create --label "label-name"` or `gh issue edit N --add-label "label-name"`
 - Reference related issues/commits where applicable
-
-Follow Eskil Steenberg's black-box architecture:
-1. **Black Box Interfaces**: Every module has a clean API with hidden implementation
-2. **Replaceable Components**: Any module can be rewritten using only its interface
-3. **Single Responsibility**: One module = one person can build/maintain it
-4. **Primitive-First Design**: Core types flow consistently through the system
-5. **Streaming Collection**: Memory-efficient data extraction; batch classification
-
