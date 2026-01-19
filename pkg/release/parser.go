@@ -13,6 +13,7 @@ var (
 	seasonEpRegex    = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,2})`)
 	titleMarkerRegex = regexp.MustCompile(`(?i)\b(19|20)\d{2}\b|\b\d{3,4}p\b|\bS\d{1,2}E\d{1,2}\b|\b4K\b|\bUHD\b`)
 	hdrRegex         = regexp.MustCompile(`(?i)\bHDR10\+|\b(HDR10Plus|HDR10|HDR|DV|Dolby\.?Vision|HLG)\b`)
+	editionRegex     = regexp.MustCompile(`(?i)\b(Directors?[\s.]?Cut|Extended|IMAX|Theatrical[\s.]?Cut?|Unrated|Uncut|Remastered|Anniversary|Criterion|Special[\s.]?Edition)\b`)
 )
 
 // Parse extracts information from a release name.
@@ -40,6 +41,9 @@ func Parse(name string) *Info {
 
 	// Remux
 	info.IsRemux = parseRemux(normalized)
+
+	// Edition
+	info.Edition = parseEdition(normalized)
 
 	// Flags
 	info.Proper = containsAny(normalized, "proper")
@@ -223,4 +227,38 @@ func parseAudio(name string) AudioCodec {
 
 func parseRemux(name string) bool {
 	return containsAny(strings.ToLower(name), "remux", "bdremux")
+}
+
+func parseEdition(name string) string {
+	match := editionRegex.FindString(name)
+	if match == "" {
+		return ""
+	}
+
+	// Normalize
+	lower := strings.ToLower(match)
+	switch {
+	case strings.Contains(lower, "director"):
+		return "Directors Cut"
+	case strings.Contains(lower, "extended"):
+		return "Extended"
+	case strings.Contains(lower, "imax"):
+		return "IMAX"
+	case strings.Contains(lower, "theatrical"):
+		return "Theatrical"
+	case strings.Contains(lower, "unrated"):
+		return "Unrated"
+	case strings.Contains(lower, "uncut"):
+		return "Uncut"
+	case strings.Contains(lower, "remaster"):
+		return "Remastered"
+	case strings.Contains(lower, "anniversary"):
+		return "Anniversary"
+	case strings.Contains(lower, "criterion"):
+		return "Criterion"
+	case strings.Contains(lower, "special"):
+		return "Special Edition"
+	default:
+		return match
+	}
 }

@@ -400,3 +400,27 @@ func TestParse_Remux(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_Edition(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantEdition string
+	}{
+		{"Directors Cut", "Movie.2024.Directors.Cut.1080p.BluRay.x264-GRP", "Directors Cut"},
+		{"Extended", "Movie.2024.EXTENDED.1080p.BluRay.x264-GRP", "Extended"},
+		{"IMAX", "Movie.2024.IMAX.2160p.WEB-DL.x265-GRP", "IMAX"},
+		{"Theatrical", "Movie.2024.Theatrical.Cut.1080p.BluRay.x264-GRP", "Theatrical"},
+		{"Unrated", "Movie.2024.UNRATED.1080p.BluRay.x264-GRP", "Unrated"},
+		{"No edition", "Movie.2024.1080p.BluRay.x264-GRP", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			if got.Edition != tt.wantEdition {
+				t.Errorf("Edition = %q, want %q", got.Edition, tt.wantEdition)
+			}
+		})
+	}
+}
