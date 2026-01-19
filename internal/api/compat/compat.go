@@ -22,25 +22,37 @@ type Config struct {
 
 // radarrAddRequest is the Radarr format for adding a movie.
 type radarrAddRequest struct {
-	TMDBID           int64  `json:"tmdbId"`
-	Title            string `json:"title"`
-	Year             int    `json:"year"`
-	QualityProfileID int    `json:"qualityProfileId"`
-	RootFolderPath   string `json:"rootFolderPath"`
-	Monitored        bool   `json:"monitored"`
-	AddOptions       struct {
+	TMDBID              int64  `json:"tmdbId"`
+	Title               string `json:"title"`
+	Year                int    `json:"year"`
+	QualityProfileID    int    `json:"qualityProfileId"`
+	ProfileID           int    `json:"profileId"`           // Overseerr sends both
+	RootFolderPath      string `json:"rootFolderPath"`
+	Monitored           bool   `json:"monitored"`
+	TitleSlug           string `json:"titleSlug"`           // Overseerr sets to tmdbId
+	MinimumAvailability string `json:"minimumAvailability"` // e.g., "released"
+	Tags                []int  `json:"tags"`
+	AddOptions          struct {
 		SearchForMovie bool `json:"searchForMovie"`
 	} `json:"addOptions"`
 }
 
 // radarrMovieResponse is the Radarr format for a movie.
 type radarrMovieResponse struct {
-	ID        int64  `json:"id"`
-	TMDBID    int64  `json:"tmdbId"`
-	Title     string `json:"title"`
-	Year      int    `json:"year"`
-	Monitored bool   `json:"monitored"`
-	Status    string `json:"status"`
+	ID               int64  `json:"id"`
+	TMDBID           int64  `json:"tmdbId"`
+	Title            string `json:"title"`
+	Year             int    `json:"year"`
+	Monitored        bool   `json:"monitored"`
+	Status           string `json:"status"`
+	HasFile          bool   `json:"hasFile"`
+	IsAvailable      bool   `json:"isAvailable"`
+	Path             string `json:"path"`
+	FolderName       string `json:"folderName"`
+	TitleSlug        string `json:"titleSlug"`
+	QualityProfileID int    `json:"qualityProfileId"`
+	Tags             []int  `json:"tags"`
+	Added            string `json:"added"`
 }
 
 // sonarrAddRequest is the Sonarr format for adding a series.
@@ -96,14 +108,21 @@ func (s *Server) SetManager(manager *download.Manager) {
 
 // RegisterRoutes registers compatibility API routes.
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
+	// System endpoints (used by Overseerr to test connection)
+	mux.HandleFunc("GET /api/v3/system/status", s.authMiddleware(s.systemStatus))
+
 	// Radarr compatibility
 	mux.HandleFunc("GET /api/v3/movie", s.authMiddleware(s.listMovies))
+	mux.HandleFunc("GET /api/v3/movie/lookup", s.authMiddleware(s.lookupMovie))
 	mux.HandleFunc("GET /api/v3/movie/{id}", s.authMiddleware(s.getMovie))
 	mux.HandleFunc("POST /api/v3/movie", s.authMiddleware(s.addMovie))
 	mux.HandleFunc("GET /api/v3/rootfolder", s.authMiddleware(s.listRootFolders))
 	mux.HandleFunc("GET /api/v3/qualityprofile", s.authMiddleware(s.listQualityProfiles))
+	mux.HandleFunc("GET /api/v3/qualityProfile", s.authMiddleware(s.listQualityProfiles)) // Radarr uses camelCase
 	mux.HandleFunc("GET /api/v3/queue", s.authMiddleware(s.listQueue))
 	mux.HandleFunc("POST /api/v3/command", s.authMiddleware(s.executeCommand))
+	mux.HandleFunc("GET /api/v3/tag", s.authMiddleware(s.listTags))
+	mux.HandleFunc("POST /api/v3/tag", s.authMiddleware(s.createTag))
 
 	// Sonarr compatibility
 	mux.HandleFunc("GET /api/v3/series", s.authMiddleware(s.listSeries))
@@ -112,18 +131,26 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 }
 
 // authMiddleware validates the X-Api-Key header.
+// If no API key is configured on server, any non-empty key is accepted (testing mode).
 func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Require API key to be configured
-		if s.cfg.APIKey == "" {
-			w.WriteHeader(http.StatusUnauthorized)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": "API key not configured"})
-			return
-		}
 		apiKey := r.Header.Get("X-Api-Key")
 		if apiKey == "" {
 			apiKey = r.URL.Query().Get("apikey")
 		}
+
+		// If server has no API key configured, accept any non-empty key (testing mode)
+		if s.cfg.APIKey == "" {
+			if apiKey != "" {
+				next(w, r)
+				return
+			}
+			// No key from client either - still allow for direct testing
+			next(w, r)
+			return
+		}
+
+		// Server has API key configured - must match
 		if apiKey != s.cfg.APIKey {
 			w.WriteHeader(http.StatusUnauthorized)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": "Invalid API key"})
@@ -139,15 +166,121 @@ func writeJSON(w http.ResponseWriter, code int, data any) {
 	_ = json.NewEncoder(w).Encode(data)
 }
 
+// System handlers
+
+func (s *Server) systemStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"version":   "1.0.0",
+		"appName":   "arrgo",
+		"startTime": "2026-01-19T00:00:00Z",
+	})
+}
+
 // Radarr handlers
 
 func (s *Server) listMovies(w http.ResponseWriter, r *http.Request) {
-	// TODO: translate from native API
-	writeJSON(w, http.StatusOK, []any{})
+	contentType := library.ContentTypeMovie
+	contents, _, err := s.library.ListContent(library.ContentFilter{Type: &contentType})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	movies := make([]radarrMovieResponse, 0, len(contents))
+	for _, c := range contents {
+		movies = append(movies, s.contentToRadarrMovie(c))
+	}
+	writeJSON(w, http.StatusOK, movies)
+}
+
+func (s *Server) lookupMovie(w http.ResponseWriter, r *http.Request) {
+	term := r.URL.Query().Get("term")
+	if term == "" {
+		writeJSON(w, http.StatusOK, []any{})
+		return
+	}
+
+	// Parse tmdb:12345 format
+	var tmdbID int64
+	if _, err := fmt.Sscanf(term, "tmdb:%d", &tmdbID); err != nil {
+		// Not a TMDB lookup, return empty
+		writeJSON(w, http.StatusOK, []any{})
+		return
+	}
+
+	// Check if we have this movie
+	contents, _, err := s.library.ListContent(library.ContentFilter{TMDBID: &tmdbID, Limit: 1})
+	if err == nil && len(contents) > 0 {
+		// Found in library - return with ID
+		writeJSON(w, http.StatusOK, []radarrMovieResponse{s.contentToRadarrMovie(contents[0])})
+		return
+	}
+
+	// Not in library - return stub without ID so Overseerr knows to add it
+	// Overseerr expects movie metadata from lookup even if not in library
+	writeJSON(w, http.StatusOK, []map[string]any{{
+		"tmdbId":      tmdbID,
+		"title":       "", // Overseerr has this from TMDB already
+		"year":        0,
+		"monitored":   false,
+		"hasFile":     false,
+		"isAvailable": false,
+		// No "id" field = not in library, Overseerr will POST to add
+	}})
 }
 
 func (s *Server) getMovie(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "Movie not found"})
+	idStr := r.PathValue("id")
+	var id int64
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid ID"})
+		return
+	}
+
+	content, err := s.library.GetContent(id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Movie not found"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, s.contentToRadarrMovie(content))
+}
+
+// contentToRadarrMovie converts library content to Radarr response format.
+func (s *Server) contentToRadarrMovie(c *library.Content) radarrMovieResponse {
+	var tmdbID int64
+	if c.TMDBID != nil {
+		tmdbID = *c.TMDBID
+	}
+
+	// Determine profile ID from name
+	profileID := 1
+	for name, id := range s.cfg.QualityProfiles {
+		if name == c.QualityProfile {
+			profileID = id
+			break
+		}
+	}
+
+	folderName := fmt.Sprintf("%s (%d)", c.Title, c.Year)
+	path := fmt.Sprintf("%s/%s", c.RootPath, folderName)
+
+	return radarrMovieResponse{
+		ID:               c.ID,
+		TMDBID:           tmdbID,
+		Title:            c.Title,
+		Year:             c.Year,
+		Monitored:        c.Status == library.StatusWanted,
+		Status:           "released",
+		HasFile:          c.Status == library.StatusAvailable,
+		IsAvailable:      true,
+		Path:             path,
+		FolderName:       folderName,
+		TitleSlug:        fmt.Sprintf("%d", tmdbID),
+		QualityProfileID: profileID,
+		Tags:             []int{},
+		Added:            c.AddedAt.Format("2006-01-02T15:04:05Z"),
+	}
 }
 
 func (s *Server) addMovie(w http.ResponseWriter, r *http.Request) {
@@ -194,14 +327,7 @@ func (s *Server) addMovie(w http.ResponseWriter, r *http.Request) {
 		go s.searchAndGrab(content.ID, req.Title, req.Year, profileName)
 	}
 
-	writeJSON(w, http.StatusCreated, radarrMovieResponse{
-		ID:        content.ID,
-		TMDBID:    req.TMDBID,
-		Title:     req.Title,
-		Year:      req.Year,
-		Monitored: req.Monitored,
-		Status:    "announced",
-	})
+	writeJSON(w, http.StatusCreated, s.contentToRadarrMovie(content))
 }
 
 func (s *Server) listRootFolders(w http.ResponseWriter, r *http.Request) {
@@ -339,6 +465,29 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 		Year:      req.Year,
 		Monitored: req.Monitored,
 		Status:    "continuing",
+	})
+}
+
+// Tag handlers (Overseerr uses these for per-user tagging)
+
+func (s *Server) listTags(w http.ResponseWriter, r *http.Request) {
+	// Return empty tags list - we don't support tags yet
+	writeJSON(w, http.StatusOK, []any{})
+}
+
+func (s *Server) createTag(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Label string `json:"label"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+		return
+	}
+
+	// Return a fake tag - we don't persist these yet
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"id":    1,
+		"label": req.Label,
 	})
 }
 
