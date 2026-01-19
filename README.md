@@ -35,7 +35,7 @@ costs.. the kind of thing I would intuitively say an LLM would suck at.
 - **Embedded SQLite** database
 - **Single config file** (TOML)
 - **Clean API design** with Radarr/Sonarr compatibility shim for Overseerr
-- **AI-powered CLI** for conversational management
+- **Plex integration** for library management and scanning
 
 ## Quick Start
 
@@ -166,6 +166,5 @@ go test ./...
 
 - **Usenet indexers** — Direct Newznab support (NZBgeek, DrunkenSlug, etc.)
 - **SABnzbd** — Usenet downloads
-- **Plex** — Media server notifications
+- **Plex** — Media server integration (status, scanning, library queries)
 - **Overseerr** — Request management (optional, via compat API)
-- **Ollama** — Local AI for chat mode (optional)
