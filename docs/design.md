@@ -65,7 +65,8 @@ arrgo is a unified media automation system written in Go, designed to replace th
 - Queries indexers for releases via direct Newznab protocol
 - Parallel search across multiple indexers (IndexerPool)
 - Partial failure tolerance — returns results from working indexers
-- Parses release names, scores against quality profiles
+- Parses release names extracting resolution, source, codec, HDR format, audio codec, edition, streaming service, and release group
+- Scores releases against quality profiles
 
 **Download Module**
 - Sends NZBs to download clients
@@ -181,11 +182,22 @@ naming = "{title}/Season {season:02d}/{title} - S{season:02d}E{episode:02d} [{qu
 [quality]
 default = "hd"
 
-[quality.profiles.hd]
-accept = ["1080p bluray", "1080p webdl", "1080p hdtv", "720p bluray"]
+# Minimal profile - just resolution
+[quality.profiles.sd]
+resolution = ["720p", "480p"]
 
+# Standard HD
+[quality.profiles.hd]
+resolution = ["1080p", "720p"]
+sources = ["bluray", "webdl"]
+
+# Premium 4K with HDR/audio preferences
 [quality.profiles.uhd]
-accept = ["2160p bluray", "2160p webdl", "1080p bluray"]
+resolution = ["2160p", "1080p"]
+sources = ["bluray", "webdl"]
+hdr = ["dolby-vision", "hdr10+", "hdr10"]
+audio = ["atmos", "truehd", "dtshd"]
+reject = ["hdtv", "cam", "ts"]
 
 # Named indexers (add as many as needed)
 [indexers.nzbgeek]
@@ -449,6 +461,8 @@ arrgo search "Movie Name"        # Search indexers
 arrgo queue                      # Show downloads
 arrgo add movie 123456           # Add by TMDB ID
 arrgo grab <release-id>          # Grab release
+arrgo parse <release>            # Parse release name (local, no server needed)
+arrgo parse --score hd           # Parse and show score breakdown for profile
 
 # AI chat
 arrgo chat                       # Interactive session
