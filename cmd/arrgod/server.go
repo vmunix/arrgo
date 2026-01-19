@@ -143,12 +143,14 @@ func runServer(configPath string) error {
 
 	// Create importer
 	imp := importer.New(db, importer.Config{
-		MovieRoot:      cfg.Libraries.Movies.Root,
-		SeriesRoot:     cfg.Libraries.Series.Root,
-		MovieTemplate:  cfg.Libraries.Movies.Naming,
-		SeriesTemplate: cfg.Libraries.Series.Naming,
-		PlexURL:        plexURLFromConfig(cfg),
-		PlexToken:      plexTokenFromConfig(cfg),
+		MovieRoot:       cfg.Libraries.Movies.Root,
+		SeriesRoot:      cfg.Libraries.Series.Root,
+		MovieTemplate:   cfg.Libraries.Movies.Naming,
+		SeriesTemplate:  cfg.Libraries.Series.Naming,
+		PlexURL:         plexURLFromConfig(cfg),
+		PlexToken:       plexTokenFromConfig(cfg),
+		PlexLocalPath:   plexLocalPathFromConfig(cfg),
+		PlexRemotePath:  plexRemotePathFromConfig(cfg),
 	}, logger.With("component", "importer"))
 
 	// === Background Jobs ===
@@ -260,6 +262,20 @@ func plexURLFromConfig(cfg *config.Config) string {
 func plexTokenFromConfig(cfg *config.Config) string {
 	if cfg.Notifications.Plex != nil {
 		return cfg.Notifications.Plex.Token
+	}
+	return ""
+}
+
+func plexLocalPathFromConfig(cfg *config.Config) string {
+	if cfg.Notifications.Plex != nil {
+		return cfg.Notifications.Plex.LocalPath
+	}
+	return ""
+}
+
+func plexRemotePathFromConfig(cfg *config.Config) string {
+	if cfg.Notifications.Plex != nil {
+		return cfg.Notifications.Plex.RemotePath
 	}
 	return ""
 }
