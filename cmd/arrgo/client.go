@@ -352,3 +352,38 @@ func (c *Client) PlexSearch(query string) (*PlexSearchResponse, error) {
 	}
 	return &resp, nil
 }
+
+type VerifyProblem struct {
+	DownloadID int64    `json:"download_id"`
+	Status     string   `json:"status"`
+	Title      string   `json:"title"`
+	Since      string   `json:"since"`
+	Issue      string   `json:"issue"`
+	Checks     []string `json:"checks"`
+	Likely     string   `json:"likely_cause"`
+	Fixes      []string `json:"suggested_fixes"`
+}
+
+type VerifyResponse struct {
+	Connections struct {
+		Plex    bool   `json:"plex"`
+		PlexErr string `json:"plex_error,omitempty"`
+		SABnzbd bool   `json:"sabnzbd"`
+		SABErr  string `json:"sabnzbd_error,omitempty"`
+	} `json:"connections"`
+	Checked  int             `json:"checked"`
+	Passed   int             `json:"passed"`
+	Problems []VerifyProblem `json:"problems"`
+}
+
+func (c *Client) Verify(id *int64) (*VerifyResponse, error) {
+	path := "/api/v1/verify"
+	if id != nil {
+		path += fmt.Sprintf("?id=%d", *id)
+	}
+	var resp VerifyResponse
+	if err := c.get(path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
