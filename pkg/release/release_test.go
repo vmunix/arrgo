@@ -473,3 +473,28 @@ func TestParse_ImprovedCodec(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_DailyShow(t *testing.T) {
+	tests := []struct {
+		name          string
+		input         string
+		wantDailyDate string
+		wantYear      int
+	}{
+		{"Daily show", "Show.2026.01.16.Episode.Title.720p.HDTV.x264-GRP", "2026-01-16", 0},
+		{"Not daily", "Show.S01E05.720p.HDTV.x264-GRP", "", 0},
+		{"Movie with year", "Movie.2024.1080p.BluRay.x264-GRP", "", 2024},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			if got.DailyDate != tt.wantDailyDate {
+				t.Errorf("DailyDate = %q, want %q", got.DailyDate, tt.wantDailyDate)
+			}
+			if got.Year != tt.wantYear {
+				t.Errorf("Year = %v, want %v", got.Year, tt.wantYear)
+			}
+		})
+	}
+}

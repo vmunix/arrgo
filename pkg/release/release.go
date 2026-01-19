@@ -146,6 +146,7 @@ type Info struct {
 	Year       int
 	Season     int
 	Episode    int
+	DailyDate  string // Daily show date in YYYY-MM-DD format (e.g., "2026-01-16")
 	Resolution Resolution
 	Source     Source
 	Codec      Codec
