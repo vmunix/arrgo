@@ -345,3 +345,32 @@ func TestParse_HDR(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_Audio(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantAudio AudioCodec
+	}{
+		{"DTS-HD MA", "Movie.2024.1080p.BluRay.DTS-HD.MA.5.1.x264-GRP", AudioDTSHD},
+		{"TrueHD Atmos", "Movie.2024.2160p.BluRay.TrueHD.Atmos.7.1.x265-GRP", AudioAtmos},
+		{"DD+ Atmos", "Movie.2024.2160p.WEB-DL.DDP5.1.Atmos.H265-GRP", AudioAtmos},
+		{"DDP", "Movie.2024.1080p.WEB-DL.DDP5.1.x264-GRP", AudioEAC3},
+		{"DD5.1", "Movie.2024.1080p.WEB-DL.DD5.1.x264-GRP", AudioAC3},
+		{"FLAC", "Movie.2024.1080p.BluRay.FLAC.2.0.x264-GRP", AudioFLAC},
+		{"AAC", "Movie.2024.1080p.WEB-DL.AAC2.0.x264-GRP", AudioAAC},
+		{"TrueHD no Atmos", "Movie.2024.1080p.BluRay.TrueHD.5.1.x264-GRP", AudioTrueHD},
+		{"Plain DTS", "Movie.2024.1080p.BluRay.DTS.5.1.x264-GRP", AudioDTS},
+		{"Opus", "Movie.2024.1080p.WEB.Opus.2.0.x264-GRP", AudioOpus},
+		{"No audio info", "Movie.2024.1080p.BluRay.x264-GRP", AudioUnknown},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			if got.Audio != tt.wantAudio {
+				t.Errorf("Audio = %v, want %v", got.Audio, tt.wantAudio)
+			}
+		})
+	}
+}

@@ -35,6 +35,9 @@ func Parse(name string) *Info {
 	// HDR
 	info.HDR = parseHDR(normalized)
 
+	// Audio
+	info.Audio = parseAudio(normalized)
+
 	// Flags
 	info.Proper = containsAny(normalized, "proper")
 	info.Repack = containsAny(normalized, "repack", "rerip")
@@ -164,4 +167,53 @@ func parseHDR(name string) HDRFormat {
 		}
 	}
 	return HDRNone
+}
+
+func parseAudio(name string) AudioCodec {
+	lower := strings.ToLower(name)
+
+	// Check Atmos first (can be combined with TrueHD or DD+)
+	if strings.Contains(lower, "atmos") {
+		return AudioAtmos
+	}
+
+	// DTS-HD MA before plain DTS
+	if strings.Contains(lower, "dts-hd") || strings.Contains(lower, "dts hd") {
+		return AudioDTSHD
+	}
+
+	// TrueHD
+	if strings.Contains(lower, "truehd") {
+		return AudioTrueHD
+	}
+
+	// DD+ / DDP / EAC3 before DD / AC3
+	if containsAny(lower, "ddp", "dd+", "eac3", "e-ac3") {
+		return AudioEAC3
+	}
+
+	// DD / AC3
+	if containsAny(lower, "dd5", "dd2", "dd7", "ac3", "dolby digital") {
+		return AudioAC3
+	}
+
+	// Plain DTS
+	if strings.Contains(lower, "dts") {
+		return AudioDTS
+	}
+
+	// Lossless
+	if strings.Contains(lower, "flac") {
+		return AudioFLAC
+	}
+
+	// Others
+	if strings.Contains(lower, "opus") {
+		return AudioOpus
+	}
+	if strings.Contains(lower, "aac") {
+		return AudioAAC
+	}
+
+	return AudioUnknown
 }
