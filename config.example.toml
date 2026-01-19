@@ -91,6 +91,10 @@ api_key = "${ARRGO_API_KEY}"
 radarr = true
 sonarr = true
 
+# Importer settings
+[importer]
+cleanup_source = true  # Delete source files after successful import and Plex verification (default: true)
+
 # AI assistant configuration
 [ai]
 enabled = true
