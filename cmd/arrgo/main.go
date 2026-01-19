@@ -26,7 +26,7 @@ func main() {
 			os.Exit(1)
 		}
 	case "init":
-		fmt.Println("arrgo init: not yet implemented")
+		runInit(os.Args[2:])
 	case "status":
 		runStatus(os.Args[2:])
 	case "search":
