@@ -18,9 +18,21 @@ var plexStatusCmd = &cobra.Command{
 	RunE:  runPlexStatusCmd,
 }
 
+var plexScanCmd = &cobra.Command{
+	Use:   "scan [libraries...]",
+	Short: "Trigger Plex library scan",
+	Long:  "Trigger a scan of Plex libraries. Specify library names to scan specific libraries, or use --all to scan all libraries.",
+	RunE:  runPlexScanCmd,
+}
+
+var plexScanAll bool
+
 func init() {
 	rootCmd.AddCommand(plexCmd)
 	plexCmd.AddCommand(plexStatusCmd)
+	plexCmd.AddCommand(plexScanCmd)
+
+	plexScanCmd.Flags().BoolVar(&plexScanAll, "all", false, "Scan all libraries")
 }
 
 func runPlexStatusCmd(cmd *cobra.Command, args []string) error {
@@ -36,6 +48,42 @@ func runPlexStatusCmd(cmd *cobra.Command, args []string) error {
 	}
 
 	printPlexStatusHuman(status)
+	return nil
+}
+
+func runPlexScanCmd(cmd *cobra.Command, args []string) error {
+	// Require either --all or library names
+	if !plexScanAll && len(args) == 0 {
+		return fmt.Errorf("specify library names or use --all")
+	}
+
+	client := NewClient(serverURL)
+
+	// If --all, pass empty slice to scan all
+	libraries := args
+	if plexScanAll {
+		libraries = nil
+	}
+
+	resp, err := client.PlexScan(libraries)
+	if err != nil {
+		return fmt.Errorf("plex scan failed: %w", err)
+	}
+
+	if jsonOutput {
+		printJSON(resp)
+		return nil
+	}
+
+	if len(resp.Scanned) == 0 {
+		fmt.Println("No libraries scanned")
+		return nil
+	}
+
+	fmt.Println("Scan triggered for:")
+	for _, lib := range resp.Scanned {
+		fmt.Printf("  %s\n", lib)
+	}
 	return nil
 }
 
