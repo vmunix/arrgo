@@ -38,6 +38,9 @@ func Parse(name string) *Info {
 	// Audio
 	info.Audio = parseAudio(normalized)
 
+	// Remux
+	info.IsRemux = parseRemux(normalized)
+
 	// Flags
 	info.Proper = containsAny(normalized, "proper")
 	info.Repack = containsAny(normalized, "repack", "rerip")
@@ -92,7 +95,7 @@ func parseResolution(name string) Resolution {
 func parseSource(name string) Source {
 	name = strings.ToLower(name)
 	switch {
-	case containsAny(name, "bluray", "blu-ray", "bdrip", "brrip"):
+	case containsAny(name, "bluray", "blu-ray", "bdrip", "brrip", "bdremux"):
 		return SourceBluRay
 	case containsAny(name, "web-dl", "webdl"):
 		return SourceWEBDL
@@ -216,4 +219,8 @@ func parseAudio(name string) AudioCodec {
 	}
 
 	return AudioUnknown
+}
+
+func parseRemux(name string) bool {
+	return containsAny(strings.ToLower(name), "remux", "bdremux")
 }

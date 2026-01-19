@@ -374,3 +374,29 @@ func TestParse_Audio(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_Remux(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		wantRemux  bool
+		wantSource Source
+	}{
+		{"AVC REMUX", "Movie.2024.1080p.BluRay.AVC.REMUX-GRP", true, SourceBluRay},
+		{"REMUX standalone", "Movie.2024.2160p.UHD.BluRay.REMUX.HEVC-GRP", true, SourceBluRay},
+		{"Not remux", "Movie.2024.1080p.BluRay.x264-GRP", false, SourceBluRay},
+		{"BDRemux variant", "Movie.2024.1080p.BDRemux.x264-GRP", true, SourceBluRay},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			if got.IsRemux != tt.wantRemux {
+				t.Errorf("IsRemux = %v, want %v", got.IsRemux, tt.wantRemux)
+			}
+			if got.Source != tt.wantSource {
+				t.Errorf("Source = %v, want %v", got.Source, tt.wantSource)
+			}
+		})
+	}
+}
