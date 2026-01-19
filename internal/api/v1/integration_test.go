@@ -74,3 +74,57 @@ func (e *testEnv) mockProwlarrServer() *httptest.Server {
 		_ = json.NewEncoder(w).Encode(resp)
 	}))
 }
+
+func (e *testEnv) mockSABnzbdServer() *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mode := r.URL.Query().Get("mode")
+		w.Header().Set("Content-Type", "application/json")
+
+		switch mode {
+		case "addurl":
+			// Return configured client ID
+			resp := map[string]any{
+				"status":  true,
+				"nzo_ids": []string{e.sabnzbdClientID},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+
+		case "queue":
+			// Return queue status if configured
+			slots := []map[string]any{}
+			if e.sabnzbdStatus != nil && e.sabnzbdStatus.Status != download.StatusCompleted {
+				slots = append(slots, map[string]any{
+					"nzo_id":     e.sabnzbdStatus.ID,
+					"filename":   e.sabnzbdStatus.Name,
+					"status":     "Downloading",
+					"percentage": e.sabnzbdStatus.Progress,
+					"mb":         float64(e.sabnzbdStatus.Size) / 1024 / 1024,
+				})
+			}
+			resp := map[string]any{
+				"queue": map[string]any{"slots": slots},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+
+		case "history":
+			// Return history status if configured and completed
+			slots := []map[string]any{}
+			if e.sabnzbdStatus != nil && e.sabnzbdStatus.Status == download.StatusCompleted {
+				slots = append(slots, map[string]any{
+					"nzo_id":  e.sabnzbdStatus.ID,
+					"name":    e.sabnzbdStatus.Name,
+					"status":  "Completed",
+					"storage": e.sabnzbdStatus.Path,
+					"bytes":   e.sabnzbdStatus.Size,
+				})
+			}
+			resp := map[string]any{
+				"history": map[string]any{"slots": slots},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+
+		default:
+			http.Error(w, "unknown mode", http.StatusBadRequest)
+		}
+	}))
+}
