@@ -206,6 +206,34 @@ func (c *PlexClient) RefreshLibrary(ctx context.Context, sectionKey string) erro
 	return nil
 }
 
+// PlexItem represents a media item in Plex.
+type PlexItem struct {
+	Title    string
+	Year     int
+	Type     string // movie, show
+	AddedAt  int64
+	FilePath string
+}
+
+// plexItemXML is the XML representation of a Plex item.
+type plexItemXML struct {
+	Title   string `xml:"title,attr"`
+	Year    int    `xml:"year,attr"`
+	Type    string `xml:"type,attr"`
+	AddedAt int64  `xml:"addedAt,attr"`
+	Media   []struct {
+		Part []struct {
+			File string `xml:"file,attr"`
+		} `xml:"Part"`
+	} `xml:"Media"`
+}
+
+// libraryItemsResponse is the XML response from /library/sections/{key}/all.
+type libraryItemsResponse struct {
+	XMLName xml.Name      `xml:"MediaContainer"`
+	Items   []plexItemXML `xml:"Video"`
+}
+
 // GetLibraryCount returns the number of items in a library section.
 func (c *PlexClient) GetLibraryCount(ctx context.Context, sectionKey string) (int, error) {
 	// Use X-Plex-Container-Size=0 to get just the count without items
@@ -234,4 +262,48 @@ func (c *PlexClient) GetLibraryCount(ctx context.Context, sectionKey string) (in
 	}
 
 	return result.Size, nil
+}
+
+// ListLibraryItems returns all items in a library section.
+func (c *PlexClient) ListLibraryItems(ctx context.Context, sectionKey string) ([]PlexItem, error) {
+	reqURL := fmt.Sprintf("%s/library/sections/%s/all", c.baseURL, sectionKey)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("X-Plex-Token", c.token)
+	req.Header.Set("Accept", "application/xml")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	var result libraryItemsResponse
+	if err := xml.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	items := make([]PlexItem, len(result.Items))
+	for i, item := range result.Items {
+		filePath := ""
+		if len(item.Media) > 0 && len(item.Media[0].Part) > 0 {
+			filePath = item.Media[0].Part[0].File
+		}
+		items[i] = PlexItem{
+			Title:    item.Title,
+			Year:     item.Year,
+			Type:     item.Type,
+			AddedAt:  item.AddedAt,
+			FilePath: filePath,
+		}
+	}
+
+	return items, nil
 }
