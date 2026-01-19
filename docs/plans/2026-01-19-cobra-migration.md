@@ -2,6 +2,8 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+**Status:** ✅ Complete (2026-01-19)
+
 **Goal:** Migrate arrgo CLI from manual flag parsing to Cobra framework for robust flag handling.
 
 **Architecture:** File-per-command structure with persistent global flags on root. Each command file registers itself via init().
