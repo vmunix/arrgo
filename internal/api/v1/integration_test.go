@@ -29,6 +29,9 @@ type testEnv struct {
 	// Database
 	db *sql.DB
 
+	// Components for direct access in tests
+	manager *download.Manager
+
 	// Mock response configuration
 	prowlarrReleases []search.ProwlarrRelease
 	sabnzbdClientID  string
@@ -170,6 +173,7 @@ func setupIntegrationTest(t *testing.T) *testEnv {
 	// Create download store and manager
 	downloadStore := download.NewStore(db)
 	manager := download.NewManager(sabnzbdClient, downloadStore)
+	env.manager = manager
 
 	// Create API server
 	cfg := Config{
@@ -357,5 +361,33 @@ func TestIntegration_SearchAndGrab(t *testing.T) {
 	}
 	if dl.ReleaseName != "The.Matrix.1999.1080p.BluRay.x264" {
 		t.Errorf("release_name = %q, want The.Matrix.1999.1080p.BluRay.x264", dl.ReleaseName)
+	}
+}
+
+func TestIntegration_DownloadComplete(t *testing.T) {
+	env := setupIntegrationTest(t)
+
+	// 1. Seed DB with content + download record
+	contentID := insertTestContent(t, env.db, "movie", "The Matrix", 1999)
+	_ = insertTestDownload(t, env.db, contentID, "SABnzbd_nzo_xyz789", "queued")
+
+	// 2. Configure SABnzbd mock to report "completed"
+	env.sabnzbdStatus = &download.ClientStatus{
+		ID:     "SABnzbd_nzo_xyz789",
+		Name:   "The.Matrix.1999.1080p.BluRay",
+		Status: download.StatusCompleted,
+		Path:   "/downloads/complete/The.Matrix.1999.1080p.BluRay",
+	}
+
+	// 3. Trigger status refresh
+	ctx := t.Context()
+	if err := env.manager.Refresh(ctx); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+
+	// 4. Verify DB: download status updated to completed
+	dl := queryDownload(t, env.db, contentID)
+	if dl.Status != download.StatusCompleted {
+		t.Errorf("status = %q, want completed", dl.Status)
 	}
 }
