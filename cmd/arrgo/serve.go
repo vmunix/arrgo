@@ -118,7 +118,7 @@ func runServe(configPath string) error {
 	}
 	var indexerPool *search.IndexerPool
 	if len(newznabClients) > 0 {
-		indexerPool = search.NewIndexerPool(newznabClients)
+		indexerPool = search.NewIndexerPool(newznabClients, logger.With("component", "indexerpool"))
 	}
 
 	var plexClient *importer.PlexClient
@@ -142,7 +142,7 @@ func runServe(configPath string) error {
 			profiles[name] = p.Accept
 		}
 		scorer := search.NewScorer(profiles)
-		searcher = search.NewSearcher(indexerPool, scorer)
+		searcher = search.NewSearcher(indexerPool, scorer, logger.With("component", "search"))
 	}
 
 	// Create importer
