@@ -262,3 +262,29 @@ type plexSearchResponse struct {
 	Items []plexItemResponse `json:"items"`
 	Total int                `json:"total"`
 }
+
+// DashboardResponse is the response for GET /dashboard with aggregated stats.
+type DashboardResponse struct {
+	Version     string `json:"version"`
+	Connections struct {
+		Server  bool `json:"server"`
+		Plex    bool `json:"plex"`
+		SABnzbd bool `json:"sabnzbd"`
+	} `json:"connections"`
+	Downloads struct {
+		Queued      int `json:"queued"`
+		Downloading int `json:"downloading"`
+		Completed   int `json:"completed"`
+		Imported    int `json:"imported"`
+		Cleaned     int `json:"cleaned"`
+		Failed      int `json:"failed"`
+	} `json:"downloads"`
+	Stuck struct {
+		Count     int   `json:"count"`
+		Threshold int64 `json:"threshold_minutes"`
+	} `json:"stuck"`
+	Library struct {
+		Movies int `json:"movies"`
+		Series int `json:"series"`
+	} `json:"library"`
+}
