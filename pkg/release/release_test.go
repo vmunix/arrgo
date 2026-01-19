@@ -424,3 +424,29 @@ func TestParse_Edition(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_Service(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantService string
+	}{
+		{"Netflix", "Movie.2024.1080p.NF.WEB-DL.x264-GRP", "Netflix"},
+		{"Amazon", "Movie.2024.1080p.AMZN.WEB-DL.x264-GRP", "Amazon"},
+		{"Disney+", "Movie.2024.2160p.DSNP.WEB-DL.x265-GRP", "Disney+"},
+		{"AppleTV+", "Movie.2024.2160p.ATVP.WEB-DL.x265-GRP", "Apple TV+"},
+		{"HBO Max", "Movie.2024.1080p.HMAX.WEB-DL.x264-GRP", "HBO Max"},
+		{"Peacock", "Movie.2024.1080p.PCOK.WEB-DL.x264-GRP", "Peacock"},
+		{"Hulu", "Movie.2024.1080p.HULU.WEB-DL.x264-GRP", "Hulu"},
+		{"No service", "Movie.2024.1080p.WEB-DL.x264-GRP", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			if got.Service != tt.wantService {
+				t.Errorf("Service = %q, want %q", got.Service, tt.wantService)
+			}
+		})
+	}
+}

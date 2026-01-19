@@ -16,6 +16,29 @@ var (
 	editionRegex     = regexp.MustCompile(`(?i)\b(Directors?[\s.]?Cut|Extended|IMAX|Theatrical[\s.]?Cut?|Unrated|Uncut|Remastered|Anniversary|Criterion|Special[\s.]?Edition)\b`)
 )
 
+// serviceMap maps streaming service codes to their full names.
+var serviceMap = map[string]string{
+	"nf":        "Netflix",
+	"netflix":   "Netflix",
+	"amzn":      "Amazon",
+	"amazon":    "Amazon",
+	"dsnp":      "Disney+",
+	"disney":    "Disney+",
+	"atvp":      "Apple TV+",
+	"aptv":      "Apple TV+",
+	"hmax":      "HBO Max",
+	"hbo":       "HBO Max",
+	"pcok":      "Peacock",
+	"peacock":   "Peacock",
+	"hulu":      "Hulu",
+	"pmtp":      "Paramount+",
+	"paramount": "Paramount+",
+	"stan":      "Stan",
+	"crav":      "Crave",
+	"now":       "NOW",
+	"it":        "iT",
+}
+
 // Parse extracts information from a release name.
 func Parse(name string) *Info {
 	info := &Info{}
@@ -44,6 +67,9 @@ func Parse(name string) *Info {
 
 	// Edition
 	info.Edition = parseEdition(normalized)
+
+	// Service - use original name (not normalized) for exact delimiter matching
+	info.Service = parseService(name)
 
 	// Flags
 	info.Proper = containsAny(normalized, "proper")
@@ -261,4 +287,19 @@ func parseEdition(name string) string {
 	default:
 		return match
 	}
+}
+
+// parseService detects streaming service from release name.
+// Uses original name (not normalized) to match exact delimiters like ".NF." to avoid false positives.
+func parseService(name string) string {
+	lower := strings.ToLower(name)
+	for code, service := range serviceMap {
+		// Match as whole word with delimiters
+		if strings.Contains(lower, "."+code+".") ||
+			strings.Contains(lower, " "+code+" ") ||
+			strings.HasPrefix(lower, code+".") {
+			return service
+		}
+	}
+	return ""
 }
