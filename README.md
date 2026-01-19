@@ -84,6 +84,53 @@ arrgo chat               # Interactive conversation
 arrgo ask "why stuck?"   # One-shot question
 ```
 
+## Development Setup
+
+### Requirements
+
+- **Go 1.25+** — [golang.org/dl](https://golang.org/dl/)
+
+### Optional Tools
+
+```bash
+# Task runner (recommended)
+go install github.com/go-task/task/v3/cmd/task@latest
+
+# Linting (Arch Linux)
+sudo pacman -S golangci-lint
+# Or via Go:
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+# Live reload for development
+go install github.com/air-verse/air@latest
+
+# Mock generation for tests
+go install go.uber.org/mock/mockgen@latest
+
+# Import formatting (used by task fmt)
+go install golang.org/x/tools/cmd/goimports@latest
+```
+
+Ensure `~/go/bin` is in your PATH:
+```bash
+export PATH="$PATH:$HOME/go/bin"
+```
+
+### Build & Test
+
+```bash
+# Using Task (recommended)
+task build        # Build both binaries
+task test         # Run tests
+task lint         # Run linter
+task check        # fmt + lint + test
+task dev          # Live reload server
+
+# Or directly with Go
+go build ./cmd/...
+go test ./...
+```
+
 ## Architecture
 
 ```
