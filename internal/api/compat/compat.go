@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/arrgo/arrgo/internal/download"
 	"github.com/arrgo/arrgo/internal/library"
@@ -371,14 +372,38 @@ func (s *Server) listQueue(w http.ResponseWriter, r *http.Request) {
 
 	records := make([]map[string]any, 0, len(downloads))
 	for _, dl := range downloads {
-		records = append(records, map[string]any{
+		record := map[string]any{
 			"id":                    dl.ID,
 			"movieId":               dl.ContentID,
 			"title":                 dl.ReleaseName,
 			"status":                string(dl.Status),
 			"trackedDownloadStatus": "ok",
 			"indexer":               dl.Indexer,
-		})
+		}
+
+		// Fetch live progress from download client if available
+		if s.manager != nil {
+			if clientStatus, err := s.manager.Client().Status(r.Context(), dl.ClientID); err == nil && clientStatus != nil {
+				record["size"] = clientStatus.Size
+				record["sizeleft"] = int64(float64(clientStatus.Size) * (100 - clientStatus.Progress) / 100)
+				record["status"] = string(clientStatus.Status)
+
+				// Format timeleft as HH:MM:SS
+				if clientStatus.ETA > 0 {
+					eta := clientStatus.ETA
+					hours := int(eta.Hours())
+					minutes := int(eta.Minutes()) % 60
+					seconds := int(eta.Seconds()) % 60
+					record["timeleft"] = fmt.Sprintf("%02d:%02d:%02d", hours, minutes, seconds)
+					record["estimatedCompletionTime"] = time.Now().Add(eta).UTC().Format(time.RFC3339)
+				} else {
+					record["timeleft"] = "00:00:00"
+					record["estimatedCompletionTime"] = time.Now().UTC().Format(time.RFC3339)
+				}
+			}
+		}
+
+		records = append(records, record)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
