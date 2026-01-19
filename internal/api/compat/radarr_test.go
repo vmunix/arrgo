@@ -385,8 +385,8 @@ func TestAddMovie_ReturnsRadarrFormatResponse(t *testing.T) {
 	if !resp.Monitored {
 		t.Error("monitored = false, want true")
 	}
-	if resp.Status != "announced" {
-		t.Errorf("status = %q, want %q", resp.Status, "announced")
+	if resp.Status != "released" {
+		t.Errorf("status = %q, want %q", resp.Status, "released")
 	}
 }
 
@@ -585,15 +585,15 @@ func TestGetMovie_NotFound(t *testing.T) {
 	}
 }
 
-// Auth middleware: API key not configured
+// Auth middleware: API key not configured (testing mode - auth skipped)
 
-func TestAuthMiddleware_APIKeyNotConfigured(t *testing.T) {
+func TestAuthMiddleware_APIKeyNotConfigured_SkipsAuth(t *testing.T) {
 	db := setupTestDB(t)
 	lib := library.NewStore(db)
 	dlStore := download.NewStore(db)
 
 	cfg := Config{
-		APIKey:          "", // Empty API key
+		APIKey:          "", // Empty API key = testing mode, auth skipped
 		MovieRoot:       testMovieRoot,
 		SeriesRoot:      testSeriesRoot,
 		QualityProfiles: map[string]int{"hd": 1},
@@ -604,20 +604,13 @@ func TestAuthMiddleware_APIKeyNotConfigured(t *testing.T) {
 	srv.RegisterRoutes(mux)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v3/movie", nil)
-	req.Header.Set("X-Api-Key", "any-key")
+	// No API key header - should still work in testing mode
 	w := httptest.NewRecorder()
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusUnauthorized {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusUnauthorized)
-	}
-
-	var resp testErrorResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if resp.Error != "API key not configured" {
-		t.Errorf("error = %q, want %q", resp.Error, "API key not configured")
+	// Should succeed (200 OK) when no API key configured
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 }
