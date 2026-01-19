@@ -3,8 +3,10 @@ package importer
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -211,5 +213,57 @@ func TestPlexClient_GetLibraryCount(t *testing.T) {
 	}
 	if count != 42 {
 		t.Errorf("count: got %d, want 42", count)
+	}
+}
+
+func TestPlexClient_HasMovie(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/search" && strings.Contains(r.URL.RawQuery, "Test+Movie") {
+			w.Header().Set("Content-Type", "application/xml")
+			fmt.Fprint(w, `<?xml version="1.0"?>
+<MediaContainer>
+  <Video title="Test Movie" year="2024" type="movie"/>
+</MediaContainer>`)
+			return
+		}
+		// Return empty result for non-matching queries
+		if r.URL.Path == "/search" {
+			w.Header().Set("Content-Type", "application/xml")
+			fmt.Fprint(w, `<?xml version="1.0"?>
+<MediaContainer>
+</MediaContainer>`)
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer server.Close()
+
+	client := NewPlexClient(server.URL, "test-token")
+
+	// Should find movie
+	found, err := client.HasMovie(context.Background(), "Test Movie", 2024)
+	if err != nil {
+		t.Fatalf("HasMovie: %v", err)
+	}
+	if !found {
+		t.Error("should find Test Movie (2024)")
+	}
+
+	// Should not find with wrong year
+	found, err = client.HasMovie(context.Background(), "Test Movie", 2023)
+	if err != nil {
+		t.Fatalf("HasMovie: %v", err)
+	}
+	if found {
+		t.Error("should not find Test Movie (2023)")
+	}
+
+	// Should not find non-existent movie
+	found, err = client.HasMovie(context.Background(), "Nonexistent", 2024)
+	if err != nil {
+		t.Fatalf("HasMovie: %v", err)
+	}
+	if found {
+		t.Error("should not find Nonexistent")
 	}
 }
