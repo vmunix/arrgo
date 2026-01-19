@@ -668,3 +668,83 @@ func TestStore_Transition(t *testing.T) {
 		t.Error("should reject invalid transition downloading->cleaned")
 	}
 }
+
+func TestStore_ListStuck(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	// Create content records for foreign key constraints
+	contentID1 := insertTestContent(t, db, "Stuck Movie")
+	contentID2 := insertTestContent(t, db, "Recent Movie")
+	contentID3 := insertTestContent(t, db, "Downloading Movie")
+
+	// Add downloads with old timestamps
+	oldTime := time.Now().Add(-2 * time.Hour)
+
+	// Stuck in queued (> 1 hour)
+	d1 := &Download{
+		ContentID:   contentID1,
+		Client:      ClientManual,
+		ClientID:    "stuck-queued",
+		Status:      StatusQueued,
+		ReleaseName: "Stuck.Queued",
+		Indexer:     "manual",
+	}
+	if err := store.Add(d1); err != nil {
+		t.Fatalf("Add d1: %v", err)
+	}
+	// Manually set old timestamp
+	if _, err := db.Exec("UPDATE downloads SET last_transition_at = ? WHERE id = ?", oldTime, d1.ID); err != nil {
+		t.Fatalf("update d1 timestamp: %v", err)
+	}
+
+	// Not stuck - recently added
+	d2 := &Download{
+		ContentID:   contentID2,
+		Client:      ClientManual,
+		ClientID:    "recent-queued",
+		Status:      StatusQueued,
+		ReleaseName: "Recent.Queued",
+		Indexer:     "manual",
+	}
+	if err := store.Add(d2); err != nil {
+		t.Fatalf("Add d2: %v", err)
+	}
+
+	// Stuck in downloading (> 24 hours would be stuck, but 2 hours is not)
+	d3 := &Download{
+		ContentID:   contentID3,
+		Client:      ClientManual,
+		ClientID:    "downloading",
+		Status:      StatusDownloading,
+		ReleaseName: "Downloading",
+		Indexer:     "manual",
+	}
+	if err := store.Add(d3); err != nil {
+		t.Fatalf("Add d3: %v", err)
+	}
+	if _, err := db.Exec("UPDATE downloads SET status = 'downloading', last_transition_at = ? WHERE id = ?", oldTime, d3.ID); err != nil {
+		t.Fatalf("update d3 timestamp: %v", err)
+	}
+
+	thresholds := map[Status]time.Duration{
+		StatusQueued:      1 * time.Hour,
+		StatusDownloading: 24 * time.Hour,
+		StatusCompleted:   1 * time.Hour,
+		StatusImported:    24 * time.Hour,
+	}
+
+	stuck, err := store.ListStuck(thresholds)
+	if err != nil {
+		t.Fatalf("ListStuck: %v", err)
+	}
+
+	// Only d1 should be stuck (queued for > 1 hour)
+	// d2 is recent, d3 is downloading but only 2 hours (threshold is 24)
+	if len(stuck) != 1 {
+		t.Fatalf("got %d stuck, want 1", len(stuck))
+	}
+	if stuck[0].ID != d1.ID {
+		t.Errorf("stuck[0].ID = %d, want %d", stuck[0].ID, d1.ID)
+	}
+}
