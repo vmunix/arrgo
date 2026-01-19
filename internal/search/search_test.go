@@ -3,6 +3,7 @@ package search
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"testing"
 	"time"
@@ -12,7 +13,7 @@ import (
 
 // testLogger returns a discard logger for tests.
 func testLogger() *slog.Logger {
-	return slog.New(slog.DiscardHandler)
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
 // mockIndexerAPI implements IndexerAPI for testing.
