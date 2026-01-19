@@ -27,6 +27,7 @@ const (
 	StatusCompleted   Status = "completed"
 	StatusFailed      Status = "failed"
 	StatusImported    Status = "imported"
+	StatusCleaned     Status = "cleaned"
 )
 
 // Download represents an active or recent download.
