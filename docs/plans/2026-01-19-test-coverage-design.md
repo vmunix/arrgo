@@ -1,7 +1,7 @@
 # Test Coverage Improvements Design
 
 **Date:** 2026-01-19
-**Status:** Draft
+**Status:** ✅ Complete (2026-01-19)
 **Author:** Mark + Claude
 
 ## Overview
@@ -486,14 +486,21 @@ Cases to curate from our 1824-release corpus:
 
 ## Success Criteria
 
-| Package | Current | Target |
-|---------|---------|--------|
-| cmd/arrgo | 0% | 40%+ |
-| internal/api/compat | 0% | 50%+ |
-| pkg/release | 89% | 92%+ |
+| Package | Before | Target | Actual |
+|---------|--------|--------|--------|
+| cmd/arrgo | 0% | 40%+ | 16% |
+| internal/api/compat | 0% | 50%+ | **60.4%** ✅ |
+| pkg/release | 89% | 92%+ | 89.2% |
 
 Golden tests catch parser bugs with clear failure messages.
 Snapshot tests catch unintended parser changes.
+
+**Notes:**
+- cmd/arrgo: 16% covers Client HTTP methods and helper functions. Higher coverage requires subprocess testing (deferred to post-v1).
+- internal/api/compat: Exceeds target with comprehensive endpoint coverage.
+- pkg/release: 118 golden test cases provide strong regression protection beyond raw coverage number.
+
+**Follow-up issues:** #8, #9, #10
 
 ## References
 
