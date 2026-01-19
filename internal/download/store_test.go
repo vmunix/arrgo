@@ -556,3 +556,65 @@ func TestStore_List_FilterByEpisodeID(t *testing.T) {
 		t.Errorf("EpisodeID = %v, want %d", results[0].EpisodeID, ep1ID)
 	}
 }
+
+func TestStore_LastTransitionAt(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+	contentID := insertTestContent(t, db, "Fight Club")
+
+	// Add a download
+	d := &Download{
+		ContentID:   contentID,
+		Client:      ClientManual,
+		ClientID:    "test-123",
+		Status:      StatusQueued,
+		ReleaseName: "Test.Release",
+		Indexer:     "manual",
+	}
+
+	before := time.Now()
+	if err := store.Add(d); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	after := time.Now()
+
+	// LastTransitionAt should be set on Add
+	if d.LastTransitionAt.IsZero() {
+		t.Error("LastTransitionAt should be set after Add")
+	}
+
+	// Verify it's within expected time range
+	if d.LastTransitionAt.Before(before) || d.LastTransitionAt.After(after) {
+		t.Errorf("LastTransitionAt %v not in expected range [%v, %v]", d.LastTransitionAt, before, after)
+	}
+
+	// Retrieve and verify via Get
+	got, err := store.Get(d.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.LastTransitionAt.IsZero() {
+		t.Error("LastTransitionAt should be set after Get")
+	}
+
+	// Retrieve and verify via GetByClientID
+	gotByClient, err := store.GetByClientID(ClientManual, "test-123")
+	if err != nil {
+		t.Fatalf("GetByClientID: %v", err)
+	}
+	if gotByClient.LastTransitionAt.IsZero() {
+		t.Error("LastTransitionAt should be set after GetByClientID")
+	}
+
+	// Retrieve and verify via List
+	downloads, err := store.List(DownloadFilter{})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(downloads) != 1 {
+		t.Fatalf("expected 1 download, got %d", len(downloads))
+	}
+	if downloads[0].LastTransitionAt.IsZero() {
+		t.Error("LastTransitionAt should be set in List results")
+	}
+}

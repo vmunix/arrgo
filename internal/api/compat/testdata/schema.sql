@@ -58,11 +58,12 @@ CREATE TABLE IF NOT EXISTS downloads (
     episode_id      INTEGER REFERENCES episodes(id) ON DELETE CASCADE,
     client          TEXT NOT NULL CHECK (client IN ('sabnzbd', 'qbittorrent', 'manual')),
     client_id       TEXT NOT NULL,
-    status          TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'downloading', 'completed', 'failed', 'imported')),
+    status          TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'downloading', 'completed', 'failed', 'imported', 'cleaned')),
     release_name    TEXT,
     indexer         TEXT,
     added_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    completed_at    TIMESTAMP
+    completed_at    TIMESTAMP,
+    last_transition_at TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_downloads_content ON downloads(content_id);
