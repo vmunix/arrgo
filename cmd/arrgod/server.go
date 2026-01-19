@@ -101,6 +101,15 @@ func runServer(configPath string) error {
 	downloadStore := download.NewStore(db)
 	historyStore := importer.NewHistoryStore(db)
 
+	// Log all state transitions
+	downloadStore.OnTransition(func(e download.TransitionEvent) {
+		logger.Info("download status changed",
+			"download_id", e.DownloadID,
+			"from", e.From,
+			"to", e.To,
+		)
+	})
+
 	// === Clients (optional - nil if not configured) ===
 	var sabClient *download.SABnzbdClient
 	if cfg.Downloaders.SABnzbd != nil {
