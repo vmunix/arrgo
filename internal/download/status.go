@@ -1,5 +1,18 @@
 package download
 
+import "time"
+
+// TransitionEvent is emitted when a download changes state.
+type TransitionEvent struct {
+	DownloadID int64
+	From       Status
+	To         Status
+	At         time.Time
+}
+
+// TransitionHandler processes state transition events.
+type TransitionHandler func(event TransitionEvent)
+
 // validTransitions defines allowed state transitions.
 // Key is the "from" status, value is list of valid "to" statuses.
 var validTransitions = map[Status][]Status{
