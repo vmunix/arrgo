@@ -12,6 +12,12 @@ func TestValidate_MinimalValid(t *testing.T) {
 		Libraries: LibrariesConfig{
 			Movies: LibraryConfig{Root: "/tmp"},
 		},
+		Indexers: IndexersConfig{
+			"nzbgeek": &NewznabConfig{
+				URL:    "https://api.nzbgeek.info",
+				APIKey: "test-key",
+			},
+		},
 	}
 	errs := cfg.Validate()
 	if len(errs) != 0 {
@@ -67,22 +73,39 @@ func TestValidate_InvalidLogLevel(t *testing.T) {
 	}
 }
 
-func TestValidate_ProwlarrMissingAPIKey(t *testing.T) {
+func TestValidate_IndexerMissingAPIKey(t *testing.T) {
 	cfg := &Config{
 		Libraries: LibrariesConfig{Movies: LibraryConfig{Root: "/tmp"}},
 		Indexers: IndexersConfig{
-			Prowlarr: &ProwlarrConfig{URL: "http://localhost:9696"},
+			"nzbgeek": &NewznabConfig{URL: "https://api.nzbgeek.info"},
 		},
 	}
 	errs := cfg.Validate()
 	found := false
 	for _, e := range errs {
-		if strings.Contains(e, "prowlarr") && strings.Contains(e, "api_key") {
+		if strings.Contains(e, "nzbgeek") && strings.Contains(e, "api_key") {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("expected prowlarr api_key error, got %v", errs)
+		t.Errorf("expected indexer api_key error, got %v", errs)
+	}
+}
+
+func TestValidate_NoIndexers(t *testing.T) {
+	cfg := &Config{
+		Libraries: LibrariesConfig{Movies: LibraryConfig{Root: "/tmp"}},
+		Indexers:  IndexersConfig{},
+	}
+	errs := cfg.Validate()
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e, "at least one indexer") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected 'at least one indexer' error, got %v", errs)
 	}
 }
 

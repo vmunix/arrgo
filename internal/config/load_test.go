@@ -16,6 +16,10 @@ port = 8080
 
 [libraries.movies]
 root = "` + tmp + `"
+
+[indexers.nzbgeek]
+url = "https://api.nzbgeek.info"
+api_key = "test-key"
 `
 	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write test config: %v", err)
@@ -41,7 +45,7 @@ port = 8080
 [libraries.movies]
 root = "` + tmp + `"
 
-[indexers.prowlarr]
+[indexers.nzbgeek]
 url = "http://localhost"
 api_key = "${ARRGO_NONEXISTENT_KEY_12345}"
 `
@@ -87,6 +91,10 @@ func TestLoad_AppliesDefaults(t *testing.T) {
 	content := `
 [libraries.movies]
 root = "` + tmp + `"
+
+[indexers.nzbgeek]
+url = "https://api.nzbgeek.info"
+api_key = "test-key"
 `
 	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write test config: %v", err)
@@ -134,6 +142,10 @@ host = "${ARRGO_OPTIONAL_VAR_NONEXISTENT:-localhost}"
 
 [libraries.movies]
 root = "` + tmp + `"
+
+[indexers.nzbgeek]
+url = "https://api.nzbgeek.info"
+api_key = "test-key"
 `
 	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
 		t.Fatalf("failed to write test config: %v", err)

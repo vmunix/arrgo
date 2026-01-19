@@ -39,13 +39,16 @@ func (c *Config) Validate() []string {
 		}
 	}
 
-	// Prowlarr validation
-	if c.Indexers.Prowlarr != nil {
-		if c.Indexers.Prowlarr.URL == "" {
-			errs = append(errs, "indexers.prowlarr.url: required when prowlarr is configured")
+	// Indexers validation
+	if len(c.Indexers) == 0 {
+		errs = append(errs, "indexers: at least one indexer must be configured")
+	}
+	for name, indexer := range c.Indexers {
+		if indexer.URL == "" {
+			errs = append(errs, fmt.Sprintf("indexers.%s.url: required", name))
 		}
-		if c.Indexers.Prowlarr.APIKey == "" {
-			errs = append(errs, "indexers.prowlarr.api_key: required when prowlarr is configured")
+		if indexer.APIKey == "" {
+			errs = append(errs, fmt.Sprintf("indexers.%s.api_key: required", name))
 		}
 	}
 

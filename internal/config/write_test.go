@@ -29,7 +29,7 @@ func TestWriteDefault(t *testing.T) {
 	if !strings.Contains(string(content), "[libraries.movies]") {
 		t.Error("expected [libraries.movies] section")
 	}
-	if !strings.Contains(string(content), "${PROWLARR_API_KEY}") {
+	if !strings.Contains(string(content), "${NZBGEEK_API_KEY}") {
 		t.Error("expected env var placeholder")
 	}
 }
