@@ -234,6 +234,29 @@ type libraryItemsResponse struct {
 	Items   []plexItemXML `xml:"Video"`
 }
 
+// RefreshLibrary triggers a full scan of a library section.
+func (c *PlexClient) RefreshLibrary(ctx context.Context, sectionKey string) error {
+	scanURL := fmt.Sprintf("%s/library/sections/%s/refresh", c.baseURL, sectionKey)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, scanURL, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("X-Plex-Token", c.token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("refresh failed with status: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
 // GetLibraryCount returns the number of items in a library section.
 func (c *PlexClient) GetLibraryCount(ctx context.Context, sectionKey string) (int, error) {
 	// Use X-Plex-Container-Size=0 to get just the count without items
@@ -286,6 +309,56 @@ func (c *PlexClient) ListLibraryItems(ctx context.Context, sectionKey string) ([
 	}
 
 	var result libraryItemsResponse
+	if err := xml.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	items := make([]PlexItem, len(result.Items))
+	for i, item := range result.Items {
+		filePath := ""
+		if len(item.Media) > 0 && len(item.Media[0].Part) > 0 {
+			filePath = item.Media[0].Part[0].File
+		}
+		items[i] = PlexItem{
+			Title:    item.Title,
+			Year:     item.Year,
+			Type:     item.Type,
+			AddedAt:  item.AddedAt,
+			FilePath: filePath,
+		}
+	}
+
+	return items, nil
+}
+
+// searchResponse is the XML response from /search.
+type searchResponse struct {
+	XMLName xml.Name      `xml:"MediaContainer"`
+	Items   []plexItemXML `xml:"Video"`
+}
+
+// Search searches for items across all libraries.
+func (c *PlexClient) Search(ctx context.Context, query string) ([]PlexItem, error) {
+	reqURL := fmt.Sprintf("%s/search?query=%s", c.baseURL, url.QueryEscape(query))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("X-Plex-Token", c.token)
+	req.Header.Set("Accept", "application/xml")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
+	}
+
+	var result searchResponse
 	if err := xml.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
