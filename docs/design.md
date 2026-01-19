@@ -38,9 +38,9 @@ arrgo is a unified media automation system written in Go, designed to replace th
 │  │ Library  │ │  Search  │ │ Download │ │     Import       │ │
 │  │ Module   │ │  Module  │ │  Module  │ │     Module       │ │
 │  │          │ │          │ │          │ │                  │ │
-│  │ -Movies  │ │ -Prowlarr│ │ -SABnzbd │ │ -File rename     │ │
-│  │ -Series  │ │ -Newznab │ │ -qBit    │ │ -Plex notify     │ │
-│  │ -Wanted  │ │  (future)│ │  (stub)  │ │ -History         │ │
+│  │ -Movies  │ │ -Newznab │ │ -SABnzbd │ │ -File rename     │ │
+│  │ -Series  │ │ -Parallel│ │ -qBit    │ │ -Plex notify     │ │
+│  │ -Wanted  │ │  search  │ │  (stub)  │ │ -History         │ │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────────────┘ │
 │  ┌──────────────────────────────────────────────────────────┐│
 │  │          SQLite  +  Background Jobs  +  AI Chat          ││
@@ -48,8 +48,8 @@ arrgo is a unified media automation system written in Go, designed to replace th
 └──────────────────────────────────────────────────────────────┘
          │              │              │              │
     ┌────▼────┐   ┌─────▼─────┐  ┌────▼────┐   ┌─────▼─────┐
-    │Prowlarr │   │  SABnzbd  │  │  Plex   │   │  Ollama/  │
-    │         │   │           │  │         │   │  Claude   │
+    │ NZBgeek │   │  SABnzbd  │  │  Plex   │   │  Ollama/  │
+    │ et al.  │   │           │  │         │   │  Claude   │
     └─────────┘   └───────────┘  └─────────┘   └───────────┘
 ```
 
@@ -62,9 +62,9 @@ arrgo is a unified media automation system written in Go, designed to replace th
 - Plex owns rich metadata and browsing
 
 **Search Module**
-- Queries indexers for releases
-- Initially via Prowlarr API
-- Future: direct Newznab/Torznab support
+- Queries indexers for releases via direct Newznab protocol
+- Parallel search across multiple indexers (IndexerPool)
+- Partial failure tolerance — returns results from working indexers
 - Parses release names, scores against quality profiles
 
 **Download Module**
@@ -187,9 +187,14 @@ accept = ["1080p bluray", "1080p webdl", "1080p hdtv", "720p bluray"]
 [quality.profiles.uhd]
 accept = ["2160p bluray", "2160p webdl", "1080p bluray"]
 
-[indexers.prowlarr]
-url = "http://localhost:9696"
-api_key = "${PROWLARR_API_KEY}"
+# Named indexers (add as many as needed)
+[indexers.nzbgeek]
+url = "https://api.nzbgeek.info"
+api_key = "${NZBGEEK_API_KEY}"
+
+[indexers.drunkenslug]
+url = "https://api.drunkenslug.com"
+api_key = "${DRUNKENSLUG_API_KEY}"
 
 [downloaders.sabnzbd]
 url = "http://localhost:8085"
@@ -306,7 +311,7 @@ Overseerr                     arrgo                          External
     │◄── 201 Created ───────────┤                               │
     │                           │                               │
     ├── POST /api/v3/command ──►│                               │
-    │   {name: "MoviesSearch"}  ├── Query Prowlarr ────────────►│
+    │   {name: "MoviesSearch"}  ├── Query indexers (parallel) ─►│
     │                           │◄── releases[] ────────────────┤
     │                           ├── Score & pick best           │
     │                           ├── Send NZB to SABnzbd ───────►│
@@ -404,7 +409,7 @@ arrgo/
 │   ├── ai/                      # LLM integration
 │   └── config/                  # Configuration loading
 ├── pkg/
-│   ├── newznab/                 # Newznab client (future)
+│   ├── newznab/                 # Newznab protocol client
 │   └── release/                 # Release name parsing
 ├── migrations/                  # SQLite schema
 ├── docs/
@@ -495,9 +500,9 @@ Movies and series are conceptually similar — tracked content with wanted/avail
 - Popular in Go ecosystem
 - First-class comments
 
-### Why Prowlarr initially?
+### Why direct Newznab instead of Prowlarr?
 
-Prowlarr handles indexer quirks (auth, rate limits, response parsing). Building direct Newznab/Torznab is scope creep for v1. Abstraction layer allows replacing later.
+We initially planned to use Prowlarr, but discovered its internal search API doesn't reliably return usenet results. Radarr/Sonarr actually bypass Prowlarr's API and call each indexer's Newznab endpoint directly. Since our goal is to eliminate dependencies, we implemented direct Newznab support from the start. The IndexerPool provides parallel search across multiple indexers with graceful partial failure handling.
 
 ### Why stub torrents?
 
@@ -514,8 +519,7 @@ Usenet is simpler (download → done). Torrents have seeding lifecycle complexit
 
 ### v2 Candidates
 
-- Torrent support with seeding lifecycle
-- Direct Newznab/Torznab (drop Prowlarr dependency)
+- Torrent support with seeding lifecycle (Torznab for indexers, qBittorrent client)
 - RSS monitoring and auto-grab
 - Quality upgrades
 - Embedded web UI
@@ -535,7 +539,7 @@ When adding torrent support, key considerations:
 |-----------|-------|
 | Project setup, config, DB | Small |
 | Library module | Medium |
-| Search module (Prowlarr) | Medium |
+| Search module (Newznab) | Medium |
 | Download module (SABnzbd) | Medium |
 | Import module | Medium |
 | Native API | Medium |

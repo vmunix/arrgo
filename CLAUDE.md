@@ -15,7 +15,7 @@ arrgo/
 ├── cmd/arrgo/           # CLI entry point
 ├── internal/
 │   ├── library/         # Content tracking (movies, series, episodes)
-│   ├── search/          # Indexer queries (Prowlarr, future Newznab)
+│   ├── search/          # Indexer queries (direct Newznab)
 │   ├── download/        # Download clients (SABnzbd, future qBittorrent)
 │   ├── importer/        # File import, rename, Plex notification
 │   ├── api/
@@ -24,7 +24,7 @@ arrgo/
 │   ├── ai/              # LLM integration (Ollama, Anthropic)
 │   └── config/          # TOML configuration loading
 ├── pkg/
-│   ├── newznab/         # Newznab client (future)
+│   ├── newznab/         # Newznab protocol client
 │   └── release/         # Release name parsing
 └── migrations/          # SQLite schema migrations
 ```
@@ -84,7 +84,7 @@ golangci-lint run ./...
 
 Development config: copy `config.example.toml` to `config.toml` and set env vars:
 ```bash
-export PROWLARR_API_KEY="your-key"
+export NZBGEEK_API_KEY="your-key"
 export SABNZBD_API_KEY="your-key"
 # etc.
 ```
@@ -96,7 +96,7 @@ Or use defaults syntax in config: `${VAR:-default_value}`
 | Module | Purpose |
 |--------|---------|
 | library | Content CRUD, wanted/available status, file tracking |
-| search | Query Prowlarr/indexers, parse releases, score quality |
+| search | Query indexers via Newznab, parse releases, score quality |
 | download | Send to SABnzbd, track download status, poll completion |
 | importer | Move files, rename, update DB, notify Plex |
 | api/v1 | Native REST endpoints |
@@ -108,16 +108,15 @@ Or use defaults syntax in config: `${VAR:-default_value}`
 
 **In scope:**
 - Usenet downloads (SABnzbd)
-- Prowlarr for indexer queries
+- Direct Newznab indexer queries (NZBgeek, DrunkenSlug, etc.)
 - Manual/Overseerr-triggered searches
 - Auto-import on completion
 - Basic content tracking
 - AI chat CLI
 
 **Out of scope (v2+):**
-- Torrent support
+- Torrent support (Torznab + qBittorrent)
 - RSS/auto-grab
-- Direct Newznab (bypass Prowlarr)
 - Web UI
 
 ## Database
@@ -144,7 +143,7 @@ Native API conventions:
 
 - Unit tests for business logic (parsing, scoring, etc.)
 - Integration tests for API endpoints
-- Mock external services (Prowlarr, SABnzbd, Plex)
+- Mock external services (indexers, SABnzbd, Plex)
 
 Follow Eskil Steenberg's black-box architecture:
 1. **Black Box Interfaces**: Every module has a clean API with hidden implementation
