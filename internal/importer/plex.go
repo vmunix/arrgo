@@ -36,13 +36,11 @@ type Identity struct {
 	Version string
 }
 
-// identityResponse is the XML response from /identity.
+// identityResponse is the XML response from root endpoint.
 type identityResponse struct {
-	XMLName xml.Name `xml:"MediaContainer"`
-	Version string   `xml:"version,attr"`
-	Server  struct {
-		Name string `xml:"name,attr"`
-	} `xml:"Server"`
+	XMLName      xml.Name `xml:"MediaContainer"`
+	FriendlyName string   `xml:"friendlyName,attr"`
+	Version      string   `xml:"version,attr"`
 }
 
 // Section represents a Plex library section.
@@ -144,7 +142,7 @@ func (c *PlexClient) ScanPath(ctx context.Context, filePath string) error {
 
 // GetIdentity returns the Plex server name and version.
 func (c *PlexClient) GetIdentity(ctx context.Context) (*Identity, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/identity", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -167,7 +165,7 @@ func (c *PlexClient) GetIdentity(ctx context.Context) (*Identity, error) {
 	}
 
 	return &Identity{
-		Name:    result.Server.Name,
+		Name:    result.FriendlyName,
 		Version: result.Version,
 	}, nil
 }
