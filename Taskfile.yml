@@ -38,6 +38,11 @@ tasks:
       - go tool cover -html=coverage.out -o coverage.html
       - echo "Coverage report: coverage.html"
 
+  test:integration:
+    desc: Run integration tests
+    cmds:
+      - go test -tags=integration -v ./internal/api/v1/
+
   lint:
     desc: Run golangci-lint
     cmds:
