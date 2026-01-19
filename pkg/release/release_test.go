@@ -450,3 +450,26 @@ func TestParse_Service(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_ImprovedCodec(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantCodec Codec
+	}{
+		{"H.264 with dot", "Movie.2024.1080p.WEB-DL.H.264-GRP", CodecX264},
+		{"H.265 with dot", "Movie.2024.2160p.WEB-DL.H.265-GRP", CodecX265},
+		{"AVC", "Movie.2024.1080p.BluRay.AVC-GRP", CodecX264},
+		{"HEVC uppercase", "Movie.2024.2160p.BluRay.HEVC-GRP", CodecX265},
+		{"XviD", "Movie.2024.DVDRip.XviD-GRP", CodecUnknown}, // We don't track XviD
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			if got.Codec != tt.wantCodec {
+				t.Errorf("Codec = %v, want %v", got.Codec, tt.wantCodec)
+			}
+		})
+	}
+}
