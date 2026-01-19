@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,12 +27,56 @@ import (
 	"github.com/arrgo/arrgo/pkg/newznab"
 )
 
+func parseLogLevel(s string) slog.Level {
+	switch strings.ToLower(s) {
+	case "debug":
+		return slog.LevelDebug
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	if r.status == 200 { // Only capture first WriteHeader call
+		r.status = code
+	}
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func logRequests(next http.Handler, log *slog.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		wrapped := &statusRecorder{ResponseWriter: w, status: 200}
+		next.ServeHTTP(wrapped, r)
+		log.Info("http request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"status", wrapped.status,
+			"duration_ms", time.Since(start).Milliseconds(),
+		)
+	})
+}
+
 func runServe(configPath string) error {
 	// Load config
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
+
+	// Create logger
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: parseLogLevel(cfg.Server.LogLevel),
+	}))
 
 	// Ensure database directory exists
 	dbDir := filepath.Dir(cfg.Database.Path)
@@ -164,17 +210,20 @@ func runServe(configPath string) error {
 
 	// Start server
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
-	fmt.Printf("arrgo listening on %s\n", addr)
-	fmt.Printf("  database: %s\n", cfg.Database.Path)
-	fmt.Printf("  sabnzbd: %v\n", sabClient != nil)
-	fmt.Printf("  indexers: %d configured\n", len(cfg.Indexers))
-	fmt.Printf("  plex: %v\n", plexClient != nil)
+	logger.Info("server starting",
+		"addr", addr,
+		"database", cfg.Database.Path,
+		"sabnzbd", sabClient != nil,
+		"indexers", len(cfg.Indexers),
+		"plex", plexClient != nil,
+		"log_level", cfg.Server.LogLevel,
+	)
 
 	// Silence unused variable warnings for stores not yet wired up
 	_ = historyStore
 
 	// === HTTP Server ===
-	srv := &http.Server{Addr: addr, Handler: mux}
+	srv := &http.Server{Addr: addr, Handler: logRequests(mux, logger)}
 
 	// Start server in goroutine
 	go func() {
@@ -187,7 +236,7 @@ func runServe(configPath string) error {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-sigCh
-	fmt.Printf("\nreceived %v, shutting down...\n", sig)
+	logger.Info("received signal, shutting down", "signal", sig.String())
 
 	// Cancel background jobs (this stops the poller)
 	cancel()
@@ -200,7 +249,7 @@ func runServe(configPath string) error {
 		return fmt.Errorf("shutdown: %w", err)
 	}
 
-	fmt.Println("arrgo stopped")
+	logger.Info("server stopped")
 	return nil
 }
 
