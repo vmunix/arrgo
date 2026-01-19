@@ -16,27 +16,52 @@ import (
 // Matches: Part II, Part III, Part 2, Part 3, II, III, 2, 3 (at word boundaries)
 var sequelPattern = regexp.MustCompile(`(?i)\b(part\s+)?(II|III|IV|V|2|3|4|5)\b`)
 
+// normalizeSequelNumber converts Roman numerals to Arabic for comparison.
+func normalizeSequelNumber(s string) int {
+	s = strings.ToLower(strings.TrimSpace(s))
+	s = strings.TrimPrefix(s, "part ")
+	s = strings.TrimPrefix(s, "part")
+	s = strings.TrimSpace(s)
+	switch s {
+	case "ii", "2":
+		return 2
+	case "iii", "3":
+		return 3
+	case "iv", "4":
+		return 4
+	case "v", "5":
+		return 5
+	default:
+		return 0
+	}
+}
+
 // hasSequelMismatch returns true if the release title has sequel indicators
-// that are not present in the query. This helps rank the original film higher
-// when searching for e.g. "Back to the Future" without specifying a sequel.
+// that don't match the query. This helps rank:
+// - Original films higher when no sequel specified
+// - Correct sequel higher when sequel is specified (Part 2 matches Part II)
 func hasSequelMismatch(query, releaseTitle string) bool {
 	queryLower := strings.ToLower(query)
 	titleLower := strings.ToLower(releaseTitle)
 
 	// Find sequel indicators in release title
-	titleSequels := sequelPattern.FindAllString(titleLower, -1)
-	if len(titleSequels) == 0 {
-		return false // No sequel indicators in release
+	titleMatches := sequelPattern.FindAllString(titleLower, -1)
+	if len(titleMatches) == 0 {
+		return false // No sequel indicators in release, no mismatch
 	}
 
-	// Check if query also has sequel indicators
-	querySequels := sequelPattern.FindAllString(queryLower, -1)
-	if len(querySequels) > 0 {
-		return false // Query specifies a sequel, no mismatch
+	// Find sequel indicators in query
+	queryMatches := sequelPattern.FindAllString(queryLower, -1)
+	if len(queryMatches) == 0 {
+		return true // Query has no sequel, but release does = mismatch
 	}
 
-	// Release has sequel indicators but query doesn't
-	return true
+	// Both have sequel indicators - check if they match
+	queryNum := normalizeSequelNumber(queryMatches[0])
+	titleNum := normalizeSequelNumber(titleMatches[0])
+
+	// If numbers don't match, it's a mismatch (e.g., query "Part 2" vs release "Part III")
+	return queryNum != titleNum
 }
 
 // Release represents a search result from an indexer.
