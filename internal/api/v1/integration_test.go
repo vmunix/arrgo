@@ -188,3 +188,89 @@ func setupIntegrationTest(t *testing.T) *testEnv {
 
 	return env
 }
+
+// HTTP helpers
+
+func httpPost(t *testing.T, url string, body any) *http.Response {
+	t.Helper()
+	jsonBody, _ := json.Marshal(body)
+	resp, err := http.Post(url, "application/json", bytes.NewReader(jsonBody))
+	if err != nil {
+		t.Fatalf("httpPost: %v", err)
+	}
+	return resp
+}
+
+func httpGet(t *testing.T, url string) *http.Response {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("httpGet: %v", err)
+	}
+	return resp
+}
+
+func decodeJSON(t *testing.T, resp *http.Response, v any) {
+	t.Helper()
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err := json.Unmarshal(body, v); err != nil {
+		t.Fatalf("decode JSON: %v\nbody: %s", err, string(body))
+	}
+}
+
+// Builder helpers
+
+func mockRelease(title string, size int64, indexer string) search.ProwlarrRelease {
+	return search.ProwlarrRelease{
+		Title:       title,
+		GUID:        "guid-" + title,
+		Indexer:     indexer,
+		DownloadURL: "http://example.com/nzb/" + title,
+		Size:        size,
+		PublishDate: time.Now(),
+	}
+}
+
+// DB helpers
+
+func insertTestContent(t *testing.T, db *sql.DB, contentType, title string, year int) int64 {
+	t.Helper()
+	result, err := db.Exec(`
+		INSERT INTO content (type, title, year, status, quality_profile, root_path)
+		VALUES (?, ?, ?, 'wanted', 'hd', '/movies')`,
+		contentType, title, year,
+	)
+	if err != nil {
+		t.Fatalf("insert content: %v", err)
+	}
+	id, _ := result.LastInsertId()
+	return id
+}
+
+func insertTestDownload(t *testing.T, db *sql.DB, contentID int64, clientID, status string) int64 {
+	t.Helper()
+	result, err := db.Exec(`
+		INSERT INTO downloads (content_id, client, client_id, status, release_name, indexer, added_at)
+		VALUES (?, 'sabnzbd', ?, ?, 'Test.Release', 'TestIndexer', datetime('now'))`,
+		contentID, clientID, status,
+	)
+	if err != nil {
+		t.Fatalf("insert download: %v", err)
+	}
+	id, _ := result.LastInsertId()
+	return id
+}
+
+func queryDownload(t *testing.T, db *sql.DB, contentID int64) *download.Download {
+	t.Helper()
+	d := &download.Download{}
+	err := db.QueryRow(`
+		SELECT id, content_id, client, client_id, status, release_name, indexer
+		FROM downloads WHERE content_id = ?`, contentID,
+	).Scan(&d.ID, &d.ContentID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer)
+	if err != nil {
+		t.Fatalf("query download: %v", err)
+	}
+	return d
+}
