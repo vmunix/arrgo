@@ -12,6 +12,7 @@ var (
 	yearRegex        = regexp.MustCompile(`\b(19|20)\d{2}\b`)
 	seasonEpRegex    = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,2})`)
 	titleMarkerRegex = regexp.MustCompile(`(?i)\b(19|20)\d{2}\b|\b\d{3,4}p\b|\bS\d{1,2}E\d{1,2}\b|\b4K\b|\bUHD\b`)
+	hdrRegex         = regexp.MustCompile(`(?i)\bHDR10\+|\b(HDR10Plus|HDR10|HDR|DV|Dolby\.?Vision|HLG)\b`)
 )
 
 // Parse extracts information from a release name.
@@ -30,6 +31,9 @@ func Parse(name string) *Info {
 
 	// Codec
 	info.Codec = parseCodec(normalized)
+
+	// HDR
+	info.HDR = parseHDR(normalized)
 
 	// Flags
 	info.Proper = containsAny(normalized, "proper")
@@ -129,4 +133,35 @@ func parseTitle(name string) string {
 		return title
 	}
 	return ""
+}
+
+func parseHDR(name string) HDRFormat {
+	matches := hdrRegex.FindAllString(name, -1)
+	if len(matches) == 0 {
+		return HDRNone
+	}
+
+	// Check in priority order (most specific first)
+	// DolbyVision takes priority as DV releases often also have HDR metadata
+	for _, m := range matches {
+		lower := strings.ToLower(m)
+		switch {
+		case lower == "dv" || strings.Contains(lower, "dolby"):
+			return DolbyVision
+		}
+	}
+	for _, m := range matches {
+		lower := strings.ToLower(m)
+		switch {
+		case lower == "hdr10+" || lower == "hdr10plus":
+			return HDR10Plus
+		case lower == "hdr10":
+			return HDR10
+		case lower == "hlg":
+			return HLG
+		case lower == "hdr":
+			return HDRGeneric
+		}
+	}
+	return HDRNone
 }

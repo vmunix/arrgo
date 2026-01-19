@@ -320,3 +320,28 @@ func TestParse_Title(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_HDR(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantHDR HDRFormat
+	}{
+		{"DV only", "Movie.2024.2160p.WEB-DL.DV.H265-GRP", DolbyVision},
+		{"HDR10", "Movie.2024.2160p.BluRay.HDR10.x265-GRP", HDR10},
+		{"HDR10+", "Movie.2024.2160p.UHD.BluRay.HDR10+.x265-GRP", HDR10Plus},
+		{"DV HDR combo", "Movie.2024.2160p.WEB-DL.DV.HDR.H265-GRP", DolbyVision},
+		{"Generic HDR", "Movie.2024.2160p.BluRay.HDR.x265-GRP", HDRGeneric},
+		{"HLG", "Movie.2024.2160p.BluRay.HLG.x265-GRP", HLG},
+		{"No HDR", "Movie.2024.1080p.BluRay.x264-GRP", HDRNone},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			if got.HDR != tt.wantHDR {
+				t.Errorf("HDR = %v, want %v", got.HDR, tt.wantHDR)
+			}
+		})
+	}
+}
