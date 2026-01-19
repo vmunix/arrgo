@@ -152,6 +152,16 @@ Native API conventions:
 - Integration tests for API endpoints
 - Mock external services (indexers, SABnzbd, Plex)
 
+## GitHub Issues
+
+When code quality reviewers identify issues that aren't immediately addressed:
+- Create GitHub issues to track them
+- Use appropriate labels: `tech-debt`, `testing`, `refactor`, `bug`, `enhancement`, `docs`
+
+When creating any GitHub issue:
+- Always add relevant labels via `gh issue create --label "label-name"` or `gh issue edit N --add-label "label-name"`
+- Reference related issues/commits where applicable
+
 Follow Eskil Steenberg's black-box architecture:
 1. **Black Box Interfaces**: Every module has a clean API with hidden implementation
 2. **Replaceable Components**: Any module can be rewritten using only its interface
