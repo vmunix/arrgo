@@ -122,31 +122,31 @@ func writeConfig(cfg initConfig, path string) error {
 
 func gatherConfig() initConfig {
 	var cfg initConfig
+	reader := bufio.NewReader(os.Stdin)
 
-	cfg.ProwlarrURL = promptWithDefault("Prowlarr URL", "http://localhost:9696")
-	cfg.ProwlarrAPIKey = promptRequired("Prowlarr API Key")
+	cfg.ProwlarrURL = promptWithDefault(reader, "Prowlarr URL", "http://localhost:9696")
+	cfg.ProwlarrAPIKey = promptRequired(reader, "Prowlarr API Key")
 	fmt.Println()
 
-	cfg.SABnzbdURL = promptWithDefault("SABnzbd URL", "http://localhost:8085")
-	cfg.SABnzbdAPIKey = promptRequired("SABnzbd API Key")
-	cfg.SABnzbdCategory = promptWithDefault("SABnzbd Category", "arrgo")
+	cfg.SABnzbdURL = promptWithDefault(reader, "SABnzbd URL", "http://localhost:8085")
+	cfg.SABnzbdAPIKey = promptRequired(reader, "SABnzbd API Key")
+	cfg.SABnzbdCategory = promptWithDefault(reader, "SABnzbd Category", "arrgo")
 	fmt.Println()
 
-	cfg.MoviesPath = promptWithDefault("Movies path", "/movies")
-	cfg.SeriesPath = promptWithDefault("Series path", "/tv")
+	cfg.MoviesPath = promptWithDefault(reader, "Movies path", "/movies")
+	cfg.SeriesPath = promptWithDefault(reader, "Series path", "/tv")
 
 	return cfg
 }
 
 // promptWithDefault shows a prompt with default value in brackets.
 // Returns the user's input, or the default if input is empty.
-func promptWithDefault(label, defaultVal string) string {
+func promptWithDefault(reader *bufio.Reader, label, defaultVal string) string {
 	if defaultVal != "" {
 		fmt.Printf("%s [%s]: ", label, defaultVal)
 	} else {
 		fmt.Printf("%s: ", label)
 	}
-	reader := bufio.NewReader(os.Stdin)
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(input)
 	if input == "" {
@@ -156,8 +156,7 @@ func promptWithDefault(label, defaultVal string) string {
 }
 
 // promptRequired prompts until a non-empty value is provided.
-func promptRequired(label string) string {
-	reader := bufio.NewReader(os.Stdin)
+func promptRequired(reader *bufio.Reader, label string) string {
 	for {
 		fmt.Printf("%s: ", label)
 		input, _ := reader.ReadString('\n')
