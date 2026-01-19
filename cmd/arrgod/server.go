@@ -66,7 +66,7 @@ func logRequests(next http.Handler, log *slog.Logger) http.Handler {
 	})
 }
 
-func runServe(configPath string) error {
+func runServer(configPath string) error {
 	// Load config
 	cfg, err := config.Load(configPath)
 	if err != nil {

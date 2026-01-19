@@ -38,3 +38,4 @@ coverage.html
 
 # Vendor (if not using modules)
 /vendor/
+/arrgod

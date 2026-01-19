@@ -16,15 +16,6 @@ func main() {
 	switch os.Args[1] {
 	case "version", "-v", "--version":
 		fmt.Printf("arrgo %s\n", version)
-	case "serve":
-		configPath := "config.toml"
-		if len(os.Args) > 2 && os.Args[2] == "--config" && len(os.Args) > 3 {
-			configPath = os.Args[3]
-		}
-		if err := runServe(configPath); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
 	case "init":
 		runInit(os.Args[2:])
 	case "status":
@@ -47,25 +38,18 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println(`arrgo - unified media automation
+	fmt.Println(`arrgo - CLI client for arrgo media automation
 
 Usage:
   arrgo <command> [options]
 
-Server:
-  serve              Start API server and background jobs
-
 Setup:
   init               Interactive setup wizard
-  config check       Validate configuration
-  migrate            Run database migrations
 
 Commands:
   status             System status (health, disk, queue summary)
   search <query>     Search indexers for content
   queue              Show active downloads
-  add <type> <id>    Add content by TMDB/TVDB ID
-  grab <release-id>  Grab a specific release
 
 AI Assistant:
   chat               Interactive conversation mode
@@ -75,10 +59,11 @@ Other:
   version            Print version
   help               Show this help
 
+Server:
+  Run 'arrgod' to start the server daemon.
+
 Examples:
   arrgo init                    # Set up arrgo
-  arrgo serve                   # Start the server
   arrgo search "The Matrix"     # Search for a movie
-  arrgo chat                    # Start AI chat
-  arrgo ask "why is my download stuck?"`)
+  arrgo status                  # Check server status`)
 }
