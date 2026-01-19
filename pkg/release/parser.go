@@ -105,6 +105,9 @@ func Parse(name string) *Info {
 	// Title - extract from start up to year or quality marker
 	info.Title = parseTitle(normalized)
 
+	// Clean title for matching
+	info.CleanTitle = CleanTitle(info.Title)
+
 	return info
 }
 
