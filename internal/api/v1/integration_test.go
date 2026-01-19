@@ -48,7 +48,6 @@ type testEnv struct {
 	// Mock response configuration
 	sabnzbdClientID string
 	sabnzbdStatus   *download.ClientStatus
-	sabnzbdErr      error
 }
 
 func (e *testEnv) cleanup() {
