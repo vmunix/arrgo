@@ -177,6 +177,7 @@ func runServer(configPath string) error {
 	apiV1.SetSearcher(searcher)
 	apiV1.SetManager(downloadManager)
 	apiV1.SetPlex(plexClient)
+	apiV1.SetImporter(imp)
 	apiV1.RegisterRoutes(mux)
 
 	// Compat API (if enabled)
