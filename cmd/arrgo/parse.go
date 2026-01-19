@@ -3,13 +3,13 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/arrgo/arrgo/internal/config"
 	"github.com/arrgo/arrgo/pkg/release"
+	"github.com/spf13/cobra"
 )
 
 // ScoreBonus represents a single bonus in the score breakdown.
@@ -90,47 +90,59 @@ func (r ParseResult) toJSON() ParseResultJSON {
 	return result
 }
 
-func runParse(args []string) {
-	fs := flag.NewFlagSet("parse", flag.ExitOnError)
-	scoreProfile := fs.String("score", "", "Score against quality profile")
-	inputFile := fs.String("file", "", "Read release names from file (one per line)")
-	jsonOutput := fs.Bool("json", false, "Output as JSON")
-	configPath := fs.String("config", "config.toml", "Path to config file")
-	_ = fs.Parse(args)
+var parseCmd = &cobra.Command{
+	Use:   "parse [flags] <release-name>",
+	Short: "Parse release name (local, no server needed)",
+	Long: `Parse a release name to extract metadata.
+
+Examples:
+  arrgo parse "The.Matrix.1999.2160p.UHD.BluRay.x265-GROUP"
+  arrgo parse --score hd "Movie.2024.1080p.WEB-DL.x264-GROUP"
+  arrgo parse --file releases.txt --json`,
+	RunE: runParseCmd,
+}
+
+func init() {
+	rootCmd.AddCommand(parseCmd)
+	parseCmd.Flags().String("score", "", "Score against quality profile")
+	parseCmd.Flags().StringP("file", "f", "", "Read release names from file (one per line)")
+	parseCmd.Flags().String("config", "config.toml", "Path to config file")
+	// Note: --json is inherited from root as persistent flag
+}
+
+func runParseCmd(cmd *cobra.Command, args []string) error {
+	scoreProfile, _ := cmd.Flags().GetString("score")
+	inputFile, _ := cmd.Flags().GetString("file")
+	configPath, _ := cmd.Flags().GetString("config")
 
 	// Determine input mode
 	var releaseNames []string
-	if *inputFile != "" {
+	if inputFile != "" {
 		// Batch mode: read from file
-		names, err := readReleaseFile(*inputFile)
+		names, err := readReleaseFile(inputFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("reading file: %w", err)
 		}
 		releaseNames = names
-	} else if fs.NArg() > 0 {
+	} else if len(args) > 0 {
 		// Single release from command line
-		releaseNames = []string{fs.Arg(0)}
+		releaseNames = []string{args[0]}
 	} else {
-		fmt.Fprintf(os.Stderr, "Usage: arrgo parse <release-name> [options]\n")
-		fmt.Fprintf(os.Stderr, "       arrgo parse --file <filename> [options]\n")
-		os.Exit(1)
+		return fmt.Errorf("usage: arrgo parse <release-name> or arrgo parse --file <filename>")
 	}
 
 	// Load config if scoring is requested
 	var cfg *config.Config
-	if *scoreProfile != "" {
+	if scoreProfile != "" {
 		var err error
-		cfg, err = config.LoadWithoutValidation(*configPath)
+		cfg, err = config.LoadWithoutValidation(configPath)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("loading config: %w", err)
 		}
 		// Verify profile exists
-		if _, ok := cfg.Quality.Profiles[*scoreProfile]; !ok {
-			fmt.Fprintf(os.Stderr, "Error: profile '%s' not found in config\n", *scoreProfile)
-			fmt.Fprintf(os.Stderr, "Available profiles: %s\n", strings.Join(getProfileNames(cfg), ", "))
-			os.Exit(1)
+		if _, ok := cfg.Quality.Profiles[scoreProfile]; !ok {
+			return fmt.Errorf("profile '%s' not found. Available: %s",
+				scoreProfile, strings.Join(getProfileNames(cfg), ", "))
 		}
 	}
 
@@ -140,17 +152,17 @@ func runParse(args []string) {
 		info := release.Parse(name)
 		result := ParseResult{Info: info}
 
-		if *scoreProfile != "" && cfg != nil {
-			profile := cfg.Quality.Profiles[*scoreProfile]
-			result.Profile = *scoreProfile
+		if scoreProfile != "" && cfg != nil {
+			profile := cfg.Quality.Profiles[scoreProfile]
+			result.Profile = scoreProfile
 			result.Score, result.Breakdown = scoreWithBreakdown(*info, profile)
 		}
 
 		results = append(results, result)
 	}
 
-	// Output results
-	if *jsonOutput {
+	// Output results (use global jsonOutput from root.go)
+	if jsonOutput {
 		outputJSON(results)
 	} else {
 		for i, result := range results {
@@ -160,6 +172,7 @@ func runParse(args []string) {
 			printHumanReadable(result)
 		}
 	}
+	return nil
 }
 
 // readReleaseFile reads release names from a file, one per line.
