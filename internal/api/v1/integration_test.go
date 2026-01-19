@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arrgo/arrgo/internal/config"
 	"github.com/arrgo/arrgo/internal/download"
 	"github.com/arrgo/arrgo/internal/search"
 	_ "github.com/mattn/go-sqlite3"
@@ -160,9 +161,14 @@ func setupIntegrationTest(t *testing.T) *testEnv {
 	prowlarrClient := search.NewProwlarrClient(env.prowlarr.URL, "test-api-key")
 
 	// Create scorer with default profiles
-	profiles := map[string][]string{
-		"hd":  {"1080p bluray", "1080p webdl", "720p bluray", "720p webdl"},
-		"any": {"2160p", "1080p", "720p", "480p"},
+	profiles := map[string]config.QualityProfile{
+		"hd": {
+			Resolution: []string{"1080p", "720p"},
+			Sources:    []string{"bluray", "webdl"},
+		},
+		"any": {
+			Resolution: []string{"2160p", "1080p", "720p", "480p"},
+		},
 	}
 	scorer := search.NewScorer(profiles)
 
@@ -177,11 +183,17 @@ func setupIntegrationTest(t *testing.T) *testEnv {
 	manager := download.NewManager(sabnzbdClient, downloadStore, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	env.manager = manager
 
+	// Build quality profiles map for API (resolution names for display)
+	qualityProfileNames := make(map[string][]string)
+	for name, p := range profiles {
+		qualityProfileNames[name] = p.Resolution
+	}
+
 	// Create API server
 	cfg := Config{
 		MovieRoot:       "/movies",
 		SeriesRoot:      "/tv",
-		QualityProfiles: profiles,
+		QualityProfiles: qualityProfileNames,
 	}
 	srv := New(db, cfg)
 	srv.SetSearcher(searcher)

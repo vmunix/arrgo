@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arrgo/arrgo/internal/config"
 	"github.com/arrgo/arrgo/pkg/release"
 )
 
@@ -27,8 +28,11 @@ func (m *mockIndexerAPI) Search(ctx context.Context, q Query) ([]Release, []erro
 }
 
 func TestSearcher_Search(t *testing.T) {
-	profiles := map[string][]string{
-		"hd": {"1080p bluray", "1080p webdl", "720p bluray"},
+	profiles := map[string]config.QualityProfile{
+		"hd": {
+			Resolution: []string{"1080p", "720p"},
+			Sources:    []string{"bluray", "webdl"},
+		},
 	}
 	scorer := NewScorer(profiles)
 
@@ -57,14 +61,17 @@ func TestSearcher_Search(t *testing.T) {
 		t.Fatalf("Expected 3 releases after filtering, got %d", len(result.Releases))
 	}
 
-	// Expected order by score: 1080p bluray (3), 1080p webdl (2), 720p bluray (1)
+	// Expected order by score:
+	// 1080p bluray: base 80 + source 10 = 90
+	// 1080p webdl: base 80 + source 8 = 88
+	// 720p bluray: base 60 + source 10 = 70
 	expectedOrder := []struct {
 		guid  string
 		score int
 	}{
-		{"1", 3}, // 1080p bluray
-		{"4", 2}, // 1080p webdl
-		{"2", 1}, // 720p bluray
+		{"1", 90}, // 1080p bluray
+		{"4", 88}, // 1080p webdl
+		{"2", 70}, // 720p bluray
 	}
 
 	for i, expected := range expectedOrder {
@@ -79,8 +86,8 @@ func TestSearcher_Search(t *testing.T) {
 }
 
 func TestSearcher_Search_ParsesQualityInfo(t *testing.T) {
-	profiles := map[string][]string{
-		"any": {"1080p"},
+	profiles := map[string]config.QualityProfile{
+		"any": {Resolution: []string{"1080p"}},
 	}
 	scorer := NewScorer(profiles)
 
@@ -139,8 +146,8 @@ func TestSearcher_Search_ParsesQualityInfo(t *testing.T) {
 }
 
 func TestSearcher_Search_ClientError(t *testing.T) {
-	profiles := map[string][]string{
-		"hd": {"1080p"},
+	profiles := map[string]config.QualityProfile{
+		"hd": {Resolution: []string{"1080p"}},
 	}
 	scorer := NewScorer(profiles)
 
@@ -174,8 +181,8 @@ func TestSearcher_Search_ClientError(t *testing.T) {
 }
 
 func TestSearcher_Search_EmptyResults(t *testing.T) {
-	profiles := map[string][]string{
-		"hd": {"1080p"},
+	profiles := map[string]config.QualityProfile{
+		"hd": {Resolution: []string{"1080p"}},
 	}
 	scorer := NewScorer(profiles)
 
@@ -201,8 +208,8 @@ func TestSearcher_Search_EmptyResults(t *testing.T) {
 }
 
 func TestSearcher_Search_AllFiltered(t *testing.T) {
-	profiles := map[string][]string{
-		"hd": {"2160p"}, // Only 4K accepted
+	profiles := map[string]config.QualityProfile{
+		"hd": {Resolution: []string{"2160p"}}, // Only 4K accepted
 	}
 	scorer := NewScorer(profiles)
 
@@ -227,8 +234,8 @@ func TestSearcher_Search_AllFiltered(t *testing.T) {
 }
 
 func TestSearcher_Search_UnknownProfile(t *testing.T) {
-	profiles := map[string][]string{
-		"hd": {"1080p"},
+	profiles := map[string]config.QualityProfile{
+		"hd": {Resolution: []string{"1080p"}},
 	}
 	scorer := NewScorer(profiles)
 
@@ -253,8 +260,8 @@ func TestSearcher_Search_UnknownProfile(t *testing.T) {
 
 func TestSearcher_Search_SortStability(t *testing.T) {
 	// Test that releases with the same score maintain stable ordering
-	profiles := map[string][]string{
-		"hd": {"1080p"},
+	profiles := map[string]config.QualityProfile{
+		"hd": {Resolution: []string{"1080p"}},
 	}
 	scorer := NewScorer(profiles)
 
@@ -273,7 +280,7 @@ func TestSearcher_Search_SortStability(t *testing.T) {
 		t.Fatalf("Search returned error: %v", err)
 	}
 
-	// All have score 1 (only 1080p in profile, any source)
+	// All have score 80 (only 1080p in profile, no source preference)
 	// Should maintain original order due to stable sort
 	if len(result.Releases) != 3 {
 		t.Fatalf("Expected 3 releases, got %d", len(result.Releases))
@@ -322,8 +329,11 @@ func TestHasSequelMismatch(t *testing.T) {
 }
 
 func TestSearcher_SequelPenalty(t *testing.T) {
-	profiles := map[string][]string{
-		"hd": {"1080p webdl"},
+	profiles := map[string]config.QualityProfile{
+		"hd": {
+			Resolution: []string{"1080p"},
+			Sources:    []string{"webdl"},
+		},
 	}
 	scorer := NewScorer(profiles)
 
