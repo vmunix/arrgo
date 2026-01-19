@@ -91,6 +91,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/status", s.getStatus)
 	mux.HandleFunc("GET /api/v1/profiles", s.listProfiles)
 	mux.HandleFunc("POST /api/v1/scan", s.triggerScan)
+
+	// Plex
+	mux.HandleFunc("GET /api/v1/plex/status", s.getPlexStatus)
 }
 
 // Error response
@@ -686,4 +689,58 @@ func (s *Server) triggerScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "scan triggered"})
+}
+
+func (s *Server) getPlexStatus(w http.ResponseWriter, r *http.Request) {
+	resp := plexStatusResponse{}
+
+	if s.plex == nil {
+		resp.Error = "Plex not configured"
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
+	ctx := r.Context()
+
+	// Get identity
+	identity, err := s.plex.GetIdentity(ctx)
+	if err != nil {
+		resp.Error = fmt.Sprintf("connection failed: %v", err)
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
+	resp.Connected = true
+	resp.ServerName = identity.Name
+	resp.Version = identity.Version
+
+	// Get sections
+	sections, err := s.plex.GetSections(ctx)
+	if err != nil {
+		resp.Error = fmt.Sprintf("failed to get libraries: %v", err)
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
+	resp.Libraries = make([]plexLibrary, len(sections))
+	for i, sec := range sections {
+		location := ""
+		if len(sec.Locations) > 0 {
+			location = sec.Locations[0].Path
+		}
+
+		count, _ := s.plex.GetLibraryCount(ctx, sec.Key)
+
+		resp.Libraries[i] = plexLibrary{
+			Key:        sec.Key,
+			Title:      sec.Title,
+			Type:       sec.Type,
+			ItemCount:  count,
+			Location:   location,
+			ScannedAt:  sec.ScannedAt,
+			Refreshing: sec.Refreshing(),
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }

@@ -384,6 +384,77 @@ func TestIntegration_DownloadComplete(t *testing.T) {
 	}
 }
 
+// simpleTestEnv holds minimal components for tests that don't need full integration setup.
+type simpleTestEnv struct {
+	t      *testing.T
+	db     *sql.DB
+	server *Server
+	mux    *http.ServeMux
+}
+
+func (e *simpleTestEnv) cleanup() {
+	if e.db != nil {
+		_ = e.db.Close()
+	}
+}
+
+func newTestEnv(t *testing.T) *simpleTestEnv {
+	t.Helper()
+
+	env := &simpleTestEnv{t: t}
+	t.Cleanup(env.cleanup)
+
+	// Create in-memory database
+	db, err := sql.Open("sqlite3", ":memory:?_foreign_keys=on")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	env.db = db
+
+	// Apply schema
+	if _, err := db.Exec(testSchema); err != nil {
+		t.Fatalf("apply schema: %v", err)
+	}
+
+	// Create API server with minimal config
+	cfg := Config{
+		MovieRoot:  "/movies",
+		SeriesRoot: "/tv",
+	}
+	env.server = New(db, cfg)
+	env.mux = http.NewServeMux()
+
+	return env
+}
+
+func TestIntegration_PlexStatus_NotConfigured(t *testing.T) {
+	env := newTestEnv(t)
+	defer env.cleanup()
+
+	// Don't configure Plex client - leave it nil
+	req := httptest.NewRequest("GET", "/api/v1/plex/status", nil)
+	rr := httptest.NewRecorder()
+
+	env.server.RegisterRoutes(env.mux)
+	env.mux.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("status: got %d, want %d", rr.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if resp["connected"] != false {
+		t.Errorf("connected: got %v, want false", resp["connected"])
+	}
+	if resp["error"] != "Plex not configured" {
+		t.Errorf("error: got %v, want 'Plex not configured'", resp["error"])
+	}
+}
+
 func TestIntegration_FullHappyPath(t *testing.T) {
 	env := setupIntegrationTest(t)
 
