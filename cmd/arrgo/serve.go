@@ -132,7 +132,7 @@ func runServe(configPath string) error {
 	// === Services ===
 	var downloadManager *download.Manager
 	if sabClient != nil {
-		downloadManager = download.NewManager(sabClient, downloadStore)
+		downloadManager = download.NewManager(sabClient, downloadStore, logger.With("component", "download"))
 	}
 
 	var searcher *search.Searcher
@@ -153,14 +153,14 @@ func runServe(configPath string) error {
 		SeriesTemplate: cfg.Libraries.Series.Naming,
 		PlexURL:        plexURLFromConfig(cfg),
 		PlexToken:      plexTokenFromConfig(cfg),
-	})
+	}, logger.With("component", "importer"))
 
 	// === Background Jobs ===
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	if downloadManager != nil {
-		go runPoller(ctx, downloadManager, imp, downloadStore)
+		go runPoller(ctx, downloadManager, imp, downloadStore, logger.With("component", "poller"))
 	}
 
 	// === HTTP Setup ===
@@ -228,7 +228,7 @@ func runServe(configPath string) error {
 	// Start server in goroutine
 	go func() {
 		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-			fmt.Printf("server error: %v\n", err)
+			logger.Error("server error", "error", err)
 		}
 	}()
 
@@ -267,34 +267,34 @@ func plexTokenFromConfig(cfg *config.Config) string {
 	return ""
 }
 
-func runPoller(ctx context.Context, manager *download.Manager, imp *importer.Importer, store *download.Store) {
+func runPoller(ctx context.Context, manager *download.Manager, imp *importer.Importer, store *download.Store, log *slog.Logger) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	fmt.Println("poller: started (30s interval)")
+	log.Info("poller started", "interval", "30s")
 
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("poller: stopped")
+			log.Info("poller stopped")
 			return
 		case <-ticker.C:
-			poll(ctx, manager, imp, store)
+			poll(ctx, manager, imp, store, log)
 		}
 	}
 }
 
-func poll(ctx context.Context, manager *download.Manager, imp *importer.Importer, store *download.Store) {
+func poll(ctx context.Context, manager *download.Manager, imp *importer.Importer, store *download.Store, log *slog.Logger) {
 	// Refresh download statuses from client
 	if err := manager.Refresh(ctx); err != nil {
-		fmt.Printf("poller: refresh error: %v\n", err)
+		log.Error("refresh failed", "error", err)
 	}
 
 	// Find completed downloads
 	status := download.StatusCompleted
 	completed, err := store.List(download.DownloadFilter{Status: &status})
 	if err != nil {
-		fmt.Printf("poller: list error: %v\n", err)
+		log.Error("list failed", "error", err)
 		return
 	}
 
@@ -305,16 +305,16 @@ func poll(ctx context.Context, manager *download.Manager, imp *importer.Importer
 			continue
 		}
 
-		fmt.Printf("poller: importing download %d from %s\n", dl.ID, clientStatus.Path)
+		log.Info("importing download", "download_id", dl.ID, "path", clientStatus.Path)
 
 		if _, err := imp.Import(ctx, dl.ID, clientStatus.Path); err != nil {
-			fmt.Printf("poller: import %d failed: %v\n", dl.ID, err)
+			log.Error("import failed", "download_id", dl.ID, "error", err)
 			continue
 		}
 
 		dl.Status = download.StatusImported
 		if err := store.Update(dl); err != nil {
-			fmt.Printf("poller: update %d failed: %v\n", dl.ID, err)
+			log.Error("update failed", "download_id", dl.ID, "error", err)
 		}
 	}
 }
