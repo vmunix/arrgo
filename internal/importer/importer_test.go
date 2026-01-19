@@ -5,6 +5,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +15,11 @@ import (
 	"github.com/arrgo/arrgo/internal/download"
 	"github.com/arrgo/arrgo/internal/library"
 )
+
+// testLogger returns a discard logger for tests.
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 func setupTestImporter(t *testing.T) (*Importer, *sql.DB, string, string) {
 	t.Helper()
@@ -29,6 +36,7 @@ func setupTestImporter(t *testing.T) (*Importer, *sql.DB, string, string) {
 		plex:       nil, // No Plex in tests
 		movieRoot:  movieRoot,
 		seriesRoot: t.TempDir(),
+		log:        testLogger(),
 	}
 
 	return imp, db, downloadDir, movieRoot
