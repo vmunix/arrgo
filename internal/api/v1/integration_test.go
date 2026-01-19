@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -389,5 +390,92 @@ func TestIntegration_DownloadComplete(t *testing.T) {
 	dl := queryDownload(t, env.db, contentID)
 	if dl.Status != download.StatusCompleted {
 		t.Errorf("status = %q, want completed", dl.Status)
+	}
+}
+
+func TestIntegration_FullHappyPath(t *testing.T) {
+	env := setupIntegrationTest(t)
+
+	// Configure all mocks upfront
+	env.prowlarrReleases = []search.ProwlarrRelease{
+		mockRelease("Inception.2010.1080p.BluRay.x264", 15_000_000_000, "nzbgeek"),
+	}
+	env.sabnzbdClientID = "SABnzbd_nzo_inception"
+
+	// Phase 1: Search
+	searchResp := httpPost(t, env.api.URL+"/api/v1/search", map[string]any{
+		"query": "inception 2010",
+		"type":  "movie",
+	})
+	if searchResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(searchResp.Body)
+		t.Fatalf("search status = %d, want 200: %s", searchResp.StatusCode, body)
+	}
+
+	var searchResult searchResponse
+	decodeJSON(t, searchResp, &searchResult)
+
+	if len(searchResult.Releases) == 0 {
+		t.Fatal("expected at least one release")
+	}
+
+	// Phase 2: Add content
+	contentResp := httpPost(t, env.api.URL+"/api/v1/content", map[string]any{
+		"type":            "movie",
+		"title":           "Inception",
+		"year":            2010,
+		"quality_profile": "hd",
+	})
+	if contentResp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(contentResp.Body)
+		t.Fatalf("add content status = %d, want 201: %s", contentResp.StatusCode, body)
+	}
+
+	var content contentResponse
+	decodeJSON(t, contentResp, &content)
+
+	// Phase 3: Grab
+	grabResp := httpPost(t, env.api.URL+"/api/v1/grab", map[string]any{
+		"content_id":   content.ID,
+		"download_url": searchResult.Releases[0].DownloadURL,
+		"title":        searchResult.Releases[0].Title,
+		"indexer":      searchResult.Releases[0].Indexer,
+	})
+	if grabResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(grabResp.Body)
+		t.Fatalf("grab status = %d, want 200: %s", grabResp.StatusCode, body)
+	}
+
+	// Verify download created with queued status
+	dl := queryDownload(t, env.db, content.ID)
+	if dl.Status != download.StatusQueued {
+		t.Errorf("initial status = %q, want queued", dl.Status)
+	}
+
+	// Phase 4: Simulate download completion
+	env.sabnzbdStatus = &download.ClientStatus{
+		ID:     "SABnzbd_nzo_inception",
+		Name:   "Inception.2010.1080p.BluRay.x264",
+		Status: download.StatusCompleted,
+		Path:   "/downloads/complete/Inception.2010.1080p.BluRay.x264",
+	}
+
+	// Trigger refresh
+	ctx := t.Context()
+	if err := env.manager.Refresh(ctx); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+
+	// Verify final state: download completed
+	dl = queryDownload(t, env.db, content.ID)
+	if dl.Status != download.StatusCompleted {
+		t.Errorf("final status = %q, want completed", dl.Status)
+	}
+
+	// Verify content still exists and can be retrieved via API
+	getResp := httpGet(t, env.api.URL+"/api/v1/content/"+fmt.Sprintf("%d", content.ID))
+	if getResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(getResp.Body)
+		t.Fatalf("get content status = %d, want 200: %s", getResp.StatusCode, body)
 	}
 }
