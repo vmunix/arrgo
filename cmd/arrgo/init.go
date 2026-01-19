@@ -8,6 +8,16 @@ import (
 	"strings"
 )
 
+type initConfig struct {
+	ProwlarrURL     string
+	ProwlarrAPIKey  string
+	SABnzbdURL      string
+	SABnzbdAPIKey   string
+	SABnzbdCategory string
+	MoviesPath      string
+	SeriesPath      string
+}
+
 func runInit(args []string) {
 	fs := flag.NewFlagSet("init", flag.ExitOnError)
 	force := fs.Bool("force", false, "Overwrite existing config.toml")
@@ -24,8 +34,28 @@ func runInit(args []string) {
 	fmt.Println("arrgo setup wizard")
 	fmt.Println()
 
-	// TODO: Prompt for values and write config
-	fmt.Println("Not yet implemented")
+	cfg := gatherConfig()
+
+	// TODO: Write config file
+	_ = cfg
+}
+
+func gatherConfig() initConfig {
+	var cfg initConfig
+
+	cfg.ProwlarrURL = promptWithDefault("Prowlarr URL", "http://localhost:9696")
+	cfg.ProwlarrAPIKey = promptRequired("Prowlarr API Key")
+	fmt.Println()
+
+	cfg.SABnzbdURL = promptWithDefault("SABnzbd URL", "http://localhost:8085")
+	cfg.SABnzbdAPIKey = promptRequired("SABnzbd API Key")
+	cfg.SABnzbdCategory = promptWithDefault("SABnzbd Category", "arrgo")
+	fmt.Println()
+
+	cfg.MoviesPath = promptWithDefault("Movies path", "/movies")
+	cfg.SeriesPath = promptWithDefault("Series path", "/tv")
+
+	return cfg
 }
 
 // promptWithDefault shows a prompt with default value in brackets.
