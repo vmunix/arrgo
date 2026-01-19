@@ -26,7 +26,7 @@ costs.. the kind of thing I would intuitively say an LLM would suck at.
 
 ## Status
 
-**Early development** — not yet functional.
+**Early development** — core features working, API and CLI functional.
 
 ## Goals
 
@@ -75,13 +75,27 @@ arrgod --config FILE     # Use custom config file
 
 # CLI client
 arrgo status             # System health and queue summary
-arrgo search "Movie"     # Search indexers
+arrgo search "Movie"     # Search indexers for releases
 arrgo queue              # Show active downloads
 arrgo init               # Interactive setup wizard
+arrgo parse "Release.Name.2024.1080p.mkv"  # Parse release name locally
 
-# AI Assistant (coming soon)
-arrgo chat               # Interactive conversation
-arrgo ask "why stuck?"   # One-shot question
+# Import content
+arrgo import 42                            # Import tracked download by ID
+arrgo import --manual "/path/to/file.mkv"  # Import file with auto-parsed metadata
+arrgo import --manual "/path/to/file.mkv" --dry-run  # Preview without changes
+
+# Plex integration
+arrgo plex status        # Show Plex connection and libraries
+arrgo plex scan movies   # Trigger library scan (case-insensitive names)
+arrgo plex scan --all    # Scan all libraries
+arrgo plex list          # List all Plex libraries
+arrgo plex list movies   # List library contents with tracking status
+arrgo plex search "Matrix"  # Search Plex with tracking status
+
+# Global flags
+--json                   # Output as JSON
+--server URL             # Custom server URL (default: http://localhost:8484)
 ```
 
 ## Development Setup
