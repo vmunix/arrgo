@@ -117,9 +117,10 @@ Note: Most commands require `arrgod` running. Only `parse` works standalone.
 - Manual/Overseerr-triggered searches
 - Auto-import on completion
 - Basic content tracking
-- AI chat CLI
+- Plex integration (status, scan, list, search)
 
 **Out of scope (v2+):**
+- AI chat CLI (get core flows working first)
 - Torrent support (Torznab + qBittorrent)
 - RSS/auto-grab
 - Web UI
