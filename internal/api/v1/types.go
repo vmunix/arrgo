@@ -183,3 +183,23 @@ type listProfilesResponse struct {
 type scanRequest struct {
 	Path string `json:"path,omitempty"`
 }
+
+// plexStatusResponse is the response for GET /plex/status.
+type plexStatusResponse struct {
+	Connected  bool          `json:"connected"`
+	ServerName string        `json:"server_name,omitempty"`
+	Version    string        `json:"version,omitempty"`
+	Libraries  []plexLibrary `json:"libraries,omitempty"`
+	Error      string        `json:"error,omitempty"`
+}
+
+// plexLibrary represents a Plex library section.
+type plexLibrary struct {
+	Key        string `json:"key"`
+	Title      string `json:"title"`
+	Type       string `json:"type"`
+	ItemCount  int    `json:"item_count"`
+	Location   string `json:"location"`
+	ScannedAt  int64  `json:"scanned_at"`
+	Refreshing bool   `json:"refreshing"`
+}

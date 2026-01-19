@@ -1,6 +1,6 @@
 # arrgo
 
-**Arrgo: Unified media automation in Go. A single, coherent replacement for the \*arr stack.**
+**Arrgo: Unified media automation in Go. A single, coherent attempt at an \*arr stack.**
 
 **Disclaimer**
 

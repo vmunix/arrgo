@@ -127,6 +127,24 @@ type GrabResponse struct {
 	Status     string `json:"status"`
 }
 
+type PlexLibrary struct {
+	Key        string `json:"key"`
+	Title      string `json:"title"`
+	Type       string `json:"type"`
+	ItemCount  int    `json:"item_count"`
+	Location   string `json:"location"`
+	ScannedAt  int64  `json:"scanned_at"`
+	Refreshing bool   `json:"refreshing"`
+}
+
+type PlexStatusResponse struct {
+	Connected  bool          `json:"connected"`
+	ServerName string        `json:"server_name,omitempty"`
+	Version    string        `json:"version,omitempty"`
+	Libraries  []PlexLibrary `json:"libraries,omitempty"`
+	Error      string        `json:"error,omitempty"`
+}
+
 // API methods
 
 func (c *Client) Status() (*StatusResponse, error) {
@@ -206,6 +224,14 @@ func (c *Client) Grab(contentID int64, downloadURL, title, indexer string) (*Gra
 
 	var resp GrabResponse
 	if err := c.post("/api/v1/grab", req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) PlexStatus() (*PlexStatusResponse, error) {
+	var resp PlexStatusResponse
+	if err := c.get("/api/v1/plex/status", &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
