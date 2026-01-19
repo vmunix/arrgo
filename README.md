@@ -1,5 +1,7 @@
 # arrgo
 
+**Arrgo: Unified media automation in Go. A single, coherent replacement for the \*arr stack.**
+
 **Disclaimer**
 
 This whole thing is a learning experiment to see how well LLM agent harnesses
@@ -21,8 +23,6 @@ world battle tested against dirty, nasty, crazy human curated data. It's APIs
 are full of both deeply bizarre and subtly inconsistent expectations. Nothing
 is well specified. In other words the kind of work I avoid doing for fun at all
 costs.. the kind of thing I would intuitively say an LLM would suck at. 
-
-**Arrgo: Unified media automation in Go. A single, coherent replacement for the \*arr stack.**
 
 ## Status
 
@@ -155,7 +155,3 @@ go test ./...
 - **Plex** — Media server notifications
 - **Overseerr** — Request management (optional, via compat API)
 - **Ollama** — Local AI for chat mode (optional)
-
-## License
-
-MIT
