@@ -610,3 +610,35 @@ func TestTx_DeleteContent(t *testing.T) {
 		t.Errorf("GetContent after delete: error = %v, want ErrNotFound", err)
 	}
 }
+
+func TestStore_GetByTitleYear(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	// Add a movie
+	movie := &Content{Type: ContentTypeMovie, Title: "Back to the Future", Year: 1985, Status: StatusWanted, QualityProfile: "hd", RootPath: "/movies"}
+	if err := store.AddContent(movie); err != nil {
+		t.Fatalf("AddContent: %v", err)
+	}
+
+	// Find it
+	found, err := store.GetByTitleYear("Back to the Future", 1985)
+	if err != nil {
+		t.Fatalf("GetByTitleYear: %v", err)
+	}
+	if found == nil {
+		t.Fatal("expected to find content")
+	}
+	if found.ID != movie.ID {
+		t.Errorf("ID = %d, want %d", found.ID, movie.ID)
+	}
+
+	// Not found
+	notFound, err := store.GetByTitleYear("Nonexistent", 2000)
+	if err != nil {
+		t.Fatalf("GetByTitleYear: %v", err)
+	}
+	if notFound != nil {
+		t.Error("expected nil for nonexistent content")
+	}
+}
