@@ -618,3 +618,53 @@ func TestStore_LastTransitionAt(t *testing.T) {
 		t.Error("LastTransitionAt should be set in List results")
 	}
 }
+
+func TestStore_Transition(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+	contentID := insertTestContent(t, db, "Fight Club")
+
+	// Track events
+	var events []TransitionEvent
+	store.OnTransition(func(e TransitionEvent) {
+		events = append(events, e)
+	})
+
+	// Add a download
+	d := &Download{
+		ContentID:   contentID,
+		Client:      ClientManual,
+		ClientID:    "test-456",
+		Status:      StatusQueued,
+		ReleaseName: "Test.Release",
+		Indexer:     "manual",
+	}
+	if err := store.Add(d); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	// Valid transition
+	oldTime := d.LastTransitionAt
+	time.Sleep(10 * time.Millisecond) // Ensure time difference
+	if err := store.Transition(d, StatusDownloading); err != nil {
+		t.Fatalf("Transition: %v", err)
+	}
+
+	if d.Status != StatusDownloading {
+		t.Errorf("Status = %s, want downloading", d.Status)
+	}
+	if !d.LastTransitionAt.After(oldTime) {
+		t.Error("LastTransitionAt should be updated")
+	}
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+	if events[0].From != StatusQueued || events[0].To != StatusDownloading {
+		t.Errorf("event = %v, want queued->downloading", events[0])
+	}
+
+	// Invalid transition
+	if err := store.Transition(d, StatusCleaned); err == nil {
+		t.Error("should reject invalid transition downloading->cleaned")
+	}
+}

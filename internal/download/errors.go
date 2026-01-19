@@ -15,4 +15,7 @@ var (
 
 	// ErrNotFound is returned when a download record is not found in the database.
 	ErrNotFound = errors.New("download not found")
+
+	// ErrInvalidTransition is returned when an invalid state transition is attempted.
+	ErrInvalidTransition = errors.New("invalid state transition")
 )

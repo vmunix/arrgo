@@ -80,7 +80,13 @@ type Downloader interface {
 
 // Store persists download records.
 type Store struct {
-	db *sql.DB
+	db       *sql.DB
+	handlers []TransitionHandler
+}
+
+// OnTransition registers a handler to be called on state transitions.
+func (s *Store) OnTransition(h TransitionHandler) {
+	s.handlers = append(s.handlers, h)
 }
 
 // NewStore creates a download store.
@@ -188,6 +194,49 @@ func (s *Store) Update(d *Download) error {
 	if rows == 0 {
 		return fmt.Errorf("update download %d: %w", d.ID, ErrNotFound)
 	}
+	return nil
+}
+
+// Transition changes a download's status with validation and event emission.
+func (s *Store) Transition(d *Download, to Status) error {
+	if !d.Status.CanTransitionTo(to) {
+		return fmt.Errorf("%w: %s -> %s", ErrInvalidTransition, d.Status, to)
+	}
+
+	from := d.Status
+	now := time.Now()
+
+	result, err := s.db.Exec(`
+		UPDATE downloads SET status = ?, last_transition_at = ?
+		WHERE id = ?`,
+		to, now, d.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("update download %d: %w", d.ID, err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("transition download %d: %w", d.ID, ErrNotFound)
+	}
+
+	d.Status = to
+	d.LastTransitionAt = now
+
+	// Emit event
+	event := TransitionEvent{
+		DownloadID: d.ID,
+		From:       from,
+		To:         to,
+		At:         now,
+	}
+	for _, h := range s.handlers {
+		h(event)
+	}
+
 	return nil
 }
 
