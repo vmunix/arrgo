@@ -286,3 +286,63 @@ func TestSearcher_Search_SortStability(t *testing.T) {
 		}
 	}
 }
+
+func TestHasSequelMismatch(t *testing.T) {
+	tests := []struct {
+		query    string
+		title    string
+		mismatch bool
+	}{
+		// No sequel in either - no mismatch
+		{"Back to the Future", "Back to the Future", false},
+		// Sequel in title but not query - mismatch
+		{"Back to the Future", "Back to the Future Part II", true},
+		{"Back to the Future", "Back to the Future Part III", true},
+		{"Back to the Future", "Back to the Future 2", true},
+		{"The Matrix", "The Matrix 3", true},
+		// Sequel in both - no mismatch
+		{"Back to the Future Part II", "Back to the Future Part II", false},
+		{"Back to the Future 2", "Back to the Future Part II", false},
+		// Query has sequel, title doesn't - no mismatch (original is fine)
+		{"Back to the Future Part II", "Back to the Future", false},
+	}
+
+	for _, tc := range tests {
+		got := hasSequelMismatch(tc.query, tc.title)
+		if got != tc.mismatch {
+			t.Errorf("hasSequelMismatch(%q, %q) = %v, want %v", tc.query, tc.title, got, tc.mismatch)
+		}
+	}
+}
+
+func TestSearcher_SequelPenalty(t *testing.T) {
+	profiles := map[string][]string{
+		"hd": {"1080p webdl"},
+	}
+	scorer := NewScorer(profiles)
+
+	mockClient := &mockIndexerAPI{
+		releases: []Release{
+			{Title: "Back.to.the.Future.Part.III.1990.1080p.WEB-DL.x264", GUID: "sequel", Indexer: "test"},
+			{Title: "Back.to.the.Future.1985.1080p.WEB-DL.x264", GUID: "original", Indexer: "test"},
+		},
+	}
+
+	searcher := NewSearcher(mockClient, scorer, testLogger())
+	result, err := searcher.Search(context.Background(), Query{Text: "Back to the Future"}, "hd")
+	if err != nil {
+		t.Fatalf("Search returned error: %v", err)
+	}
+
+	if len(result.Releases) != 2 {
+		t.Fatalf("Expected 2 releases, got %d", len(result.Releases))
+	}
+
+	// Original should rank higher (first) due to sequel penalty
+	if result.Releases[0].GUID != "original" {
+		t.Errorf("Expected original first, got %s", result.Releases[0].GUID)
+	}
+	if result.Releases[1].GUID != "sequel" {
+		t.Errorf("Expected sequel second, got %s", result.Releases[1].GUID)
+	}
+}
