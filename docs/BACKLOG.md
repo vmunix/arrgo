@@ -13,6 +13,9 @@ _(Items identified by code review)_
 
 - **Unused `sabnzbdErr` field** - `integration_test.go` has `sabnzbdErr error` in testEnv but it's never used. Either use it to simulate error conditions or remove it.
 - **Ignored errors in test helpers** - `httpPost` ignores `json.Marshal` error, `decodeJSON` ignores `io.ReadAll` error, DB helpers ignore `LastInsertId` error. Consider handling for better debugging.
+- **Scoring logic duplication** - `cmd/arrgo/parse.go` duplicates functions from `internal/search/scorer.go`: `hdrMatches()`, `audioMatches()`, `matchesRejectList()`, `rejectMatchesSpecial()`, and score constants. Extract to shared package.
+- **Parse command tests missing** - `cmd/arrgo/parse.go` has no unit tests for CLI-specific functionality (file reading, JSON output, human formatting).
+- **Low-quality source detection** - Reject list supports `cam`, `ts`, `telesync`, `hdcam` but parser doesn't detect these. Would require extending `pkg/release` Source enum.
 
 ## Nice-to-Haves
 

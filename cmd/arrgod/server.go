@@ -137,11 +137,7 @@ func runServer(configPath string) error {
 
 	var searcher *search.Searcher
 	if indexerPool != nil {
-		profiles := make(map[string][]string)
-		for name, p := range cfg.Quality.Profiles {
-			profiles[name] = p.Accept
-		}
-		scorer := search.NewScorer(profiles)
+		scorer := search.NewScorer(cfg.Quality.Profiles)
 		searcher = search.NewSearcher(indexerPool, scorer, logger.With("component", "search"))
 	}
 
@@ -169,7 +165,7 @@ func runServer(configPath string) error {
 	// Build quality profiles map for API
 	profiles := make(map[string][]string)
 	for name, p := range cfg.Quality.Profiles {
-		profiles[name] = p.Accept
+		profiles[name] = p.Resolution
 	}
 
 	// Native API v1
