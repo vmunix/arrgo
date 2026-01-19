@@ -203,3 +203,27 @@ type plexLibrary struct {
 	ScannedAt  int64  `json:"scanned_at"`
 	Refreshing bool   `json:"refreshing"`
 }
+
+// importRequest is the request body for POST /import.
+type importRequest struct {
+	// For tracked imports
+	DownloadID *int64 `json:"download_id,omitempty"`
+	// For manual imports
+	Path    string `json:"path,omitempty"`
+	Title   string `json:"title,omitempty"`
+	Year    int    `json:"year,omitempty"`
+	Type    string `json:"type,omitempty"`    // "movie" or "series"
+	Quality string `json:"quality,omitempty"` // "1080p", "2160p", etc.
+	Season  *int   `json:"season,omitempty"`  // For series
+	Episode *int   `json:"episode,omitempty"` // For series
+}
+
+// importResponse is the response for POST /import.
+type importResponse struct {
+	FileID       int64  `json:"file_id"`
+	ContentID    int64  `json:"content_id"`
+	SourcePath   string `json:"source_path"`
+	DestPath     string `json:"dest_path"`
+	SizeBytes    int64  `json:"size_bytes"`
+	PlexNotified bool   `json:"plex_notified"`
+}
