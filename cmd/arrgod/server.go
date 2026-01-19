@@ -156,7 +156,7 @@ func runServer(configPath string) error {
 	defer cancel()
 
 	if downloadManager != nil {
-		go runPoller(ctx, downloadManager, imp, downloadStore, logger.With("component", "poller"))
+		go runPoller(ctx, downloadManager, imp, downloadStore, cfg.Downloaders.SABnzbd, logger.With("component", "poller"))
 	}
 
 	// === HTTP Setup ===
@@ -264,7 +264,7 @@ func plexTokenFromConfig(cfg *config.Config) string {
 	return ""
 }
 
-func runPoller(ctx context.Context, manager *download.Manager, imp *importer.Importer, store *download.Store, log *slog.Logger) {
+func runPoller(ctx context.Context, manager *download.Manager, imp *importer.Importer, store *download.Store, sabCfg *config.SABnzbdConfig, log *slog.Logger) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
@@ -276,12 +276,12 @@ func runPoller(ctx context.Context, manager *download.Manager, imp *importer.Imp
 			log.Info("poller stopped")
 			return
 		case <-ticker.C:
-			poll(ctx, manager, imp, store, log)
+			poll(ctx, manager, imp, store, sabCfg, log)
 		}
 	}
 }
 
-func poll(ctx context.Context, manager *download.Manager, imp *importer.Importer, store *download.Store, log *slog.Logger) {
+func poll(ctx context.Context, manager *download.Manager, imp *importer.Importer, store *download.Store, sabCfg *config.SABnzbdConfig, log *slog.Logger) {
 	// Refresh download statuses from client
 	if err := manager.Refresh(ctx); err != nil {
 		log.Error("refresh failed", "error", err)
@@ -302,9 +302,12 @@ func poll(ctx context.Context, manager *download.Manager, imp *importer.Importer
 			continue
 		}
 
-		log.Info("importing download", "download_id", dl.ID, "path", clientStatus.Path)
+		// Translate remote path to local path if configured
+		importPath := translatePath(clientStatus.Path, sabCfg)
 
-		if _, err := imp.Import(ctx, dl.ID, clientStatus.Path); err != nil {
+		log.Info("importing download", "download_id", dl.ID, "path", importPath)
+
+		if _, err := imp.Import(ctx, dl.ID, importPath); err != nil {
 			log.Error("import failed", "download_id", dl.ID, "error", err)
 			continue
 		}
@@ -314,4 +317,15 @@ func poll(ctx context.Context, manager *download.Manager, imp *importer.Importer
 			log.Error("update failed", "download_id", dl.ID, "error", err)
 		}
 	}
+}
+
+// translatePath converts a remote path (as seen by the download client) to a local path.
+func translatePath(path string, sabCfg *config.SABnzbdConfig) string {
+	if sabCfg == nil || sabCfg.RemotePath == "" || sabCfg.LocalPath == "" {
+		return path
+	}
+	if strings.HasPrefix(path, sabCfg.RemotePath) {
+		return sabCfg.LocalPath + path[len(sabCfg.RemotePath):]
+	}
+	return path
 }
