@@ -137,11 +137,7 @@ func runServer(configPath string) error {
 
 	var searcher *search.Searcher
 	if indexerPool != nil {
-		profiles := make(map[string][]string)
-		for name, p := range cfg.Quality.Profiles {
-			profiles[name] = p.Resolution
-		}
-		scorer := search.NewScorer(profiles)
+		scorer := search.NewScorer(cfg.Quality.Profiles)
 		searcher = search.NewSearcher(indexerPool, scorer, logger.With("component", "search"))
 	}
 
