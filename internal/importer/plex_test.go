@@ -111,3 +111,42 @@ func TestPlexClient_ConnectionError(t *testing.T) {
 		t.Error("expected connection error")
 	}
 }
+
+func TestPlexClient_GetIdentity(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/identity" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Header.Get("X-Plex-Token") != "test-token" {
+			t.Errorf("missing or wrong token")
+		}
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<MediaContainer size="0" machineIdentifier="abc123" version="1.42.2.10156">
+<Server name="velcro"/>
+</MediaContainer>`))
+	}))
+	defer server.Close()
+
+	client := NewPlexClient(server.URL, "test-token")
+	identity, err := client.GetIdentity(context.Background())
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if identity.Name != "velcro" {
+		t.Errorf("name: got %q, want %q", identity.Name, "velcro")
+	}
+	if identity.Version != "1.42.2.10156" {
+		t.Errorf("version: got %q, want %q", identity.Version, "1.42.2.10156")
+	}
+}
+
+func TestPlexClient_GetIdentity_ConnectionError(t *testing.T) {
+	client := NewPlexClient("http://localhost:1", "test-token")
+	_, err := client.GetIdentity(context.Background())
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
