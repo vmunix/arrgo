@@ -158,7 +158,7 @@ func runServer(configPath string) error {
 	defer cancel()
 
 	if downloadManager != nil {
-		go runPoller(ctx, downloadManager, imp, downloadStore, cfg.Downloaders.SABnzbd, logger.With("component", "poller"))
+		go runPoller(ctx, downloadManager, imp, downloadStore, cfg.Downloaders.SABnzbd, &cfg.Importer, plexClient, libraryStore, logger.With("component", "poller"))
 	}
 
 	// === HTTP Setup ===
@@ -280,7 +280,7 @@ func plexRemotePathFromConfig(cfg *config.Config) string {
 	return ""
 }
 
-func runPoller(ctx context.Context, manager *download.Manager, imp *importer.Importer, store *download.Store, sabCfg *config.SABnzbdConfig, log *slog.Logger) {
+func runPoller(ctx context.Context, manager *download.Manager, imp *importer.Importer, store *download.Store, sabCfg *config.SABnzbdConfig, impCfg *config.ImporterConfig, plex *importer.PlexClient, lib *library.Store, log *slog.Logger) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
@@ -292,12 +292,12 @@ func runPoller(ctx context.Context, manager *download.Manager, imp *importer.Imp
 			log.Info("poller stopped")
 			return
 		case <-ticker.C:
-			poll(ctx, manager, imp, store, sabCfg, log)
+			poll(ctx, manager, imp, store, sabCfg, impCfg, plex, lib, log)
 		}
 	}
 }
 
-func poll(ctx context.Context, manager *download.Manager, imp *importer.Importer, store *download.Store, sabCfg *config.SABnzbdConfig, log *slog.Logger) {
+func poll(ctx context.Context, manager *download.Manager, imp *importer.Importer, store *download.Store, sabCfg *config.SABnzbdConfig, impCfg *config.ImporterConfig, plex *importer.PlexClient, lib *library.Store, log *slog.Logger) {
 	// Refresh download statuses from client
 	if err := manager.Refresh(ctx); err != nil {
 		log.Error("refresh failed", "error", err)
@@ -328,10 +328,14 @@ func poll(ctx context.Context, manager *download.Manager, imp *importer.Importer
 			continue
 		}
 
-		dl.Status = download.StatusImported
-		if err := store.Update(dl); err != nil {
-			log.Error("update failed", "download_id", dl.ID, "error", err)
+		if err := store.Transition(dl, download.StatusImported); err != nil {
+			log.Error("transition failed", "download_id", dl.ID, "error", err)
 		}
+	}
+
+	// Process imported downloads -> verify in Plex and cleanup
+	if impCfg.ShouldCleanupSource() {
+		processImportedDownloads(ctx, store, manager, plex, lib, sabCfg, log)
 	}
 }
 
@@ -344,4 +348,79 @@ func translatePath(path string, sabCfg *config.SABnzbdConfig) string {
 		return sabCfg.LocalPath + path[len(sabCfg.RemotePath):]
 	}
 	return path
+}
+
+// processImportedDownloads verifies imported content in Plex and cleans up source files.
+func processImportedDownloads(ctx context.Context, store *download.Store, manager *download.Manager, plex *importer.PlexClient, lib *library.Store, sabCfg *config.SABnzbdConfig, log *slog.Logger) {
+	status := download.StatusImported
+	imported, err := store.List(download.DownloadFilter{Status: &status})
+	if err != nil {
+		log.Error("list imported failed", "error", err)
+		return
+	}
+
+	if plex == nil {
+		// No Plex configured - transition directly to cleaned without verification
+		for _, dl := range imported {
+			if err := store.Transition(dl, download.StatusCleaned); err != nil {
+				log.Error("transition failed", "download_id", dl.ID, "error", err)
+			}
+		}
+		return
+	}
+
+	for _, dl := range imported {
+		// Get content info
+		content, err := lib.GetContent(dl.ContentID)
+		if err != nil {
+			log.Error("get content failed", "download_id", dl.ID, "error", err)
+			continue
+		}
+
+		// Check if Plex has it
+		found, err := plex.HasMovie(ctx, content.Title, content.Year)
+		if err != nil {
+			log.Warn("plex check failed", "download_id", dl.ID, "error", err)
+			continue
+		}
+
+		if !found {
+			log.Debug("waiting for Plex to index", "title", content.Title, "year", content.Year)
+			continue
+		}
+
+		// Get source path for cleanup
+		clientStatus, err := manager.Client().Status(ctx, dl.ClientID)
+		if err != nil || clientStatus == nil || clientStatus.Path == "" {
+			// Can't determine source path - just transition without cleanup
+			log.Warn("cannot determine source path for cleanup", "download_id", dl.ID)
+			if err := store.Transition(dl, download.StatusCleaned); err != nil {
+				log.Error("transition failed", "download_id", dl.ID, "error", err)
+			}
+			continue
+		}
+
+		sourcePath := translatePath(clientStatus.Path, sabCfg)
+
+		// Safety check: ensure path is under expected download directory
+		if sabCfg == nil || sabCfg.LocalPath == "" || !strings.HasPrefix(sourcePath, sabCfg.LocalPath) {
+			log.Warn("path not under download root, skipping cleanup", "download_id", dl.ID, "path", sourcePath)
+			if err := store.Transition(dl, download.StatusCleaned); err != nil {
+				log.Error("transition failed", "download_id", dl.ID, "error", err)
+			}
+			continue
+		}
+
+		// Delete source directory
+		if err := os.RemoveAll(sourcePath); err != nil {
+			log.Error("cleanup failed", "download_id", dl.ID, "path", sourcePath, "error", err)
+			// Continue to mark as cleaned anyway - cleanup is best effort
+		} else {
+			log.Info("cleaned up source", "download_id", dl.ID, "path", sourcePath)
+		}
+
+		if err := store.Transition(dl, download.StatusCleaned); err != nil {
+			log.Error("transition failed", "download_id", dl.ID, "error", err)
+		}
+	}
 }
