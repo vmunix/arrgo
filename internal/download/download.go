@@ -51,7 +51,7 @@ type DownloadFilter struct {
 	EpisodeID *int64
 	Status    *Status
 	Client    *Client
-	Active    bool // If true, exclude "imported" status
+	Active    bool // If true, exclude terminal states (cleaned, failed)
 }
 
 // ClientStatus is the status from a download client.
@@ -206,10 +206,16 @@ func (s *Store) Transition(d *Download, to Status) error {
 	from := d.Status
 	now := time.Now()
 
+	// Set completed_at for terminal and completion states
+	var completedAt *time.Time
+	if to == StatusCompleted || to == StatusFailed {
+		completedAt = &now
+	}
+
 	result, err := s.db.Exec(`
-		UPDATE downloads SET status = ?, last_transition_at = ?
+		UPDATE downloads SET status = ?, last_transition_at = ?, completed_at = COALESCE(?, completed_at)
 		WHERE id = ?`,
-		to, now, d.ID,
+		to, now, completedAt, d.ID,
 	)
 	if err != nil {
 		return fmt.Errorf("update download %d: %w", d.ID, err)
@@ -225,6 +231,9 @@ func (s *Store) Transition(d *Download, to Status) error {
 
 	d.Status = to
 	d.LastTransitionAt = now
+	if completedAt != nil {
+		d.CompletedAt = completedAt
+	}
 
 	// Emit event
 	event := TransitionEvent{
@@ -241,7 +250,7 @@ func (s *Store) Transition(d *Download, to Status) error {
 }
 
 // List returns downloads matching the specified filter.
-// If Active is true, downloads with "imported" status are excluded.
+// If Active is true, downloads in terminal states (cleaned, failed) are excluded.
 func (s *Store) List(f DownloadFilter) ([]*Download, error) {
 	var conditions []string
 	var args []any
@@ -263,8 +272,8 @@ func (s *Store) List(f DownloadFilter) ([]*Download, error) {
 		args = append(args, *f.Client)
 	}
 	if f.Active {
-		conditions = append(conditions, "status != ?")
-		args = append(args, StatusImported)
+		conditions = append(conditions, "status NOT IN (?, ?)")
+		args = append(args, StatusCleaned, StatusFailed)
 	}
 
 	whereClause := ""

@@ -307,6 +307,7 @@ func TestStore_List_Active(t *testing.T) {
 		{ContentID: contentID, Client: ClientSABnzbd, ClientID: "nzo_3", Status: StatusCompleted, ReleaseName: "release3", Indexer: "idx3"},
 		{ContentID: contentID, Client: ClientSABnzbd, ClientID: "nzo_4", Status: StatusImported, ReleaseName: "release4", Indexer: "idx4"},
 		{ContentID: contentID, Client: ClientSABnzbd, ClientID: "nzo_5", Status: StatusFailed, ReleaseName: "release5", Indexer: "idx5"},
+		{ContentID: contentID, Client: ClientSABnzbd, ClientID: "nzo_6", Status: StatusCleaned, ReleaseName: "release6", Indexer: "idx6"},
 	}
 
 	for _, d := range downloads {
@@ -315,20 +316,20 @@ func TestStore_List_Active(t *testing.T) {
 		}
 	}
 
-	// List active (excludes imported)
+	// List active (excludes terminal states: cleaned, failed)
 	results, err := store.List(DownloadFilter{Active: true})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
 
 	if len(results) != 4 {
-		t.Errorf("len(results) = %d, want 4 (excludes imported)", len(results))
+		t.Errorf("len(results) = %d, want 4 (excludes cleaned and failed)", len(results))
 	}
 
-	// Verify no imported status in results
+	// Verify no terminal status in results
 	for _, d := range results {
-		if d.Status == StatusImported {
-			t.Errorf("Active filter should exclude imported status, found: %v", d)
+		if d.Status == StatusCleaned || d.Status == StatusFailed {
+			t.Errorf("Active filter should exclude terminal status, found: %v", d)
 		}
 	}
 }

@@ -410,7 +410,7 @@ func TestManager_GetActive_ClientError(t *testing.T) {
 	}
 }
 
-func TestManager_GetActive_ExcludesImported(t *testing.T) {
+func TestManager_GetActive_ExcludesTerminal(t *testing.T) {
 	db := setupTestDB(t)
 	store := NewStore(db)
 	contentID := insertTestContent(t, db, "Test Movie")
@@ -425,7 +425,7 @@ func TestManager_GetActive_ExcludesImported(t *testing.T) {
 	}
 	_ = store.Add(d1)
 
-	// Add imported download
+	// Add imported download (should be included - not terminal)
 	d2 := &Download{
 		ContentID:   contentID,
 		Client:      ClientSABnzbd,
@@ -434,6 +434,16 @@ func TestManager_GetActive_ExcludesImported(t *testing.T) {
 		ReleaseName: "Imported.Movie",
 	}
 	_ = store.Add(d2)
+
+	// Add cleaned download (should be excluded - terminal)
+	d3 := &Download{
+		ContentID:   contentID,
+		Client:      ClientSABnzbd,
+		ClientID:    "nzo_3",
+		Status:      StatusCleaned,
+		ReleaseName: "Cleaned.Movie",
+	}
+	_ = store.Add(d3)
 
 	client := &mockDownloader{
 		statusResult: &ClientStatus{
@@ -449,10 +459,15 @@ func TestManager_GetActive_ExcludesImported(t *testing.T) {
 		t.Fatalf("GetActive: %v", err)
 	}
 
-	if len(active) != 1 {
-		t.Fatalf("expected 1 active download (excluding imported), got %d", len(active))
+	// Should include downloading and imported, exclude cleaned
+	if len(active) != 2 {
+		t.Fatalf("expected 2 active downloads (excluding terminal states), got %d", len(active))
 	}
-	if active[0].Download.ReleaseName != "Active.Movie" {
-		t.Errorf("expected Active.Movie, got %s", active[0].Download.ReleaseName)
+
+	// Verify no terminal status in results
+	for _, a := range active {
+		if a.Download.Status == StatusCleaned || a.Download.Status == StatusFailed {
+			t.Errorf("GetActive should exclude terminal status, found: %v", a.Download.Status)
+		}
 	}
 }
