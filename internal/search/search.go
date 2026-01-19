@@ -13,8 +13,9 @@ import (
 )
 
 // sequelPattern matches sequel indicators in titles.
-// Matches: Part II, Part III, Part 2, Part 3, II, III, 2, 3 (at word boundaries)
-var sequelPattern = regexp.MustCompile(`(?i)\b(part\s+)?(II|III|IV|V|2|3|4|5)\b`)
+// Roman numerals (II, III, IV, V) can stand alone since they're unambiguous.
+// Arabic numerals (2, 3, 4, 5) require "Part" prefix to avoid matching "5.1" audio specs.
+var sequelPattern = regexp.MustCompile(`(?i)\b(part\s+(II|III|IV|V|2|3|4|5)|(II|III|IV|V))\b`)
 
 // normalizeSequelNumber converts Roman numerals to Arabic for comparison.
 func normalizeSequelNumber(s string) int {
@@ -146,7 +147,8 @@ func (s *Searcher) Search(ctx context.Context, q Query, profile string) (*Search
 		// Penalize sequels when query doesn't specify one
 		// This ranks "Back to the Future" (1985) above "Part II" and "Part III"
 		// Use negative score to rank below non-sequels with same quality
-		if hasSequelMismatch(q.Text, info.Title) {
+		// Note: Use rel.Title (raw) not info.Title (parsed) since parser strips sequel info
+		if hasSequelMismatch(q.Text, rel.Title) {
 			score = -score // Negative score, still included but ranked last
 		}
 
