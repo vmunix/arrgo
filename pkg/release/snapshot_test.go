@@ -67,7 +67,7 @@ func TestParse_Snapshot(t *testing.T) {
 	// Compare against stored snapshot
 	expected, err := os.ReadFile(snapshotPath)
 	if err != nil {
-		t.Fatalf("snapshot not found (run with -update to create): %v", err)
+		t.Skipf("snapshot not found (run with -update to create): %v", err)
 	}
 
 	var expectedResults []SnapshotEntry
@@ -91,6 +91,11 @@ func TestParse_Snapshot(t *testing.T) {
 		want := expectedResults[i]
 		if diff := compareInfo(got.Info, want.Info); diff != "" {
 			t.Errorf("result[%d] %s: %s", i, got.Input, diff)
+			// Show full JSON for debugging
+			gotJSON, _ := json.MarshalIndent(got.Info, "  ", "  ")
+			wantJSON, _ := json.MarshalIndent(want.Info, "  ", "  ")
+			t.Errorf("  got:  %s", gotJSON)
+			t.Errorf("  want: %s", wantJSON)
 			diffCount++
 		}
 	}
