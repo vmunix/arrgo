@@ -59,6 +59,9 @@ api_key = "${NZBGEEK_API_KEY}"
 url = "http://localhost:8085"
 api_key = "${SABNZBD_API_KEY}"
 category = "arrgo"
+# Path mapping for Docker: translate SABnzbd's container paths to host paths
+# remote_path = "/data/usenet"       # Path as reported by SABnzbd
+# local_path = "/srv/data/usenet"    # Corresponding path on this machine
 
 # Uncomment when torrent support is added
 # [downloaders.qbittorrent]
