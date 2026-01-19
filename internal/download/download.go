@@ -304,3 +304,43 @@ func (s *Store) Delete(id int64) error {
 	}
 	return nil
 }
+
+// ListStuck returns downloads that haven't transitioned within their expected threshold.
+func (s *Store) ListStuck(thresholds map[Status]time.Duration) ([]*Download, error) {
+	var conditions []string
+	var args []any
+
+	now := time.Now()
+	for status, threshold := range thresholds {
+		cutoff := now.Add(-threshold)
+		conditions = append(conditions, "(status = ? AND last_transition_at < ?)")
+		args = append(args, status, cutoff)
+	}
+
+	if len(conditions) == 0 {
+		return nil, nil
+	}
+
+	query := `
+		SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at
+		FROM downloads
+		WHERE ` + strings.Join(conditions, " OR ") + `
+		ORDER BY last_transition_at`
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list stuck downloads: %w", err)
+	}
+	defer rows.Close()
+
+	var results []*Download
+	for rows.Next() {
+		d := &Download{}
+		if err := rows.Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt); err != nil {
+			return nil, fmt.Errorf("scan download: %w", err)
+		}
+		results = append(results, d)
+	}
+
+	return results, rows.Err()
+}
