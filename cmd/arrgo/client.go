@@ -281,3 +281,41 @@ func (c *Client) PlexScan(libraries []string) (*PlexScanResponse, error) {
 	}
 	return &resp, nil
 }
+
+type PlexItemResponse struct {
+	Title     string `json:"title"`
+	Year      int    `json:"year"`
+	Type      string `json:"type"`
+	AddedAt   int64  `json:"added_at"`
+	FilePath  string `json:"file_path,omitempty"`
+	Tracked   bool   `json:"tracked"`
+	ContentID *int64 `json:"content_id,omitempty"`
+}
+
+type PlexListResponse struct {
+	Library string             `json:"library"`
+	Items   []PlexItemResponse `json:"items"`
+	Total   int                `json:"total"`
+}
+
+type PlexSearchResponse struct {
+	Query string             `json:"query"`
+	Items []PlexItemResponse `json:"items"`
+	Total int                `json:"total"`
+}
+
+func (c *Client) PlexListLibrary(library string) (*PlexListResponse, error) {
+	var resp PlexListResponse
+	if err := c.get("/api/v1/plex/libraries/"+url.PathEscape(library)+"/items", &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) PlexSearch(query string) (*PlexSearchResponse, error) {
+	var resp PlexSearchResponse
+	if err := c.get("/api/v1/plex/search?query="+url.QueryEscape(query), &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
