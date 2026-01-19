@@ -45,10 +45,17 @@ type identityResponse struct {
 
 // Section represents a Plex library section.
 type Section struct {
-	Key       string     `xml:"key,attr"`
-	Title     string     `xml:"title,attr"`
-	Type      string     `xml:"type,attr"`
-	Locations []Location `xml:"Location"`
+	Key           string     `xml:"key,attr"`
+	Title         string     `xml:"title,attr"`
+	Type          string     `xml:"type,attr"`
+	Locations     []Location `xml:"Location"`
+	ScannedAt     int64      `xml:"scannedAt,attr"`
+	RefreshingRaw int        `xml:"refreshing,attr"`
+}
+
+// Refreshing returns true if the section is currently being scanned.
+func (s Section) Refreshing() bool {
+	return s.RefreshingRaw == 1
 }
 
 // Location represents a library section's filesystem location.
