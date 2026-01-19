@@ -205,6 +205,17 @@ const (
 
 // scoreWithBreakdown calculates the score and returns a detailed breakdown.
 func scoreWithBreakdown(info release.Info, profile config.QualityProfile) (int, []ScoreBonus) {
+	// Check reject list first
+	if matchesRejectList(info, profile.Reject) {
+		return 0, []ScoreBonus{{
+			Attribute: "Reject",
+			Value:     "matched reject list",
+			Position:  -1,
+			Bonus:     0,
+			Note:      "release rejected",
+		}}
+	}
+
 	var breakdown []ScoreBonus
 	totalScore := 0
 
@@ -456,6 +467,66 @@ func audioMatches(audio release.AudioCodec, pref string) bool {
 	default:
 		return false
 	}
+}
+
+// matchesRejectList checks if a release matches any reject criteria.
+func matchesRejectList(info release.Info, rejectList []string) bool {
+	if len(rejectList) == 0 {
+		return false
+	}
+
+	// Build lowercase set of release attributes
+	attrs := []string{
+		strings.ToLower(info.Resolution.String()),
+		strings.ToLower(info.Source.String()),
+		strings.ToLower(info.Codec.String()),
+	}
+
+	// Add HDR format if present
+	if info.HDR != release.HDRNone {
+		attrs = append(attrs, strings.ToLower(info.HDR.String()))
+	}
+
+	// Add audio codec if present
+	if info.Audio != release.AudioUnknown {
+		attrs = append(attrs, strings.ToLower(info.Audio.String()))
+	}
+
+	// Check each reject term
+	for _, reject := range rejectList {
+		rejectLower := strings.ToLower(reject)
+		for _, attr := range attrs {
+			if attr == rejectLower {
+				return true
+			}
+		}
+		// Also check special cases for reject list
+		if rejectMatchesSpecial(info, rejectLower) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// rejectMatchesSpecial handles special reject list matching.
+func rejectMatchesSpecial(info release.Info, reject string) bool {
+	switch reject {
+	case "cam", "camrip", "ts", "telesync", "hdcam":
+		// Low-quality sources not currently tracked by parser
+		return false
+	case "hdtv":
+		return info.Source == release.SourceHDTV
+	case "webrip":
+		return info.Source == release.SourceWEBRip
+	case "remux":
+		return info.IsRemux
+	case "x264", "h264":
+		return info.Codec == release.CodecX264
+	case "x265", "h265", "hevc":
+		return info.Codec == release.CodecX265
+	}
+	return false
 }
 
 // printHumanReadable outputs the parse result in a human-readable format.
