@@ -3,11 +3,18 @@ package search
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/arrgo/arrgo/pkg/release"
 )
+
+// testLogger returns a discard logger for tests.
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 // mockIndexerAPI implements IndexerAPI for testing.
 type mockIndexerAPI struct {
@@ -34,7 +41,7 @@ func TestSearcher_Search(t *testing.T) {
 		},
 	}
 
-	searcher := NewSearcher(mockClient, scorer)
+	searcher := NewSearcher(mockClient, scorer, testLogger())
 	result, err := searcher.Search(context.Background(), Query{Text: "Movie"}, "hd")
 	if err != nil {
 		t.Fatalf("Search returned error: %v", err)
@@ -90,7 +97,7 @@ func TestSearcher_Search_ParsesQualityInfo(t *testing.T) {
 		},
 	}
 
-	searcher := NewSearcher(mockClient, scorer)
+	searcher := NewSearcher(mockClient, scorer, testLogger())
 	result, err := searcher.Search(context.Background(), Query{Text: "Movie"}, "any")
 	if err != nil {
 		t.Fatalf("Search returned error: %v", err)
@@ -143,7 +150,7 @@ func TestSearcher_Search_ClientError(t *testing.T) {
 		errs:     []error{expectedErr},
 	}
 
-	searcher := NewSearcher(mockClient, scorer)
+	searcher := NewSearcher(mockClient, scorer, testLogger())
 	result, err := searcher.Search(context.Background(), Query{Text: "Movie"}, "hd")
 
 	// Should not return error (partial results pattern)
@@ -177,7 +184,7 @@ func TestSearcher_Search_EmptyResults(t *testing.T) {
 		errs:     nil,
 	}
 
-	searcher := NewSearcher(mockClient, scorer)
+	searcher := NewSearcher(mockClient, scorer, testLogger())
 	result, err := searcher.Search(context.Background(), Query{Text: "NonExistent"}, "hd")
 
 	if err != nil {
@@ -206,7 +213,7 @@ func TestSearcher_Search_AllFiltered(t *testing.T) {
 		},
 	}
 
-	searcher := NewSearcher(mockClient, scorer)
+	searcher := NewSearcher(mockClient, scorer, testLogger())
 	result, err := searcher.Search(context.Background(), Query{Text: "Movie"}, "hd")
 
 	if err != nil {
@@ -231,7 +238,7 @@ func TestSearcher_Search_UnknownProfile(t *testing.T) {
 		},
 	}
 
-	searcher := NewSearcher(mockClient, scorer)
+	searcher := NewSearcher(mockClient, scorer, testLogger())
 	result, err := searcher.Search(context.Background(), Query{Text: "Movie"}, "nonexistent")
 
 	if err != nil {
@@ -259,7 +266,7 @@ func TestSearcher_Search_SortStability(t *testing.T) {
 		},
 	}
 
-	searcher := NewSearcher(mockClient, scorer)
+	searcher := NewSearcher(mockClient, scorer, testLogger())
 	result, err := searcher.Search(context.Background(), Query{Text: "Movie"}, "hd")
 
 	if err != nil {

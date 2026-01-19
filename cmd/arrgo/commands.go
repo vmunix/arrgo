@@ -224,22 +224,30 @@ func grabRelease(client *Client, rel ReleaseResponse, contentType, profile strin
 		profile = "hd"
 	}
 
-	// Create content entry
-	content, err := client.AddContent(contentType, info.Title, info.Year, profile)
+	// Try to find existing content first
+	content, err := client.FindContent(contentType, info.Title, info.Year)
 	if err != nil {
-		// Might already exist, try to proceed anyway
-		fmt.Printf("Note: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error finding content: %v\n", err)
+		return
+	}
+
+	if content != nil {
+		fmt.Printf("Found in library (ID: %d)\n", content.ID)
 	} else {
+		// Create new content entry
+		content, err = client.AddContent(contentType, info.Title, info.Year, profile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error adding content: %v\n", err)
+			return
+		}
 		fmt.Printf("Added to library (ID: %d)\n", content.ID)
 	}
 
 	// Grab the release
-	if content != nil {
-		grab, err := client.Grab(content.ID, rel.DownloadURL, rel.Title, rel.Indexer)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error grabbing: %v\n", err)
-			return
-		}
-		fmt.Printf("Download started (ID: %d)\n", grab.DownloadID)
+	grab, err := client.Grab(content.ID, rel.DownloadURL, rel.Title, rel.Indexer)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error grabbing: %v\n", err)
+		return
 	}
+	fmt.Printf("Download started (ID: %d)\n", grab.DownloadID)
 }

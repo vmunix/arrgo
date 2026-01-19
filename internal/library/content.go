@@ -100,6 +100,14 @@ func listContent(q querier, f ContentFilter) ([]*Content, int, error) {
 		conditions = append(conditions, "tvdb_id = ?")
 		args = append(args, *f.TVDBID)
 	}
+	if f.Title != nil {
+		conditions = append(conditions, "title = ?")
+		args = append(args, *f.Title)
+	}
+	if f.Year != nil {
+		conditions = append(conditions, "year = ?")
+		args = append(args, *f.Year)
+	}
 
 	whereClause := ""
 	if len(conditions) > 0 {

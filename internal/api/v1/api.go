@@ -159,6 +159,14 @@ func (s *Server) listContent(w http.ResponseWriter, r *http.Request) {
 		st := library.ContentStatus(*statusStr)
 		filter.Status = &st
 	}
+	if title := queryString(r, "title"); title != nil {
+		filter.Title = title
+	}
+	if yearStr := r.URL.Query().Get("year"); yearStr != "" {
+		if year, err := strconv.Atoi(yearStr); err == nil {
+			filter.Year = &year
+		}
+	}
 
 	items, total, err := s.library.ListContent(filter)
 	if err != nil {

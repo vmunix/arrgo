@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
@@ -24,6 +25,7 @@ type Importer struct {
 	plex       *PlexClient // nil if not configured
 	movieRoot  string
 	seriesRoot string
+	log        *slog.Logger
 }
 
 // Config for the importer.
@@ -37,7 +39,7 @@ type Config struct {
 }
 
 // New creates a new importer.
-func New(db *sql.DB, cfg Config) *Importer {
+func New(db *sql.DB, cfg Config, log *slog.Logger) *Importer {
 	var plex *PlexClient
 	if cfg.PlexURL != "" && cfg.PlexToken != "" {
 		plex = NewPlexClient(cfg.PlexURL, cfg.PlexToken)
@@ -51,6 +53,7 @@ func New(db *sql.DB, cfg Config) *Importer {
 		plex:       plex,
 		movieRoot:  cfg.MovieRoot,
 		seriesRoot: cfg.SeriesRoot,
+		log:        log,
 	}
 }
 
@@ -67,6 +70,8 @@ type ImportResult struct {
 
 // Import processes a completed download.
 func (i *Importer) Import(ctx context.Context, downloadID int64, downloadPath string) (*ImportResult, error) {
+	i.log.Info("import started", "download_id", downloadID, "path", downloadPath)
+
 	// Get download record
 	dl, err := i.downloads.Get(downloadID)
 	if err != nil {
@@ -92,6 +97,7 @@ func (i *Importer) Import(ctx context.Context, downloadID int64, downloadPath st
 	if err != nil {
 		return nil, err
 	}
+	i.log.Debug("found video", "path", srcPath)
 
 	// Extract quality from release name
 	quality := extractQuality(dl.ReleaseName)
@@ -132,6 +138,7 @@ func (i *Importer) Import(ctx context.Context, downloadID int64, downloadPath st
 	if err != nil {
 		return nil, err
 	}
+	i.log.Debug("file copied", "src", srcPath, "dest", destPath, "size_bytes", size)
 
 	// Update database in transaction
 	tx, err := i.library.Begin()
@@ -175,7 +182,9 @@ func (i *Importer) Import(ctx context.Context, downloadID int64, downloadPath st
 	dl.Status = download.StatusImported
 	now := time.Now()
 	dl.CompletedAt = &now
-	_ = i.downloads.Update(dl) // Log but don't fail
+	if err := i.downloads.Update(dl); err != nil {
+		i.log.Warn("update download status failed", "download_id", downloadID, "error", err)
+	}
 
 	// Add history entry
 	historyMap := map[string]any{
@@ -214,6 +223,14 @@ func (i *Importer) Import(ctx context.Context, downloadID int64, downloadPath st
 			result.PlexNotified = true
 		}
 	}
+
+	if result.PlexNotified {
+		i.log.Debug("plex notified", "path", destPath)
+	} else if result.PlexError != nil {
+		i.log.Warn("plex notification failed", "error", result.PlexError)
+	}
+
+	i.log.Info("import complete", "download_id", downloadID, "dest", destPath, "quality", quality)
 
 	return result, nil
 }

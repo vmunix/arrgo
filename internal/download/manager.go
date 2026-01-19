@@ -3,6 +3,7 @@ package download
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 )
 
@@ -16,13 +17,15 @@ type ActiveDownload struct {
 type Manager struct {
 	client Downloader
 	store  *Store
+	log    *slog.Logger
 }
 
 // NewManager creates a new download manager.
-func NewManager(client Downloader, store *Store) *Manager {
+func NewManager(client Downloader, store *Store, log *slog.Logger) *Manager {
 	return &Manager{
 		client: client,
 		store:  store,
+		log:    log,
 	}
 }
 
@@ -33,6 +36,7 @@ func (m *Manager) Grab(ctx context.Context, contentID int64, episodeID *int64,
 	// Send to download client first
 	clientID, err := m.client.Add(ctx, downloadURL, "")
 	if err != nil {
+		m.log.Error("grab failed", "content_id", contentID, "error", err)
 		return nil, fmt.Errorf("add to client: %w", err)
 	}
 
@@ -52,6 +56,7 @@ func (m *Manager) Grab(ctx context.Context, contentID int64, episodeID *int64,
 		return nil, fmt.Errorf("save download: %w", err)
 	}
 
+	m.log.Info("grab sent", "content_id", contentID, "release", releaseName, "client_id", clientID)
 	return d, nil
 }
 
@@ -62,21 +67,26 @@ func (m *Manager) Refresh(ctx context.Context) error {
 		return fmt.Errorf("list active: %w", err)
 	}
 
+	m.log.Debug("refresh started", "active_downloads", len(downloads))
+
 	var lastErr error
 	for _, d := range downloads {
 		status, err := m.client.Status(ctx, d.ClientID)
 		if err != nil {
+			m.log.Error("refresh error", "download_id", d.ID, "error", err)
 			lastErr = err
 			continue
 		}
 
 		if status.Status != d.Status {
+			m.log.Info("download status changed", "download_id", d.ID, "status", status.Status, "prev", d.Status)
 			d.Status = status.Status
 			if status.Status == StatusCompleted || status.Status == StatusFailed {
 				now := time.Now()
 				d.CompletedAt = &now
 			}
 			if err := m.store.Update(d); err != nil {
+				m.log.Error("refresh update failed", "download_id", d.ID, "error", err)
 				lastErr = err
 			}
 		}
