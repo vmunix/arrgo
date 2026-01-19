@@ -11,9 +11,9 @@ arrgo is a unified media automation system written in Go, designed to replace th
 ### Goals
 
 1. **Reduce operational complexity** — One system instead of 6+ services
-2. **Simplify deployment** — Single binary, single config file, single database
+2. **Simplify deployment** — Two binaries (`arrgod` + `arrgo`), single config file, single database
 3. **Modern API design** — Clean, consistent REST API (not inherited from legacy)
-4. **AI-powered CLI** — Built-in conversational interface for management and debugging
+4. **Plex integration** — Status, scanning, library listing and search with tracking status
 5. **Maintain compatibility** — Overseerr integration via API compatibility shim
 
 ### Non-Goals (v1)
@@ -43,14 +43,14 @@ arrgo is a unified media automation system written in Go, designed to replace th
 │  │ -Wanted  │ │  search  │ │  (stub)  │ │ -History         │ │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────────────┘ │
 │  ┌──────────────────────────────────────────────────────────┐│
-│  │          SQLite  +  Background Jobs  +  AI Chat          ││
+│  │             SQLite  +  Background Jobs                   ││
 │  └──────────────────────────────────────────────────────────┘│
 └──────────────────────────────────────────────────────────────┘
-         │              │              │              │
-    ┌────▼────┐   ┌─────▼─────┐  ┌────▼────┐   ┌─────▼─────┐
-    │ NZBgeek │   │  SABnzbd  │  │  Plex   │   │  Ollama/  │
-    │ et al.  │   │           │  │         │   │  Claude   │
-    └─────────┘   └───────────┘  └─────────┘   └───────────┘
+         │              │              │
+    ┌────▼────┐   ┌─────▼─────┐  ┌────▼────┐
+    │ NZBgeek │   │  SABnzbd  │  │  Plex   │
+    │ et al.  │   │           │  │         │
+    └─────────┘   └───────────┘  └─────────┘
 ```
 
 ### Module Responsibilities
@@ -355,7 +355,9 @@ arrgo (poller)                 External
 | Stuck checker | 10m | Detect stalled downloads |
 | Health check | 1m | Verify client connectivity |
 
-## AI-Powered CLI
+## AI-Powered CLI (v2+)
+
+> **Note:** AI chat is planned for v2+. Get core flows working well first.
 
 ### Modes
 
@@ -408,8 +410,10 @@ The task is constrained (~15 tools, narrow domain), so small models work fine.
 ```
 arrgo/
 ├── cmd/
-│   └── arrgo/
-│       └── main.go              # Entry point
+│   ├── arrgo/                   # CLI client
+│   │   └── main.go
+│   └── arrgod/                  # Server daemon
+│       └── main.go
 ├── internal/
 │   ├── library/                 # Content tracking
 │   ├── search/                  # Indexer queries
@@ -452,26 +456,31 @@ yay -S arrgo
 ### CLI Commands
 
 ```bash
-# Server
-arrgo serve                      # Start API + background jobs
+# Server daemon
+arrgod                           # Start API + background jobs
+arrgod --config FILE             # Use custom config file
 
-# Direct commands
+# Client commands
 arrgo status                     # System status
 arrgo search "Movie Name"        # Search indexers
 arrgo queue                      # Show downloads
-arrgo add movie 123456           # Add by TMDB ID
-arrgo grab <release-id>          # Grab release
+arrgo import 42                  # Import tracked download by ID
+arrgo import --manual "/path"    # Import arbitrary file with auto-parsing
 arrgo parse <release>            # Parse release name (local, no server needed)
 arrgo parse --score hd           # Parse and show score breakdown for profile
 
-# AI chat
+# Plex integration
+arrgo plex status                # Show Plex connection and libraries
+arrgo plex scan movies           # Trigger library scan
+arrgo plex list movies           # List library contents with tracking status
+arrgo plex search "Matrix"       # Search Plex with tracking status
+
+# AI chat (v2+)
 arrgo chat                       # Interactive session
 arrgo ask "why is X stuck?"      # One-shot question
 
 # Setup
 arrgo init                       # Interactive wizard
-arrgo config check               # Validate config
-arrgo migrate                    # Run migrations
 ```
 
 ### Init Wizard
@@ -533,6 +542,7 @@ Usenet is simpler (download → done). Torrents have seeding lifecycle complexit
 
 ### v2 Candidates
 
+- AI-powered CLI (chat mode, one-shot questions, LLM integration)
 - Torrent support with seeding lifecycle (Torznab for indexers, qBittorrent client)
 - RSS monitoring and auto-grab
 - Quality upgrades

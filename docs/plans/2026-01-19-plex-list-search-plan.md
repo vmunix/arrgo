@@ -1,5 +1,7 @@
 # Plex List and Search Commands Implementation Plan
 
+**Status:** ✅ Complete
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Add CLI commands to list and search Plex library contents with arrgo tracking status.
