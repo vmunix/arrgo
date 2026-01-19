@@ -237,3 +237,28 @@ type plexScanRequest struct {
 type plexScanResponse struct {
 	Scanned []string `json:"scanned"`
 }
+
+// plexItemResponse is a Plex library item with tracking status.
+type plexItemResponse struct {
+	Title     string `json:"title"`
+	Year      int    `json:"year"`
+	Type      string `json:"type"`
+	AddedAt   int64  `json:"added_at"`
+	FilePath  string `json:"file_path,omitempty"`
+	Tracked   bool   `json:"tracked"`
+	ContentID *int64 `json:"content_id,omitempty"`
+}
+
+// plexListResponse is the response for GET /plex/libraries/{name}/items.
+type plexListResponse struct {
+	Library string             `json:"library"`
+	Items   []plexItemResponse `json:"items"`
+	Total   int                `json:"total"`
+}
+
+// plexSearchResponse is the response for GET /plex/search.
+type plexSearchResponse struct {
+	Query string             `json:"query"`
+	Items []plexItemResponse `json:"items"`
+	Total int                `json:"total"`
+}

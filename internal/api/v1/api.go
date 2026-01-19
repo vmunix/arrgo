@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/arrgo/arrgo/internal/download"
@@ -103,6 +104,8 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// Plex
 	mux.HandleFunc("GET /api/v1/plex/status", s.getPlexStatus)
 	mux.HandleFunc("POST /api/v1/plex/scan", s.scanPlexLibraries)
+	mux.HandleFunc("GET /api/v1/plex/libraries/{name}/items", s.listPlexLibraryItems)
+	mux.HandleFunc("GET /api/v1/plex/search", s.searchPlex)
 
 	// Import
 	mux.HandleFunc("POST /api/v1/import", s.importContent)
@@ -778,23 +781,34 @@ func (s *Server) scanPlexLibraries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build map of title -> section key
-	sectionMap := make(map[string]string)
-	for _, sec := range sections {
-		sectionMap[sec.Title] = sec.Key
-	}
-
 	// Determine which libraries to scan
-	var toScan []string
+	var toScan []struct {
+		name string
+		key  string
+	}
 	if len(req.Libraries) == 0 {
 		// Scan all
 		for _, sec := range sections {
-			toScan = append(toScan, sec.Title)
+			toScan = append(toScan, struct {
+				name string
+				key  string
+			}{sec.Title, sec.Key})
 		}
 	} else {
-		// Validate requested libraries exist
+		// Validate and find requested libraries (case-insensitive)
 		for _, name := range req.Libraries {
-			if _, ok := sectionMap[name]; !ok {
+			var found bool
+			for _, sec := range sections {
+				if strings.EqualFold(sec.Title, name) {
+					toScan = append(toScan, struct {
+						name string
+						key  string
+					}{sec.Title, sec.Key})
+					found = true
+					break
+				}
+			}
+			if !found {
 				var available []string
 				for _, sec := range sections {
 					available = append(available, sec.Title)
@@ -803,23 +817,127 @@ func (s *Server) scanPlexLibraries(w http.ResponseWriter, r *http.Request) {
 					fmt.Sprintf("library %q not found, available: %v", name, available))
 				return
 			}
-			toScan = append(toScan, name)
 		}
 	}
 
 	// Trigger scans
 	var scanned []string
-	for _, name := range toScan {
-		key := sectionMap[name]
-		if err := s.plex.RefreshLibrary(ctx, key); err != nil {
+	for _, lib := range toScan {
+		if err := s.plex.RefreshLibrary(ctx, lib.key); err != nil {
 			writeError(w, http.StatusInternalServerError, "SCAN_ERROR",
-				fmt.Sprintf("failed to scan %q: %v", name, err))
+				fmt.Sprintf("failed to scan %q: %v", lib.name, err))
 			return
 		}
-		scanned = append(scanned, name)
+		scanned = append(scanned, lib.name)
 	}
 
 	writeJSON(w, http.StatusOK, plexScanResponse{Scanned: scanned})
+}
+
+func (s *Server) listPlexLibraryItems(w http.ResponseWriter, r *http.Request) {
+	if s.plex == nil {
+		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Plex not configured")
+		return
+	}
+
+	name := r.PathValue("name")
+	ctx := r.Context()
+
+	// Find section (case-insensitive)
+	section, err := s.plex.FindSectionByName(ctx, name)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "PLEX_ERROR", err.Error())
+		return
+	}
+	if section == nil {
+		sections, _ := s.plex.GetSections(ctx)
+		var available []string
+		for _, sec := range sections {
+			available = append(available, sec.Title)
+		}
+		writeError(w, http.StatusNotFound, "LIBRARY_NOT_FOUND",
+			fmt.Sprintf("library %q not found, available: %v", name, available))
+		return
+	}
+
+	// Get items
+	items, err := s.plex.ListLibraryItems(ctx, section.Key)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "PLEX_ERROR", err.Error())
+		return
+	}
+
+	// Build response with tracking status
+	resp := plexListResponse{
+		Library: section.Title,
+		Items:   make([]plexItemResponse, len(items)),
+		Total:   len(items),
+	}
+
+	for i, item := range items {
+		resp.Items[i] = plexItemResponse{
+			Title:    item.Title,
+			Year:     item.Year,
+			Type:     item.Type,
+			AddedAt:  item.AddedAt,
+			FilePath: item.FilePath,
+		}
+
+		// Check if tracked in arrgo
+		content, _ := s.library.GetByTitleYear(item.Title, item.Year)
+		if content != nil {
+			resp.Items[i].Tracked = true
+			resp.Items[i].ContentID = &content.ID
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) searchPlex(w http.ResponseWriter, r *http.Request) {
+	if s.plex == nil {
+		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Plex not configured")
+		return
+	}
+
+	query := r.URL.Query().Get("query")
+	if query == "" {
+		writeError(w, http.StatusBadRequest, "MISSING_QUERY", "query parameter is required")
+		return
+	}
+
+	ctx := r.Context()
+
+	items, err := s.plex.Search(ctx, query)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "PLEX_ERROR", err.Error())
+		return
+	}
+
+	resp := plexSearchResponse{
+		Query: query,
+		Items: make([]plexItemResponse, len(items)),
+		Total: len(items),
+	}
+
+	for i, item := range items {
+		resp.Items[i] = plexItemResponse{
+			Title:    item.Title,
+			Year:     item.Year,
+			Type:     item.Type,
+			AddedAt:  item.AddedAt,
+			FilePath: item.FilePath,
+		}
+
+		// Check if tracked in arrgo
+		content, _ := s.library.GetByTitleYear(item.Title, item.Year)
+		if content != nil {
+			resp.Items[i].Tracked = true
+			resp.Items[i].ContentID = &content.ID
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) importContent(w http.ResponseWriter, r *http.Request) {
