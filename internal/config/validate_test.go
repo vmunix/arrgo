@@ -114,7 +114,7 @@ func TestValidate_QualityDefaultNotDefined(t *testing.T) {
 		Libraries: LibrariesConfig{Movies: LibraryConfig{Root: "/tmp"}},
 		Quality: QualityConfig{
 			Default:  "ultra",
-			Profiles: map[string]QualityProfile{"hd": {Accept: []string{"1080p"}}},
+			Profiles: map[string]QualityProfile{"hd": {Resolution: []string{"1080p"}}},
 		},
 	}
 	errs := cfg.Validate()

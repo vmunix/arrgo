@@ -22,6 +22,8 @@ func main() {
 		runStatus(os.Args[2:])
 	case "search":
 		runSearch(os.Args[2:])
+	case "parse":
+		runParse(os.Args[2:])
 	case "queue":
 		runQueue(os.Args[2:])
 	case "chat":
@@ -48,7 +50,8 @@ Setup:
 
 Commands:
   status             System status (health, disk, queue summary)
-  search <query>     Search indexers for content
+  search [flags] <query>  Search indexers for content
+  parse <release>    Parse release name (local, no server needed)
   queue              Show active downloads
 
 AI Assistant:
@@ -65,5 +68,6 @@ Server:
 Examples:
   arrgo init                    # Set up arrgo
   arrgo search "The Matrix"     # Search for a movie
+  arrgo parse "Movie.2024..."   # Parse a release name
   arrgo status                  # Check server status`)
 }

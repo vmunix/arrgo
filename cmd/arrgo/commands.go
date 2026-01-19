@@ -119,14 +119,16 @@ func prompt(message string) string {
 func runSearch(args []string) {
 	fs := flag.NewFlagSet("search", flag.ExitOnError)
 	var contentType, profile, grabFlag string
+	var verbose bool
 	fs.StringVar(&contentType, "type", "", "Content type (movie or series)")
 	fs.StringVar(&profile, "profile", "", "Quality profile")
 	fs.StringVar(&grabFlag, "grab", "", "Grab release: number or 'best'")
+	fs.BoolVar(&verbose, "verbose", false, "Show extended info (indexer, group)")
 	flags := parseCommonFlags(fs, args)
 
 	remaining := fs.Args()
 	if len(remaining) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: arrgo search <query> [--type movie|series] [--grab N|best]")
+		fmt.Fprintln(os.Stderr, "Usage: arrgo search [--verbose] [--type movie|series] [--grab N|best] <query>")
 		os.Exit(1)
 	}
 	query := strings.Join(remaining, " ")
@@ -148,7 +150,7 @@ func runSearch(args []string) {
 		return
 	}
 
-	printSearchHuman(query, results)
+	printSearchHuman(query, results, verbose)
 
 	// Handle grab
 	var grabIndex int
@@ -174,23 +176,103 @@ func runSearch(args []string) {
 	grabRelease(client, selected, contentType, profile)
 }
 
-func printSearchHuman(query string, r *SearchResponse) {
+func printSearchHuman(query string, r *SearchResponse, verbose bool) {
 	fmt.Printf("Found %d releases for %q:\n\n", len(r.Releases), query)
-	fmt.Printf("  # │ %-42s │ %8s │ %-10s │ %5s\n", "TITLE", "SIZE", "INDEXER", "SCORE")
-	fmt.Println("────┼────────────────────────────────────────────┼──────────┼────────────┼───────")
+	fmt.Printf("  # │ %-42s │ %8s │ %5s\n", "RELEASE", "SIZE", "SCORE")
+	fmt.Println("────┼────────────────────────────────────────────┼──────────┼───────")
 
 	for i, rel := range r.Releases {
 		title := rel.Title
 		if len(title) > 42 {
 			title = title[:39] + "..."
 		}
-		fmt.Printf(" %2d │ %-42s │ %8s │ %-10s │ %5d\n",
-			i+1, title, formatSize(rel.Size), rel.Indexer, rel.Score)
+		fmt.Printf(" %2d │ %-42s │ %8s │ %5d\n",
+			i+1, title, formatSize(rel.Size), rel.Score)
+
+		// Parse release to get quality info for badges
+		info := release.Parse(rel.Title)
+		badges := buildBadges(info)
+		if badges != "" {
+			fmt.Printf("    │ %s\n", badges)
+		}
+
+		// Verbose mode: show indexer, group, and service
+		if verbose {
+			var parts []string
+			if rel.Indexer != "" {
+				parts = append(parts, "Indexer: "+rel.Indexer)
+			}
+			if info.Group != "" {
+				parts = append(parts, "Group: "+info.Group)
+			}
+			if info.Service != "" {
+				parts = append(parts, "Service: "+info.Service)
+			}
+			if len(parts) > 0 {
+				fmt.Printf("    │ %s\n", strings.Join(parts, "  "))
+			}
+		}
 	}
 
 	if len(r.Errors) > 0 {
 		fmt.Printf("\nWarnings: %s\n", strings.Join(r.Errors, ", "))
 	}
+}
+
+// buildBadges creates a formatted string of quality badges from parsed release info.
+// Badge order: resolution, source, codec, HDR, audio, remux, edition
+// Only includes badges for detected (non-unknown/non-empty) attributes.
+func buildBadges(info *release.Info) string {
+	var badges []string
+
+	// Resolution
+	if info.Resolution != release.ResolutionUnknown {
+		badges = append(badges, "["+info.Resolution.String()+"]")
+	}
+
+	// Source - format nicely
+	if info.Source != release.SourceUnknown {
+		source := info.Source.String()
+		// Capitalize nicely
+		switch info.Source {
+		case release.SourceBluRay:
+			source = "BluRay"
+		case release.SourceWEBDL:
+			source = "WEB-DL"
+		case release.SourceWEBRip:
+			source = "WEBRip"
+		case release.SourceHDTV:
+			source = "HDTV"
+		}
+		badges = append(badges, "["+source+"]")
+	}
+
+	// Codec
+	if info.Codec != release.CodecUnknown {
+		badges = append(badges, "["+info.Codec.String()+"]")
+	}
+
+	// HDR
+	if info.HDR != release.HDRNone {
+		badges = append(badges, "["+info.HDR.String()+"]")
+	}
+
+	// Audio
+	if info.Audio != release.AudioUnknown {
+		badges = append(badges, "["+info.Audio.String()+"]")
+	}
+
+	// Remux
+	if info.IsRemux {
+		badges = append(badges, "[Remux]")
+	}
+
+	// Edition
+	if info.Edition != "" {
+		badges = append(badges, "["+info.Edition+"]")
+	}
+
+	return strings.Join(badges, " ")
 }
 
 func grabRelease(client *Client, rel ReleaseResponse, contentType, profile string) {
