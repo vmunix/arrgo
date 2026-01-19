@@ -99,7 +99,7 @@ func runInit(args []string) {
 
 	fmt.Println()
 	fmt.Println("Config written to config.toml")
-	fmt.Println("Run 'arrgo serve' to start the server.")
+	fmt.Println("Run 'arrgod' to start the server.")
 }
 
 func writeConfig(cfg initConfig, path string) error {
