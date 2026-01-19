@@ -93,23 +93,21 @@ arrgo ask "why stuck?"   # One-shot question
 ### Optional Tools
 
 ```bash
-# Task runner (recommended)
+# Install all dev tools
 go install github.com/go-task/task/v3/cmd/task@latest
-
-# Linting (Arch Linux)
-sudo pacman -S golangci-lint
-# Or via Go:
 go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-
-# Live reload for development
 go install github.com/air-verse/air@latest
-
-# Mock generation for tests
 go install go.uber.org/mock/mockgen@latest
-
-# Import formatting (used by task fmt)
 go install golang.org/x/tools/cmd/goimports@latest
 ```
+
+| Tool | Purpose |
+|------|---------|
+| task | Task runner (recommended) |
+| golangci-lint | Linting |
+| air | Live reload for development |
+| mockgen | Mock generation for tests |
+| goimports | Import formatting |
 
 Ensure `~/go/bin` is in your PATH:
 ```bash
