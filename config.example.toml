@@ -18,18 +18,30 @@ naming = "{title} ({year})/{title} ({year}) [{quality}].{ext}"
 root = "/srv/data/media/tv"
 naming = "{title}/Season {season:02d}/{title} - S{season:02d}E{episode:02d} [{quality}].{ext}"
 
-# Quality profiles
+# Quality Profiles
+# Each profile specifies preferred attributes in order of preference.
+# Omitted fields mean "no preference".
 [quality]
 default = "hd"
 
+# Minimal profile - just resolution
+[quality.profiles.sd]
+resolution = ["720p", "480p"]
+
+# Standard HD
 [quality.profiles.hd]
-accept = ["1080p bluray", "1080p webdl", "1080p hdtv", "720p bluray", "720p webdl"]
+resolution = ["1080p", "720p"]
+sources = ["bluray", "webdl"]
 
+# Premium 4K with HDR/audio preferences
 [quality.profiles.uhd]
-accept = ["2160p bluray", "2160p webdl", "1080p bluray", "1080p webdl"]
-
-[quality.profiles.any]
-accept = ["2160p", "1080p", "720p", "480p"]
+resolution = ["2160p", "1080p"]
+sources = ["bluray", "webdl"]
+codecs = ["x265", "x264"]
+hdr = ["dolby-vision", "hdr10+", "hdr10"]
+audio = ["atmos", "truehd", "dtshd"]
+prefer_remux = true
+reject = ["hdtv", "cam", "ts"]
 
 # Newznab indexers (add as many as needed)
 # Each [indexers.NAME] section defines an indexer
