@@ -93,7 +93,17 @@ func runServer(configPath string) error {
 
 	// Run migrations
 	if _, err := db.Exec(migrations.InitialSQL); err != nil {
-		return fmt.Errorf("migrate: %w", err)
+		return fmt.Errorf("migrate 001: %w", err)
+	}
+	// Run migration 002 (ignore "duplicate column" error for already-migrated DBs)
+	if _, err := db.Exec(migrations.Migration002LastTransitionAt); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("migrate 002: %w", err)
+		}
+	}
+	// Run migration 003 - adds 'cleaned' to status CHECK constraint
+	if _, err := db.Exec(migrations.Migration003DownloadsStatusCleaned); err != nil {
+		return fmt.Errorf("migrate 003: %w", err)
 	}
 
 	// === Stores (always created) ===
