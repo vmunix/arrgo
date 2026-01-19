@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
 )
 
 // ActiveDownload combines database record with live client status.
@@ -78,14 +77,11 @@ func (m *Manager) Refresh(ctx context.Context) error {
 			continue
 		}
 
-		if status.Status != d.Status {
+		// Only update if client reports a different status AND transition is valid
+		// This prevents overwriting terminal states (imported, cleaned) with client status
+		if status.Status != d.Status && d.Status.CanTransitionTo(status.Status) {
 			m.log.Info("download status changed", "download_id", d.ID, "status", status.Status, "prev", d.Status)
-			d.Status = status.Status
-			if status.Status == StatusCompleted || status.Status == StatusFailed {
-				now := time.Now()
-				d.CompletedAt = &now
-			}
-			if err := m.store.Update(d); err != nil {
+			if err := m.store.Transition(d, status.Status); err != nil {
 				m.log.Error("refresh update failed", "download_id", d.ID, "error", err)
 				lastErr = err
 			}
