@@ -96,6 +96,23 @@ func (c *PlexClient) GetSections(ctx context.Context) ([]Section, error) {
 	return result.Sections, nil
 }
 
+// FindSectionByName finds a library section by name (case-insensitive).
+// Returns nil if not found.
+func (c *PlexClient) FindSectionByName(ctx context.Context, name string) (*Section, error) {
+	sections, err := c.GetSections(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, sec := range sections {
+		if strings.EqualFold(sec.Title, name) {
+			return &sec, nil
+		}
+	}
+
+	return nil, nil
+}
+
 // ScanPath triggers a partial scan of the directory containing the given file path.
 func (c *PlexClient) ScanPath(ctx context.Context, filePath string) error {
 	// Get directory containing the file
