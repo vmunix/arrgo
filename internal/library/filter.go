@@ -8,6 +8,8 @@ type ContentFilter struct {
 	QualityProfile *string
 	TMDBID         *int64
 	TVDBID         *int64
+	Title          *string
+	Year           *int
 	Limit          int // 0 = no limit
 	Offset         int
 }
