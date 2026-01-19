@@ -270,3 +270,48 @@ audio = ["aac", "dd", "truehd", "atmos"]
 		}
 	}
 }
+
+// parseTestConfig is a helper that writes content to a temp file and loads it without validation.
+func parseTestConfig(t *testing.T, content string) (*Config, error) {
+	t.Helper()
+	tmp := t.TempDir()
+	cfgPath := filepath.Join(tmp, "config.toml")
+	if err := os.WriteFile(cfgPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+	return LoadWithoutValidation(cfgPath)
+}
+
+func TestConfig_ImporterCleanupSource(t *testing.T) {
+	content := `
+[server]
+port = 8484
+
+[importer]
+cleanup_source = false
+`
+	cfg, err := parseTestConfig(t, content)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	if cfg.Importer.ShouldCleanupSource() {
+		t.Error("CleanupSource should be false when explicitly set")
+	}
+}
+
+func TestConfig_ImporterCleanupSourceDefault(t *testing.T) {
+	content := `
+[server]
+port = 8484
+`
+	cfg, err := parseTestConfig(t, content)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	// Default should be true
+	if !cfg.Importer.ShouldCleanupSource() {
+		t.Error("CleanupSource should default to true")
+	}
+}
