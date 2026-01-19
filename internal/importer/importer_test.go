@@ -45,8 +45,8 @@ func setupTestImporter(t *testing.T) (*Importer, *sql.DB, string, string) {
 func createTestDownload(t *testing.T, db *sql.DB, contentID int64, status download.Status) int64 {
 	t.Helper()
 	result, err := db.Exec(`
-		INSERT INTO downloads (content_id, client, client_id, status, release_name, indexer, added_at)
-		VALUES (?, 'sabnzbd', 'nzo_test', ?, 'Test.Movie.2024.1080p.BluRay', 'TestIndexer', CURRENT_TIMESTAMP)`,
+		INSERT INTO downloads (content_id, client, client_id, status, release_name, indexer, added_at, last_transition_at)
+		VALUES (?, 'sabnzbd', 'nzo_test', ?, 'Test.Movie.2024.1080p.BluRay', 'TestIndexer', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
 		contentID, status,
 	)
 	if err != nil {
@@ -287,8 +287,8 @@ func insertTestEpisode(t *testing.T, db *sql.DB, contentID int64, season, episod
 func createTestEpisodeDownload(t *testing.T, db *sql.DB, contentID, episodeID int64, status download.Status) int64 {
 	t.Helper()
 	result, err := db.Exec(`
-		INSERT INTO downloads (content_id, episode_id, client, client_id, status, release_name, indexer, added_at)
-		VALUES (?, ?, 'sabnzbd', 'nzo_test', ?, 'Test.Show.S01E05.1080p.WEB', 'TestIndexer', CURRENT_TIMESTAMP)`,
+		INSERT INTO downloads (content_id, episode_id, client, client_id, status, release_name, indexer, added_at, last_transition_at)
+		VALUES (?, ?, 'sabnzbd', 'nzo_test', ?, 'Test.Show.S01E05.1080p.WEB', 'TestIndexer', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
 		contentID, episodeID, status,
 	)
 	if err != nil {
@@ -385,8 +385,8 @@ func TestImporter_Import_Episode_NoEpisodeID(t *testing.T) {
 
 	// Create download WITHOUT episode ID
 	result, err := db.Exec(`
-		INSERT INTO downloads (content_id, client, client_id, status, release_name, indexer, added_at)
-		VALUES (?, 'sabnzbd', 'nzo_test', 'completed', 'Test.Show.S01E05.1080p', 'Indexer', CURRENT_TIMESTAMP)`,
+		INSERT INTO downloads (content_id, client, client_id, status, release_name, indexer, added_at, last_transition_at)
+		VALUES (?, 'sabnzbd', 'nzo_test', 'completed', 'Test.Show.S01E05.1080p', 'Indexer', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
 		seriesID,
 	)
 	if err != nil {

@@ -18,11 +18,11 @@ entirely by LLM agents.
 I'm leaving this "public" on GitHub as a learning asset. For the love of god
 don't try using it yourself. 
 
-The \*arr stack felt perfect for the job because it's both terrible and real
-world battle tested against dirty, nasty, crazy human curated data. It's APIs
-are full of both deeply bizarre and subtly inconsistent expectations. Nothing
-is well specified. In other words the kind of work I avoid doing for fun at all
-costs.. the kind of thing I would intuitively say an LLM would suck at. 
+The \*arr stack felt perfect for the job because it's both terrible and *real
+world battle tested* against dirty, nasty, crazy human curated data. It's APIs
+are full of both deeply subtly inconsistent API expectations. Nothing
+is particuarly well specified. In other words the kind of work I avoid doing for fun at all
+costs..
 
 ## Status
 

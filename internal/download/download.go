@@ -114,9 +114,9 @@ func (s *Store) Add(d *Download) error {
 	// No existing record, insert new one
 	now := time.Now()
 	result, err := s.db.Exec(`
-		INSERT INTO downloads (content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		d.ContentID, d.EpisodeID, d.Client, d.ClientID, d.Status, d.ReleaseName, d.Indexer, now, d.CompletedAt,
+		INSERT INTO downloads (content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		d.ContentID, d.EpisodeID, d.Client, d.ClientID, d.Status, d.ReleaseName, d.Indexer, now, d.CompletedAt, now,
 	)
 	if err != nil {
 		return fmt.Errorf("insert download: %w", err)
@@ -129,6 +129,7 @@ func (s *Store) Add(d *Download) error {
 
 	d.ID = id
 	d.AddedAt = now
+	d.LastTransitionAt = now
 	return nil
 }
 
@@ -137,9 +138,9 @@ func (s *Store) Add(d *Download) error {
 func (s *Store) Get(id int64) (*Download, error) {
 	d := &Download{}
 	err := s.db.QueryRow(`
-		SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at
+		SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at
 		FROM downloads WHERE id = ?`, id,
-	).Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt)
+	).Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("get download %d: %w", id, ErrNotFound)
@@ -155,9 +156,9 @@ func (s *Store) Get(id int64) (*Download, error) {
 func (s *Store) GetByClientID(client Client, clientID string) (*Download, error) {
 	d := &Download{}
 	err := s.db.QueryRow(`
-		SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at
+		SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at
 		FROM downloads WHERE client = ? AND client_id = ?`, client, clientID,
-	).Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt)
+	).Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("get download by client %s/%s: %w", client, clientID, ErrNotFound)
@@ -222,7 +223,7 @@ func (s *Store) List(f DownloadFilter) ([]*Download, error) {
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	query := "SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at FROM downloads " + whereClause + " ORDER BY id"
+	query := "SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at FROM downloads " + whereClause + " ORDER BY id"
 
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
@@ -233,7 +234,7 @@ func (s *Store) List(f DownloadFilter) ([]*Download, error) {
 	var results []*Download
 	for rows.Next() {
 		d := &Download{}
-		if err := rows.Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt); err != nil {
 			return nil, fmt.Errorf("scan download: %w", err)
 		}
 		results = append(results, d)
