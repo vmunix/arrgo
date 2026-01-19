@@ -198,7 +198,7 @@ func TestPlexClient_GetLibraryCount(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/xml")
 		_, _ = w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
-<MediaContainer size="0" totalSize="42">
+<MediaContainer size="42">
 </MediaContainer>`))
 	}))
 	defer server.Close()
