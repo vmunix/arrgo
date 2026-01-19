@@ -95,15 +95,14 @@ arrgo ask "why stuck?"   # One-shot question
 └─────────────────────────────────────────────────┘
         │            │           │
    ┌────▼────┐  ┌────▼────┐ ┌────▼────┐
-   │Prowlarr │  │SABnzbd  │ │  Plex   │
-   └─────────┘  └─────────┘ └─────────┘
+   │Indexers │  │SABnzbd  │ │  Plex   │
+   │(Newznab)│  └─────────┘ └─────────┘
+   └─────────┘
 ```
 
 ## External Dependencies
 
-arrgo integrates with (but aims to reduce over time):
-
-- **Prowlarr** — Indexer aggregation (direct Newznab support planned)
+- **Usenet indexers** — Direct Newznab support (NZBgeek, DrunkenSlug, etc.)
 - **SABnzbd** — Usenet downloads
 - **Plex** — Media server notifications
 - **Overseerr** — Request management (optional, via compat API)
