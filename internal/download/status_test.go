@@ -1,6 +1,9 @@
 package download
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestCanTransitionTo_ValidTransitions(t *testing.T) {
 	tests := []struct {
@@ -68,5 +71,24 @@ func TestIsTerminal(t *testing.T) {
 		if s.IsTerminal() {
 			t.Errorf("%s should NOT be terminal", s)
 		}
+	}
+}
+
+func TestTransitionEvent(t *testing.T) {
+	event := TransitionEvent{
+		DownloadID: 42,
+		From:       StatusQueued,
+		To:         StatusDownloading,
+		At:         time.Now(),
+	}
+
+	if event.DownloadID != 42 {
+		t.Error("DownloadID not set")
+	}
+	if event.From != StatusQueued {
+		t.Error("From not set")
+	}
+	if event.To != StatusDownloading {
+		t.Error("To not set")
 	}
 }
