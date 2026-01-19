@@ -3,9 +3,16 @@ package download
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"testing"
 	"time"
 )
+
+// testLogger returns a discard logger for tests.
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 type mockDownloader struct {
 	addResult    string
@@ -41,7 +48,7 @@ func TestManager_Grab(t *testing.T) {
 	contentID := insertTestContent(t, db, "Test Movie")
 
 	client := &mockDownloader{addResult: "nzo_abc123"}
-	mgr := NewManager(client, store)
+	mgr := NewManager(client, store, testLogger())
 
 	d, err := mgr.Grab(context.Background(), contentID, nil, "http://example.com/test.nzb", "Test.Movie.2024.1080p", "TestIndexer")
 	if err != nil {
@@ -80,7 +87,7 @@ func TestManager_Grab_WithEpisodeID(t *testing.T) {
 	episodeID, _ := epResult.LastInsertId()
 
 	client := &mockDownloader{addResult: "nzo_ep1"}
-	mgr := NewManager(client, store)
+	mgr := NewManager(client, store, testLogger())
 
 	d, err := mgr.Grab(context.Background(), contentID, &episodeID, "http://example.com/ep.nzb", "Test.Show.S01E01", "Indexer")
 	if err != nil {
@@ -98,7 +105,7 @@ func TestManager_Grab_ClientError(t *testing.T) {
 	contentID := insertTestContent(t, db, "Test Movie")
 
 	client := &mockDownloader{addErr: ErrClientUnavailable}
-	mgr := NewManager(client, store)
+	mgr := NewManager(client, store, testLogger())
 
 	_, err := mgr.Grab(context.Background(), contentID, nil, "http://example.com/test.nzb", "Test.Movie", "Indexer")
 	if !errors.Is(err, ErrClientUnavailable) {
@@ -118,7 +125,7 @@ func TestManager_Grab_Idempotent(t *testing.T) {
 	contentID := insertTestContent(t, db, "Test Movie")
 
 	client := &mockDownloader{addResult: "nzo_abc123"}
-	mgr := NewManager(client, store)
+	mgr := NewManager(client, store, testLogger())
 
 	d1, err := mgr.Grab(context.Background(), contentID, nil, "http://example.com/test.nzb", "Test.Movie.2024", "Indexer")
 	if err != nil {
@@ -161,7 +168,7 @@ func TestManager_Refresh(t *testing.T) {
 			Path:     "/complete/Test.Movie",
 		},
 	}
-	mgr := NewManager(client, store)
+	mgr := NewManager(client, store, testLogger())
 
 	if err := mgr.Refresh(context.Background()); err != nil {
 		t.Fatalf("Refresh: %v", err)
@@ -199,7 +206,7 @@ func TestManager_Refresh_NoChange(t *testing.T) {
 			Progress: 50,
 		},
 	}
-	mgr := NewManager(client, store)
+	mgr := NewManager(client, store, testLogger())
 
 	if err := mgr.Refresh(context.Background()); err != nil {
 		t.Fatalf("Refresh: %v", err)
@@ -236,7 +243,7 @@ func TestManager_Refresh_Failed(t *testing.T) {
 			Status: StatusFailed,
 		},
 	}
-	mgr := NewManager(client, store)
+	mgr := NewManager(client, store, testLogger())
 
 	if err := mgr.Refresh(context.Background()); err != nil {
 		t.Fatalf("Refresh: %v", err)
@@ -266,7 +273,7 @@ func TestManager_Cancel(t *testing.T) {
 	_ = store.Add(d)
 
 	client := &mockDownloader{}
-	mgr := NewManager(client, store)
+	mgr := NewManager(client, store, testLogger())
 
 	if err := mgr.Cancel(context.Background(), d.ID, false); err != nil {
 		t.Fatalf("Cancel: %v", err)
@@ -288,7 +295,7 @@ func TestManager_Cancel_NotFound(t *testing.T) {
 	store := NewStore(db)
 
 	client := &mockDownloader{}
-	mgr := NewManager(client, store)
+	mgr := NewManager(client, store, testLogger())
 
 	err := mgr.Cancel(context.Background(), 9999, false)
 	if !errors.Is(err, ErrNotFound) {
@@ -312,7 +319,7 @@ func TestManager_Cancel_ClientError(t *testing.T) {
 
 	// Client error should not prevent DB deletion
 	client := &mockDownloader{removeErr: ErrClientUnavailable}
-	mgr := NewManager(client, store)
+	mgr := NewManager(client, store, testLogger())
 
 	if err := mgr.Cancel(context.Background(), d.ID, false); err != nil {
 		t.Fatalf("Cancel should succeed despite client error: %v", err)
@@ -348,7 +355,7 @@ func TestManager_GetActive(t *testing.T) {
 			ETA:      5 * time.Minute,
 		},
 	}
-	mgr := NewManager(client, store)
+	mgr := NewManager(client, store, testLogger())
 
 	active, err := mgr.GetActive(context.Background())
 	if err != nil {
@@ -385,7 +392,7 @@ func TestManager_GetActive_ClientError(t *testing.T) {
 
 	// Client error should still return download without live status
 	client := &mockDownloader{statusErr: ErrClientUnavailable}
-	mgr := NewManager(client, store)
+	mgr := NewManager(client, store, testLogger())
 
 	active, err := mgr.GetActive(context.Background())
 	if err != nil {
@@ -435,7 +442,7 @@ func TestManager_GetActive_ExcludesImported(t *testing.T) {
 			Progress: 50,
 		},
 	}
-	mgr := NewManager(client, store)
+	mgr := NewManager(client, store, testLogger())
 
 	active, err := mgr.GetActive(context.Background())
 	if err != nil {
