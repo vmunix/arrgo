@@ -12,16 +12,16 @@ import (
 
 // Config is the root configuration structure.
 type Config struct {
-	Server      ServerConfig              `toml:"server"`
-	Database    DatabaseConfig            `toml:"database"`
-	Libraries   LibrariesConfig           `toml:"libraries"`
-	Quality     QualityConfig             `toml:"quality"`
-	Indexers    IndexersConfig            `toml:"indexers"`
-	Downloaders DownloadersConfig         `toml:"downloaders"`
-	Notifications NotificationsConfig     `toml:"notifications"`
-	Overseerr   OverseerrConfig           `toml:"overseerr"`
-	Compat      CompatConfig              `toml:"compat"`
-	AI          AIConfig                  `toml:"ai"`
+	Server        ServerConfig        `toml:"server"`
+	Database      DatabaseConfig      `toml:"database"`
+	Libraries     LibrariesConfig     `toml:"libraries"`
+	Quality       QualityConfig       `toml:"quality"`
+	Indexers      IndexersConfig      `toml:"indexers"`
+	Downloaders   DownloadersConfig   `toml:"downloaders"`
+	Notifications NotificationsConfig `toml:"notifications"`
+	Overseerr     OverseerrConfig     `toml:"overseerr"`
+	Compat        CompatConfig        `toml:"compat"`
+	AI            AIConfig            `toml:"ai"`
 }
 
 type ServerConfig struct {
@@ -45,8 +45,8 @@ type LibraryConfig struct {
 }
 
 type QualityConfig struct {
-	Default  string                      `toml:"default"`
-	Profiles map[string]QualityProfile   `toml:"profiles"`
+	Default  string                    `toml:"default"`
+	Profiles map[string]QualityProfile `toml:"profiles"`
 }
 
 type QualityProfile struct {

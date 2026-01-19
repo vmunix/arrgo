@@ -16,7 +16,7 @@ import (
 type ScoreBonus struct {
 	Attribute string `json:"attribute"`
 	Value     string `json:"value"`
-	Position  int    `json:"position"`    // 0-indexed, -1 if not from preference list
+	Position  int    `json:"position"` // 0-indexed, -1 if not from preference list
 	Bonus     int    `json:"bonus"`
 	Note      string `json:"note,omitempty"`
 }

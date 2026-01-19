@@ -74,8 +74,8 @@ func (c Codec) String() string {
 type HDRFormat int
 
 const (
-	HDRNone HDRFormat = iota
-	HDRGeneric  // "HDR" without specific version
+	HDRNone    HDRFormat = iota
+	HDRGeneric           // "HDR" without specific version
 	HDR10
 	HDR10Plus
 	DolbyVision
@@ -105,12 +105,12 @@ type AudioCodec int
 const (
 	AudioUnknown AudioCodec = iota
 	AudioAAC
-	AudioAC3      // Dolby Digital
-	AudioEAC3     // DD+, DDP
+	AudioAC3  // Dolby Digital
+	AudioEAC3 // DD+, DDP
 	AudioDTS
-	AudioDTSHD    // DTS-HD MA
+	AudioDTSHD // DTS-HD MA
 	AudioTrueHD
-	AudioAtmos    // TrueHD Atmos or DD+ Atmos
+	AudioAtmos // TrueHD Atmos or DD+ Atmos
 	AudioFLAC
 	AudioOpus
 )
