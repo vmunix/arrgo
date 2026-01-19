@@ -50,7 +50,13 @@ type QualityConfig struct {
 }
 
 type QualityProfile struct {
-	Accept []string `toml:"accept"`
+	Resolution  []string `toml:"resolution"`
+	Sources     []string `toml:"sources"`
+	Codecs      []string `toml:"codecs"`
+	HDR         []string `toml:"hdr"`
+	Audio       []string `toml:"audio"`
+	PreferRemux bool     `toml:"prefer_remux"`
+	Reject      []string `toml:"reject"`
 }
 
 // IndexersConfig is a map of indexer name to config.
