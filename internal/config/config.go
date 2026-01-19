@@ -92,9 +92,11 @@ type NotificationsConfig struct {
 }
 
 type PlexConfig struct {
-	URL       string   `toml:"url"`
-	Token     string   `toml:"token"`
-	Libraries []string `toml:"libraries"`
+	URL        string   `toml:"url"`
+	Token      string   `toml:"token"`
+	Libraries  []string `toml:"libraries"`
+	RemotePath string   `toml:"remote_path"` // Path prefix as seen by Plex (e.g., /data/media)
+	LocalPath  string   `toml:"local_path"`  // Corresponding path on this machine (e.g., /srv/data/media)
 }
 
 type OverseerrConfig struct {

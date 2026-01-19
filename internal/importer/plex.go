@@ -16,6 +16,8 @@ import (
 type PlexClient struct {
 	baseURL    string
 	token      string
+	remotePath string // Path prefix as seen by Plex
+	localPath  string // Corresponding local path
 	httpClient *http.Client
 }
 
@@ -28,6 +30,31 @@ func NewPlexClient(baseURL, token string) *PlexClient {
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+// NewPlexClientWithPathMapping creates a new Plex client with path translation.
+// localPath is the path on this machine, remotePath is how Plex sees it.
+func NewPlexClientWithPathMapping(baseURL, token, localPath, remotePath string) *PlexClient {
+	return &PlexClient{
+		baseURL:    strings.TrimSuffix(baseURL, "/"),
+		token:      token,
+		localPath:  localPath,
+		remotePath: remotePath,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+	}
+}
+
+// translateToRemote converts a local path to the path Plex expects.
+func (c *PlexClient) translateToRemote(path string) string {
+	if c.localPath == "" || c.remotePath == "" {
+		return path
+	}
+	if strings.HasPrefix(path, c.localPath) {
+		return c.remotePath + path[len(c.localPath):]
+	}
+	return path
 }
 
 // Identity holds Plex server identity information.
@@ -115,8 +142,9 @@ func (c *PlexClient) FindSectionByName(ctx context.Context, name string) (*Secti
 
 // ScanPath triggers a partial scan of the directory containing the given file path.
 func (c *PlexClient) ScanPath(ctx context.Context, filePath string) error {
-	// Get directory containing the file
-	dir := filepath.Dir(filePath)
+	// Translate local path to Plex's path (for Docker path mapping)
+	remotePath := c.translateToRemote(filePath)
+	remoteDir := filepath.Dir(remotePath)
 
 	// Find the section that contains this path
 	sections, err := c.GetSections(ctx)
@@ -127,7 +155,7 @@ func (c *PlexClient) ScanPath(ctx context.Context, filePath string) error {
 	var sectionKey string
 	for _, section := range sections {
 		for _, loc := range section.Locations {
-			if strings.HasPrefix(dir, loc.Path) || strings.HasPrefix(filePath, loc.Path) {
+			if strings.HasPrefix(remoteDir, loc.Path) || strings.HasPrefix(remotePath, loc.Path) {
 				sectionKey = section.Key
 				break
 			}
@@ -138,12 +166,12 @@ func (c *PlexClient) ScanPath(ctx context.Context, filePath string) error {
 	}
 
 	if sectionKey == "" {
-		return fmt.Errorf("no library section found for path: %s", filePath)
+		return fmt.Errorf("no library section found for path: %s (translated: %s)", filePath, remotePath)
 	}
 
-	// Trigger partial scan
+	// Trigger partial scan using the remote path
 	scanURL := fmt.Sprintf("%s/library/sections/%s/refresh?path=%s",
-		c.baseURL, sectionKey, url.QueryEscape(dir))
+		c.baseURL, sectionKey, url.QueryEscape(remoteDir))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, scanURL, nil)
 	if err != nil {

@@ -30,19 +30,25 @@ type Importer struct {
 
 // Config for the importer.
 type Config struct {
-	MovieRoot      string
-	SeriesRoot     string
-	MovieTemplate  string
-	SeriesTemplate string
-	PlexURL        string
-	PlexToken      string
+	MovieRoot       string
+	SeriesRoot      string
+	MovieTemplate   string
+	SeriesTemplate  string
+	PlexURL         string
+	PlexToken       string
+	PlexLocalPath   string // Local path prefix (e.g., /srv/data/media)
+	PlexRemotePath  string // Plex's path prefix (e.g., /data/media)
 }
 
 // New creates a new importer.
 func New(db *sql.DB, cfg Config, log *slog.Logger) *Importer {
 	var plex *PlexClient
 	if cfg.PlexURL != "" && cfg.PlexToken != "" {
-		plex = NewPlexClient(cfg.PlexURL, cfg.PlexToken)
+		if cfg.PlexLocalPath != "" && cfg.PlexRemotePath != "" {
+			plex = NewPlexClientWithPathMapping(cfg.PlexURL, cfg.PlexToken, cfg.PlexLocalPath, cfg.PlexRemotePath)
+		} else {
+			plex = NewPlexClient(cfg.PlexURL, cfg.PlexToken)
+		}
 	}
 
 	return &Importer{

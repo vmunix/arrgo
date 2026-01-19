@@ -74,6 +74,9 @@ category = "arrgo"
 url = "http://localhost:32400"
 token = "${PLEX_TOKEN}"
 libraries = ["Movies", "TV Shows"]
+# Path mapping for Docker: translate local paths to Plex's container paths
+# remote_path = "/data/media"        # Path as seen by Plex
+# local_path = "/srv/data/media"     # Corresponding path on this machine
 
 # Overseerr integration (optional)
 [overseerr]
