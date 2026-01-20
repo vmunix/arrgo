@@ -525,9 +525,10 @@ func matchesRejectList(info release.Info, rejectList []string) bool {
 // rejectMatchesSpecial handles special reject list matching.
 func rejectMatchesSpecial(info release.Info, reject string) bool {
 	switch reject {
-	case "cam", "camrip", "ts", "telesync", "hdcam":
-		// Low-quality sources not currently tracked by parser
-		return false
+	case "cam", "camrip", "hdcam":
+		return info.Source == release.SourceCAM
+	case "ts", "telesync", "hdts":
+		return info.Source == release.SourceTelesync
 	case "hdtv":
 		return info.Source == release.SourceHDTV
 	case "webrip":
