@@ -74,9 +74,14 @@ arrgod                   # Start API server + background jobs
 arrgod --config FILE     # Use custom config file
 
 # CLI client
-arrgo status             # System health and queue summary
+arrgo status             # System dashboard (connections, pipeline, problems)
 arrgo search "Movie"     # Search indexers for releases
 arrgo queue              # Show active downloads
+arrgo queue --all        # Include terminal states (cleaned, failed)
+arrgo queue --state X    # Filter by state
+arrgo imports            # Show pending imports and recent completions
+arrgo verify             # Reality-check downloads against SABnzbd/Plex
+arrgo verify 42          # Verify specific download
 arrgo init               # Interactive setup wizard
 arrgo parse "Release.Name.2024.1080p.mkv"  # Parse release name locally
 

@@ -82,12 +82,15 @@ Or use defaults syntax in config: `${VAR:-default_value}`
 ./arrgod                 # Or: task dev (with live reload)
 
 # In another terminal, use CLI commands
-./arrgo status           # Check server connection
+./arrgo status           # Dashboard (connections, pipeline state, problems)
+./arrgo queue            # Show active downloads
+./arrgo queue --all      # Include terminal states (cleaned, failed)
+./arrgo imports          # Pending imports and recent completions
+./arrgo verify           # Reality-check against SABnzbd/filesystem/Plex
 ./arrgo plex status      # Check Plex connection
 ./arrgo plex list movies # List Plex library contents
 ./arrgo plex search "Movie Name"  # Search Plex
 ./arrgo search "Movie Name"       # Search indexers
-./arrgo queue            # Show active downloads
 ./arrgo import --manual "/path/to/file.mkv" --dry-run  # Preview import
 ./arrgo parse "Release.Name.2024.1080p.WEB-DL.mkv"     # Parse release (no server needed)
 ```

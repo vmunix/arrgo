@@ -127,18 +127,19 @@ files (
     added_at        TIMESTAMP
 )
 
--- Downloads: active and recent
+-- Downloads: active and recent (state machine lifecycle)
 downloads (
     id              INTEGER PRIMARY KEY,
     content_id      INTEGER NOT NULL REFERENCES content(id),
     episode_id      INTEGER REFERENCES episodes(id),
-    client          TEXT NOT NULL,          -- 'sabnzbd' | 'qbittorrent'
+    client          TEXT NOT NULL,          -- 'sabnzbd' | 'qbittorrent' | 'manual'
     client_id       TEXT NOT NULL,
-    status          TEXT NOT NULL,          -- 'queued' | 'downloading' | 'completed' | 'failed' | 'imported'
+    status          TEXT NOT NULL,          -- 'queued' | 'downloading' | 'completed' | 'imported' | 'cleaned' | 'failed'
     release_name    TEXT,
     indexer         TEXT,
     added_at        TIMESTAMP,
-    completed_at    TIMESTAMP
+    completed_at    TIMESTAMP,
+    last_transition_at TIMESTAMP            -- For stuck detection
 )
 
 -- History: audit trail
@@ -287,7 +288,9 @@ GET     /api/v1/files                   All tracked files
 DELETE  /api/v1/files/:id               Remove file
 
 # System
-GET     /api/v1/status                  Health, disk, connectivity
+GET     /api/v1/status                  Health, version
+GET     /api/v1/dashboard               Aggregated stats (connections, pipeline, stuck, library)
+GET     /api/v1/verify                  Reality-check downloads against live systems
 GET     /api/v1/profiles                Quality profiles
 POST    /api/v1/scan                    Trigger Plex scan
 ```
@@ -461,9 +464,13 @@ arrgod                           # Start API + background jobs
 arrgod --config FILE             # Use custom config file
 
 # Client commands
-arrgo status                     # System status
+arrgo status                     # Dashboard (connections, pipeline, problems)
 arrgo search "Movie Name"        # Search indexers
-arrgo queue                      # Show downloads
+arrgo queue                      # Show active downloads
+arrgo queue --all                # Include terminal states (cleaned, failed)
+arrgo queue --state X            # Filter by state
+arrgo imports                    # Pending imports and recent completions
+arrgo verify [id]                # Reality-check against SABnzbd/filesystem/Plex
 arrgo import 42                  # Import tracked download by ID
 arrgo import --manual "/path"    # Import arbitrary file with auto-parsing
 arrgo parse <release>            # Parse release name (local, no server needed)
