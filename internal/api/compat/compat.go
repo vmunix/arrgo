@@ -659,6 +659,22 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if series already exists
+	contents, _, err := s.library.ListContent(library.ContentFilter{TVDBID: &req.TVDBID, Limit: 1})
+	if err == nil && len(contents) > 0 {
+		existing := contents[0]
+		// Update monitoring status if needed
+		if req.Monitored && existing.Status != library.StatusWanted {
+			existing.Status = library.StatusWanted
+			if err := s.library.UpdateContent(existing); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, s.contentToSonarrSeries(existing))
+		return
+	}
+
 	// Map quality profile ID to name
 	profileName := "hd"
 	for name, id := range s.cfg.QualityProfiles {
@@ -691,7 +707,10 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Note: Series auto-search is more complex (episodes), skip for v1
+	// Auto-search if requested
+	if req.AddOptions.SearchForMissingEpisodes && s.searcher != nil && s.manager != nil {
+		go s.searchAndGrabSeries(content.ID, req.Title, req.Year, profileName)
+	}
 
 	writeJSON(w, http.StatusCreated, s.contentToSonarrSeries(content))
 }
@@ -746,6 +765,26 @@ func (s *Server) searchAndGrab(contentID int64, title string, year int, profile 
 	}
 
 	// Grab the best match (first result after scoring/sorting)
+	best := result.Releases[0]
+	_, _ = s.manager.Grab(ctx, contentID, nil, best.DownloadURL, best.Title, best.Indexer)
+}
+
+// searchAndGrabSeries performs a background search for series (season pack or latest episode).
+func (s *Server) searchAndGrabSeries(contentID int64, title string, _ int, profile string) {
+	ctx := context.Background()
+
+	// Search for season 1 pack first
+	query := search.Query{
+		Text: fmt.Sprintf("%s S01", title),
+		Type: "series",
+	}
+
+	result, err := s.searcher.Search(ctx, query, profile)
+	if err != nil || len(result.Releases) == 0 {
+		return
+	}
+
+	// Grab the best match
 	best := result.Releases[0]
 	_, _ = s.manager.Grab(ctx, contentID, nil, best.DownloadURL, best.Title, best.Indexer)
 }
