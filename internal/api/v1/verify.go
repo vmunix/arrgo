@@ -53,15 +53,15 @@ func (s *Server) verify(w http.ResponseWriter, r *http.Request) {
 	resp := VerifyResponse{}
 
 	// Test connections
-	if s.plex != nil {
-		_, err := s.plex.GetIdentity(ctx)
+	if s.deps.Plex != nil {
+		_, err := s.deps.Plex.GetIdentity(ctx)
 		resp.Connections.Plex = err == nil
 		if err != nil {
 			resp.Connections.PlexErr = err.Error()
 		}
 	}
-	if s.manager != nil {
-		_, err := s.manager.Client().List(ctx)
+	if s.deps.Manager != nil {
+		_, err := s.deps.Manager.Client().List(ctx)
 		resp.Connections.SABnzbd = err == nil
 		if err != nil {
 			resp.Connections.SABErr = err.Error()
@@ -69,7 +69,7 @@ func (s *Server) verify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get downloads to verify
-	downloads, err := s.downloads.List(download.DownloadFilter{Active: true})
+	downloads, err := s.deps.Downloads.List(download.DownloadFilter{Active: true})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "list downloads: "+err.Error())
 		return
@@ -101,7 +101,7 @@ func (s *Server) verify(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) verifyDownload(ctx context.Context, dl *download.Download) *VerifyProblem {
-	content, _ := s.library.GetContent(dl.ContentID)
+	content, _ := s.deps.Library.GetContent(dl.ContentID)
 	title := dl.ReleaseName
 	if content != nil {
 		title = content.Title
@@ -115,8 +115,8 @@ func (s *Server) verifyDownload(ctx context.Context, dl *download.Download) *Ver
 	switch dl.Status {
 	case download.StatusDownloading:
 		// Check if actually in SABnzbd
-		if s.manager != nil {
-			status, err := s.manager.Client().Status(ctx, dl.ClientID)
+		if s.deps.Manager != nil {
+			status, err := s.deps.Manager.Client().Status(ctx, dl.ClientID)
 			if err != nil || status == nil {
 				return &VerifyProblem{
 					DownloadID: dl.ID,
@@ -133,8 +133,8 @@ func (s *Server) verifyDownload(ctx context.Context, dl *download.Download) *Ver
 
 	case download.StatusCompleted:
 		// Check if source file exists
-		if s.manager != nil {
-			status, _ := s.manager.Client().Status(ctx, dl.ClientID)
+		if s.deps.Manager != nil {
+			status, _ := s.deps.Manager.Client().Status(ctx, dl.ClientID)
 			if status != nil && status.Path != "" {
 				if _, err := os.Stat(status.Path); os.IsNotExist(err) {
 					return &VerifyProblem{
@@ -153,8 +153,8 @@ func (s *Server) verifyDownload(ctx context.Context, dl *download.Download) *Ver
 
 	case download.StatusImported:
 		// Check if in Plex
-		if s.plex != nil && content != nil {
-			found, _ := s.plex.HasMovie(ctx, content.Title, content.Year)
+		if s.deps.Plex != nil && content != nil {
+			found, _ := s.deps.Plex.HasMovie(ctx, content.Title, content.Year)
 			if !found {
 				return &VerifyProblem{
 					DownloadID: dl.ID,

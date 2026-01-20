@@ -44,13 +44,13 @@ func TestNew(t *testing.T) {
 	if srv == nil {
 		t.Fatal("New returned nil")
 	}
-	if srv.library == nil {
+	if srv.deps.Library == nil {
 		t.Error("library store not initialized")
 	}
-	if srv.downloads == nil {
+	if srv.deps.Downloads == nil {
 		t.Error("download store not initialized")
 	}
-	if srv.history == nil {
+	if srv.deps.History == nil {
 		t.Error("history store not initialized")
 	}
 }
@@ -93,7 +93,7 @@ func TestListContent_WithItems(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := srv.library.AddContent(c); err != nil {
+	if err := srv.deps.Library.AddContent(c); err != nil {
 		t.Fatalf("add content: %v", err)
 	}
 
@@ -134,7 +134,7 @@ func TestListContent_WithFilters(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := srv.library.AddContent(movie); err != nil {
+	if err := srv.deps.Library.AddContent(movie); err != nil {
 		t.Fatalf("add movie: %v", err)
 	}
 
@@ -147,7 +147,7 @@ func TestListContent_WithFilters(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/tv",
 	}
-	if err := srv.library.AddContent(series); err != nil {
+	if err := srv.deps.Library.AddContent(series); err != nil {
 		t.Fatalf("add series: %v", err)
 	}
 
@@ -189,7 +189,7 @@ func TestGetContent_Found(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := srv.library.AddContent(c); err != nil {
+	if err := srv.deps.Library.AddContent(c); err != nil {
 		t.Fatalf("add content: %v", err)
 	}
 
@@ -288,7 +288,7 @@ func TestUpdateContent(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := srv.library.AddContent(c); err != nil {
+	if err := srv.deps.Library.AddContent(c); err != nil {
 		t.Fatalf("add content: %v", err)
 	}
 
@@ -304,7 +304,7 @@ func TestUpdateContent(t *testing.T) {
 	}
 
 	// Verify update
-	updated, err := srv.library.GetContent(1)
+	updated, err := srv.deps.Library.GetContent(1)
 	if err != nil {
 		t.Fatalf("get content: %v", err)
 	}
@@ -326,7 +326,7 @@ func TestDeleteContent(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := srv.library.AddContent(c); err != nil {
+	if err := srv.deps.Library.AddContent(c); err != nil {
 		t.Fatalf("add content: %v", err)
 	}
 
@@ -341,7 +341,7 @@ func TestDeleteContent(t *testing.T) {
 	}
 
 	// Verify deleted
-	_, err := srv.library.GetContent(1)
+	_, err := srv.deps.Library.GetContent(1)
 	if !errors.Is(err, library.ErrNotFound) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
@@ -360,7 +360,7 @@ func TestListEpisodes(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/tv",
 	}
-	if err := srv.library.AddContent(series); err != nil {
+	if err := srv.deps.Library.AddContent(series); err != nil {
 		t.Fatalf("add series: %v", err)
 	}
 
@@ -373,7 +373,7 @@ func TestListEpisodes(t *testing.T) {
 			Title:     fmt.Sprintf("Episode %d", i),
 			Status:    library.StatusWanted,
 		}
-		if err := srv.library.AddEpisode(ep); err != nil {
+		if err := srv.deps.Library.AddEpisode(ep); err != nil {
 			t.Fatalf("add episode: %v", err)
 		}
 	}
@@ -410,7 +410,7 @@ func TestUpdateEpisode(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/tv",
 	}
-	if err := srv.library.AddContent(series); err != nil {
+	if err := srv.deps.Library.AddContent(series); err != nil {
 		t.Fatalf("add series: %v", err)
 	}
 
@@ -421,7 +421,7 @@ func TestUpdateEpisode(t *testing.T) {
 		Title:     "Pilot",
 		Status:    library.StatusWanted,
 	}
-	if err := srv.library.AddEpisode(ep); err != nil {
+	if err := srv.deps.Library.AddEpisode(ep); err != nil {
 		t.Fatalf("add episode: %v", err)
 	}
 
@@ -437,7 +437,7 @@ func TestUpdateEpisode(t *testing.T) {
 	}
 
 	// Verify update
-	updated, err := srv.library.GetEpisode(1)
+	updated, err := srv.deps.Library.GetEpisode(1)
 	if err != nil {
 		t.Fatalf("get episode: %v", err)
 	}
@@ -450,11 +450,14 @@ func TestSearch_NoSearcher(t *testing.T) {
 	db := setupTestDB(t)
 	srv := New(db, Config{})
 
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
 	body := `{"query":"test movie"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/search", strings.NewReader(body))
 	w := httptest.NewRecorder()
 
-	srv.search(w, req)
+	mux.ServeHTTP(w, req)
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
@@ -465,11 +468,14 @@ func TestGrab_NoManager(t *testing.T) {
 	db := setupTestDB(t)
 	srv := New(db, Config{})
 
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
 	body := `{"content_id":1,"download_url":"http://example.com/nzb","title":"Test","indexer":"TestIndexer"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/grab", strings.NewReader(body))
 	w := httptest.NewRecorder()
 
-	srv.grab(w, req)
+	mux.ServeHTTP(w, req)
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
@@ -517,11 +523,13 @@ func TestDeleteDownload_NoManager(t *testing.T) {
 	db := setupTestDB(t)
 	srv := New(db, Config{})
 
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/downloads/1", nil)
-	req.SetPathValue("id", "1")
 	w := httptest.NewRecorder()
 
-	srv.deleteDownload(w, req)
+	mux.ServeHTTP(w, req)
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
@@ -585,7 +593,7 @@ func TestDeleteFile(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := srv.library.AddContent(c); err != nil {
+	if err := srv.deps.Library.AddContent(c); err != nil {
 		t.Fatalf("add content: %v", err)
 	}
 
@@ -596,7 +604,7 @@ func TestDeleteFile(t *testing.T) {
 		Quality:   "1080p",
 		Source:    "test",
 	}
-	if err := srv.library.AddFile(f); err != nil {
+	if err := srv.deps.Library.AddFile(f); err != nil {
 		t.Fatalf("add file: %v", err)
 	}
 
@@ -664,10 +672,13 @@ func TestTriggerScan_NoPlex(t *testing.T) {
 	db := setupTestDB(t)
 	srv := New(db, Config{})
 
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/scan", strings.NewReader("{}"))
 	w := httptest.NewRecorder()
 
-	srv.triggerScan(w, req)
+	mux.ServeHTTP(w, req)
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
