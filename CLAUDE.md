@@ -150,9 +150,61 @@ Native API conventions:
 
 ## Testing
 
+### Patterns
+
+**Assertions** — Use [testify](https://github.com/stretchr/testify):
+```go
+import (
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/require"
+)
+
+func TestExample(t *testing.T) {
+    result, err := DoSomething()
+    require.NoError(t, err)           // Fatal if fails (test stops)
+    assert.Equal(t, expected, result) // Non-fatal (test continues)
+}
+```
+
+- `require.X` — Fatal assertions (setup, preconditions)
+- `assert.X` — Non-fatal assertions (verify multiple things)
+
+**Mocks** — Use [mockgen](https://github.com/uber-go/mock):
+```go
+import (
+    "github.com/vmunix/arrgo/internal/search/mocks"
+    "go.uber.org/mock/gomock"
+)
+
+func TestWithMock(t *testing.T) {
+    ctrl := gomock.NewController(t)
+    mockIndexer := mocks.NewMockIndexerAPI(ctrl)
+
+    mockIndexer.EXPECT().
+        Search(gomock.Any(), gomock.Any()).
+        Return([]Release{{Title: "Test"}}, nil)
+
+    // ... use mockIndexer
+}
+```
+
+Generated mocks live in `mocks/` subdirectories:
+- `internal/search/mocks/` — IndexerAPI
+- `internal/download/mocks/` — Downloader
+- `internal/api/v1/mocks/` — Searcher, DownloadManager, PlexClient, FileImporter
+
+To regenerate mocks after interface changes:
+```bash
+go generate ./...
+```
+
+### Test Organization
+
 - Unit tests for business logic (parsing, scoring, etc.)
 - Integration tests for API endpoints
 - Mock external services (indexers, SABnzbd, Plex)
+
+### Architecture Principles
 
 Follow Eskil Steenberg's black-box architecture:
 1. **Black Box Interfaces**: Every module has a clean API with hidden implementation
