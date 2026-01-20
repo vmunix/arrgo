@@ -4,23 +4,17 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestErrors_AreDistinct(t *testing.T) {
-	if errors.Is(ErrNotFound, ErrDuplicate) {
-		t.Error("ErrNotFound should not match ErrDuplicate")
-	}
-	if errors.Is(ErrNotFound, ErrConstraint) {
-		t.Error("ErrNotFound should not match ErrConstraint")
-	}
-	if errors.Is(ErrDuplicate, ErrConstraint) {
-		t.Error("ErrDuplicate should not match ErrConstraint")
-	}
+	assert.False(t, errors.Is(ErrNotFound, ErrDuplicate), "ErrNotFound should not match ErrDuplicate")
+	assert.False(t, errors.Is(ErrNotFound, ErrConstraint), "ErrNotFound should not match ErrConstraint")
+	assert.False(t, errors.Is(ErrDuplicate, ErrConstraint), "ErrDuplicate should not match ErrConstraint")
 }
 
 func TestErrors_CanBeWrapped(t *testing.T) {
 	wrapped := fmt.Errorf("content 123: %w", ErrNotFound)
-	if !errors.Is(wrapped, ErrNotFound) {
-		t.Error("wrapped error should match ErrNotFound")
-	}
+	assert.True(t, errors.Is(wrapped, ErrNotFound), "wrapped error should match ErrNotFound")
 }
