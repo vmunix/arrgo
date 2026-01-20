@@ -117,17 +117,18 @@ func runParseCmd(cmd *cobra.Command, args []string) error {
 
 	// Determine input mode
 	var releaseNames []string
-	if inputFile != "" {
+	switch {
+	case inputFile != "":
 		// Batch mode: read from file
 		names, err := readReleaseFile(inputFile)
 		if err != nil {
 			return fmt.Errorf("reading file: %w", err)
 		}
 		releaseNames = names
-	} else if len(args) > 0 {
+	case len(args) > 0:
 		// Single release from command line
 		releaseNames = []string{args[0]}
-	} else {
+	default:
 		return fmt.Errorf("usage: arrgo parse <release-name> or arrgo parse --file <filename>")
 	}
 
@@ -216,6 +217,12 @@ const (
 	bonusRemux           = 20
 )
 
+// String constants to avoid duplication
+const (
+	valueUnknown      = "unknown"
+	noteNotInPrefList = "not in preference list"
+)
+
 // scoreWithBreakdown calculates the score and returns a detailed breakdown.
 func scoreWithBreakdown(info release.Info, profile config.QualityProfile) (int, []ScoreBonus) {
 	// Check reject list first
@@ -251,7 +258,7 @@ func scoreWithBreakdown(info release.Info, profile config.QualityProfile) (int, 
 
 	// Source bonus
 	if bonus := scoreAttribute(info.Source.String(), profile.Sources, bonusSource, "Source"); bonus.Bonus > 0 || info.Source != release.SourceUnknown {
-		if bonus.Value != "unknown" {
+		if bonus.Value != valueUnknown {
 			breakdown = append(breakdown, bonus)
 			totalScore += bonus.Bonus
 		}
@@ -259,7 +266,7 @@ func scoreWithBreakdown(info release.Info, profile config.QualityProfile) (int, 
 
 	// Codec bonus
 	if bonus := scoreAttribute(info.Codec.String(), profile.Codecs, bonusCodec, "Codec"); bonus.Bonus > 0 || info.Codec != release.CodecUnknown {
-		if bonus.Value != "unknown" {
+		if bonus.Value != valueUnknown {
 			breakdown = append(breakdown, bonus)
 			totalScore += bonus.Bonus
 		}
@@ -350,7 +357,7 @@ func scoreAttribute(value string, preferences []string, baseBonus int, attrName 
 		Bonus:     0,
 	}
 
-	if value == "" || value == "unknown" {
+	if value == "" || value == valueUnknown {
 		return bonus
 	}
 
@@ -372,7 +379,7 @@ func scoreAttribute(value string, preferences []string, baseBonus int, attrName 
 		}
 	}
 
-	bonus.Note = "not in preference list"
+	bonus.Note = noteNotInPrefList
 	return bonus
 }
 
@@ -402,7 +409,7 @@ func scoreHDR(hdr release.HDRFormat, preferences []string) ScoreBonus {
 		}
 	}
 
-	bonus.Note = "not in preference list"
+	bonus.Note = noteNotInPrefList
 	return bonus
 }
 
@@ -451,7 +458,7 @@ func scoreAudioCodec(audio release.AudioCodec, preferences []string) ScoreBonus 
 		}
 	}
 
-	bonus.Note = "not in preference list"
+	bonus.Note = noteNotInPrefList
 	return bonus
 }
 
@@ -613,7 +620,7 @@ func sourceDisplayName(s release.Source) string {
 	case release.SourceHDTV:
 		return "HDTV"
 	default:
-		return "unknown"
+		return valueUnknown
 	}
 }
 

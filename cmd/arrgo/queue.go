@@ -33,9 +33,9 @@ func runQueueCmd(cmd *cobra.Command, args []string) error {
 	// Filter by state if specified
 	if stateFilter != "" {
 		filtered := make([]DownloadResponse, 0)
-		for _, dl := range downloads.Items {
-			if strings.EqualFold(dl.Status, stateFilter) {
-				filtered = append(filtered, dl)
+		for i := range downloads.Items {
+			if strings.EqualFold(downloads.Items[i].Status, stateFilter) {
+				filtered = append(filtered, downloads.Items[i])
 			}
 		}
 		downloads.Items = filtered
@@ -65,7 +65,8 @@ func printQueueActive(d *ListDownloadsResponse) {
 	fmt.Printf("  %-4s %-12s %-44s %s\n", "ID", "STATE", "RELEASE", "PROGRESS")
 	fmt.Println("  " + strings.Repeat("-", 70))
 
-	for _, dl := range d.Items {
+	for i := range d.Items {
+		dl := &d.Items[i]
 		title := dl.ReleaseName
 		if len(title) > 44 {
 			title = title[:41] + "..."
@@ -90,7 +91,8 @@ func printQueueAll(d *ListDownloadsResponse) {
 	fmt.Printf("  %-4s %-12s %-40s %-12s\n", "ID", "STATE", "RELEASE", "COMPLETED")
 	fmt.Println("  " + strings.Repeat("-", 72))
 
-	for _, dl := range d.Items {
+	for i := range d.Items {
+		dl := &d.Items[i]
 		title := dl.ReleaseName
 		if len(title) > 40 {
 			title = title[:37] + "..."

@@ -12,7 +12,7 @@ import (
 func TestHistoryStore_Add(t *testing.T) {
 	db := setupTestDB(t)
 	store := NewHistoryStore(db)
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 
 	h := &HistoryEntry{
 		ContentID: contentID,
@@ -29,7 +29,7 @@ func TestHistoryStore_Add(t *testing.T) {
 func TestHistoryStore_List(t *testing.T) {
 	db := setupTestDB(t)
 	store := NewHistoryStore(db)
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 
 	// Add multiple entries
 	events := []string{EventGrabbed, EventImported, EventGrabbed}
@@ -64,7 +64,7 @@ func TestHistoryStore_List(t *testing.T) {
 func TestHistoryStore_List_OrderByRecent(t *testing.T) {
 	db := setupTestDB(t)
 	store := NewHistoryStore(db)
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 
 	// Add entries
 	for i := 0; i < 3; i++ {

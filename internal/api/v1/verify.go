@@ -69,7 +69,7 @@ func (s *Server) verify(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get downloads to verify
-	downloads, err := s.deps.Downloads.List(download.DownloadFilter{Active: true})
+	downloads, err := s.deps.Downloads.List(download.Filter{Active: true})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "list downloads: "+err.Error())
 		return

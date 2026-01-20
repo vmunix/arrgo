@@ -2,6 +2,7 @@ package library
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -12,7 +13,7 @@ func mapSQLiteError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
 	// modernc.org/sqlite wraps errors; check error message for constraint violations

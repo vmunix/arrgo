@@ -11,6 +11,9 @@ const (
 	Resolution2160p
 )
 
+// unknownStr is the string representation for unknown values.
+const unknownStr = "unknown"
+
 func (r Resolution) String() string {
 	switch r {
 	case Resolution720p:
@@ -20,7 +23,7 @@ func (r Resolution) String() string {
 	case Resolution2160p:
 		return "2160p"
 	default:
-		return "unknown"
+		return unknownStr
 	}
 }
 
@@ -52,7 +55,7 @@ func (s Source) String() string {
 	case SourceTelesync:
 		return "telesync"
 	default:
-		return "unknown"
+		return unknownStr
 	}
 }
 
@@ -72,7 +75,7 @@ func (c Codec) String() string {
 	case CodecX265:
 		return "x265"
 	default:
-		return "unknown"
+		return unknownStr
 	}
 }
 

@@ -84,7 +84,7 @@ func runManualImport(path string, dryRun bool) error {
 
 	// Build quality string
 	quality := info.Resolution.String()
-	if quality == "unknown" {
+	if quality == valueUnknown {
 		quality = ""
 	}
 
@@ -227,16 +227,17 @@ func runImportListCmd(cmd *cobra.Command, args []string) error {
 
 	// Split into pending (imported) and recent (cleaned)
 	var pending, recent []DownloadResponse
-	for _, dl := range downloads.Items {
+	for i := range downloads.Items {
+		dl := &downloads.Items[i]
 		switch dl.Status {
 		case "imported":
-			pending = append(pending, dl)
+			pending = append(pending, *dl)
 		case "cleaned":
 			// Only include if completed within last 24h
 			if dl.CompletedAt != nil {
 				if t, err := time.Parse(time.RFC3339, *dl.CompletedAt); err == nil {
 					if time.Since(t) < 24*time.Hour {
-						recent = append(recent, dl)
+						recent = append(recent, *dl)
 					}
 				}
 			}
@@ -274,7 +275,8 @@ func printPendingImports(items []DownloadResponse) {
 	fmt.Printf("  %-4s %-28s %-12s %s\n", "ID", "TITLE", "IMPORTED", "PLEX")
 	fmt.Println("  " + strings.Repeat("-", 56))
 
-	for _, dl := range items {
+	for i := range items {
+		dl := &items[i]
 		title := dl.ReleaseName
 		if len(title) > 28 {
 			title = title[:25] + "..."
@@ -306,7 +308,8 @@ func printRecentImports(items []DownloadResponse) {
 	fmt.Printf("  %-4s %-28s %-12s %s\n", "ID", "TITLE", "IMPORTED", "STATUS")
 	fmt.Println("  " + strings.Repeat("-", 56))
 
-	for _, dl := range items {
+	for i := range items {
+		dl := &items[i]
 		title := dl.ReleaseName
 		if len(title) > 28 {
 			title = title[:25] + "..."

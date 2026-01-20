@@ -37,12 +37,11 @@ func setupTestDB(t *testing.T) *sql.DB {
 }
 
 // insertTestContent inserts a test content row and returns its ID.
-func insertTestContent(t *testing.T, db *sql.DB, title string) int64 {
+func insertTestContent(t *testing.T, db *sql.DB) int64 {
 	t.Helper()
 	result, err := db.Exec(`
 		INSERT INTO content (type, title, year, status, quality_profile, root_path)
-		VALUES ('movie', ?, 2000, 'wanted', 'hd', '/movies')`,
-		title,
+		VALUES ('movie', 'Test Movie', 2000, 'wanted', 'hd', '/movies')`,
 	)
 	require.NoError(t, err)
 	id, err := result.LastInsertId()
@@ -55,7 +54,7 @@ func TestManager_Grab(t *testing.T) {
 
 	db := setupTestDB(t)
 	store := download.NewStore(db)
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 
 	client := mocks.NewMockDownloader(ctrl)
 	client.EXPECT().
@@ -109,7 +108,7 @@ func TestManager_Grab_ClientError(t *testing.T) {
 
 	db := setupTestDB(t)
 	store := download.NewStore(db)
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 
 	client := mocks.NewMockDownloader(ctrl)
 	client.EXPECT().
@@ -123,7 +122,7 @@ func TestManager_Grab_ClientError(t *testing.T) {
 	require.ErrorIs(t, err, download.ErrClientUnavailable)
 
 	// Should not have saved to DB
-	downloads, _ := store.List(download.DownloadFilter{})
+	downloads, _ := store.List(download.Filter{})
 	assert.Empty(t, downloads, "download should not be in DB after client error")
 }
 
@@ -132,7 +131,7 @@ func TestManager_Grab_Idempotent(t *testing.T) {
 
 	db := setupTestDB(t)
 	store := download.NewStore(db)
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 
 	client := mocks.NewMockDownloader(ctrl)
 	// First grab returns nzo_abc123
@@ -161,7 +160,7 @@ func TestManager_Refresh(t *testing.T) {
 
 	db := setupTestDB(t)
 	store := download.NewStore(db)
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 
 	// Add a download
 	d := &download.Download{
@@ -200,7 +199,7 @@ func TestManager_Refresh_NoChange(t *testing.T) {
 
 	db := setupTestDB(t)
 	store := download.NewStore(db)
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 
 	d := &download.Download{
 		ContentID:   contentID,
@@ -237,7 +236,7 @@ func TestManager_Refresh_Failed(t *testing.T) {
 
 	db := setupTestDB(t)
 	store := download.NewStore(db)
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 
 	d := &download.Download{
 		ContentID:   contentID,
@@ -272,7 +271,7 @@ func TestManager_Cancel(t *testing.T) {
 
 	db := setupTestDB(t)
 	store := download.NewStore(db)
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 
 	d := &download.Download{
 		ContentID:   contentID,
@@ -318,7 +317,7 @@ func TestManager_Cancel_ClientError(t *testing.T) {
 
 	db := setupTestDB(t)
 	store := download.NewStore(db)
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 
 	d := &download.Download{
 		ContentID:   contentID,
@@ -350,7 +349,7 @@ func TestManager_GetActive(t *testing.T) {
 
 	db := setupTestDB(t)
 	store := download.NewStore(db)
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 
 	d := &download.Download{
 		ContentID:   contentID,
@@ -388,7 +387,7 @@ func TestManager_GetActive_ClientError(t *testing.T) {
 
 	db := setupTestDB(t)
 	store := download.NewStore(db)
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 
 	d := &download.Download{
 		ContentID:   contentID,
@@ -420,7 +419,7 @@ func TestManager_GetActive_ExcludesTerminal(t *testing.T) {
 
 	db := setupTestDB(t)
 	store := download.NewStore(db)
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 
 	// Add active download
 	d1 := &download.Download{

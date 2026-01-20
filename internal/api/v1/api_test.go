@@ -557,7 +557,7 @@ func TestSearch_WithMockSearcher(t *testing.T) {
 	// Set up expectation
 	mockSearcher.EXPECT().
 		Search(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(&search.SearchResult{
+		Return(&search.Result{
 			Releases: []*search.Release{
 				{Title: "Test Movie", Indexer: "TestIndexer"},
 			},

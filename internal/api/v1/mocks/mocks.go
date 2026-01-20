@@ -44,10 +44,10 @@ func (m *MockSearcher) EXPECT() *MockSearcherMockRecorder {
 }
 
 // Search mocks base method.
-func (m *MockSearcher) Search(ctx context.Context, q search.Query, profile string) (*search.SearchResult, error) {
+func (m *MockSearcher) Search(ctx context.Context, q search.Query, profile string) (*search.Result, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Search", ctx, q, profile)
-	ret0, _ := ret[0].(*search.SearchResult)
+	ret0, _ := ret[0].(*search.Result)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

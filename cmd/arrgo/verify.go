@@ -69,7 +69,8 @@ func printVerifyResult(r *VerifyResponse) {
 
 	fmt.Printf("Problems (%d):\n\n", len(r.Problems))
 
-	for _, p := range r.Problems {
+	for i := range r.Problems {
+		p := &r.Problems[i]
 		fmt.Printf("  ID %d | %s | %s\n", p.DownloadID, p.Status, p.Title)
 		fmt.Printf("    State: %s (%s)\n", p.Status, p.Since)
 		fmt.Printf("    Issue: %s\n", p.Issue)

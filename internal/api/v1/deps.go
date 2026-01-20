@@ -15,7 +15,7 @@ var ErrMissingDependency = errors.New("missing required dependency")
 
 // Searcher defines the interface for search functionality.
 type Searcher interface {
-	Search(ctx context.Context, q search.Query, profile string) (*search.SearchResult, error)
+	Search(ctx context.Context, q search.Query, profile string) (*search.Result, error)
 }
 
 // DownloadManager defines the interface for download management.
@@ -52,10 +52,10 @@ type ServerDeps struct {
 	History   *importer.HistoryStore
 
 	// Optional dependencies (nil if not configured)
-	Searcher  Searcher
-	Manager   DownloadManager
-	Plex      PlexClient
-	Importer  FileImporter
+	Searcher Searcher
+	Manager  DownloadManager
+	Plex     PlexClient
+	Importer FileImporter
 }
 
 // Validate checks that all required dependencies are provided.

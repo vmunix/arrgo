@@ -88,8 +88,8 @@ type Query struct {
 	Episode   *int
 }
 
-// SearchResult contains the results of a search operation.
-type SearchResult struct {
+// Result contains the results of a search operation.
+type Result struct {
 	Releases []*Release
 	Errors   []error
 }
@@ -119,10 +119,10 @@ func NewSearcher(indexers IndexerAPI, scorer *Scorer, log *slog.Logger) *Searche
 // Search queries the indexers for releases matching the query,
 // parses quality information, scores against the profile,
 // filters out zero-score releases, and sorts by score descending.
-func (s *Searcher) Search(ctx context.Context, q Query, profile string) (*SearchResult, error) {
+func (s *Searcher) Search(ctx context.Context, q Query, profile string) (*Result, error) {
 	s.log.Info("search started", "query", q.Text, "type", q.Type, "profile", profile)
 
-	result := &SearchResult{
+	result := &Result{
 		Releases: make([]*Release, 0),
 		Errors:   make([]error, 0),
 	}

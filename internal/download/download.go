@@ -4,6 +4,7 @@ package download
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -45,8 +46,8 @@ type Download struct {
 	LastTransitionAt time.Time
 }
 
-// DownloadFilter specifies criteria for listing downloads.
-type DownloadFilter struct {
+// Filter specifies criteria for listing downloads.
+type Filter struct {
 	ContentID *int64
 	EpisodeID *int64
 	Status    *Status
@@ -113,7 +114,7 @@ func (s *Store) Add(d *Download) error {
 		d.AddedAt = existingAddedAt
 		return nil
 	}
-	if err != sql.ErrNoRows {
+	if !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("check existing download: %w", err)
 	}
 
@@ -251,9 +252,10 @@ func (s *Store) Transition(d *Download, to Status) error {
 
 // List returns downloads matching the specified filter.
 // If Active is true, downloads in terminal states (cleaned, failed) are excluded.
-func (s *Store) List(f DownloadFilter) ([]*Download, error) {
-	var conditions []string
-	var args []any
+func (s *Store) List(f Filter) ([]*Download, error) {
+	// Pre-allocate with capacity for potential filter conditions
+	conditions := make([]string, 0, 5)
+	args := make([]any, 0, 6)
 
 	if f.ContentID != nil {
 		conditions = append(conditions, "content_id = ?")
@@ -319,8 +321,9 @@ func (s *Store) Delete(id int64) error {
 
 // ListStuck returns downloads that haven't transitioned within their expected threshold.
 func (s *Store) ListStuck(thresholds map[Status]time.Duration) ([]*Download, error) {
-	var conditions []string
-	var args []any
+	// Pre-allocate with capacity based on threshold count
+	conditions := make([]string, 0, len(thresholds))
+	args := make([]any, 0, len(thresholds)*2)
 
 	now := time.Now()
 	for status, threshold := range thresholds {

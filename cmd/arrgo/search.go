@@ -57,11 +57,12 @@ func runSearchCmd(cmd *cobra.Command, args []string) error {
 
 	// Handle grab
 	var grabIndex int
-	if grabFlag == "best" {
+	switch {
+	case grabFlag == "best":
 		grabIndex = 1
-	} else if grabFlag != "" {
+	case grabFlag != "":
 		grabIndex, _ = strconv.Atoi(grabFlag)
-	} else if !jsonOutput {
+	case !jsonOutput:
 		// Interactive prompt
 		input := prompt(fmt.Sprintf("\nGrab? [1-%d, n]: ", len(results.Releases)))
 		if input == "" || input == "n" || input == "N" {

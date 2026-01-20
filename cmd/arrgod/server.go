@@ -131,7 +131,7 @@ func runServer(configPath string) error {
 	}
 
 	// Create Newznab clients for all configured indexers
-	var newznabClients []*newznab.Client
+	newznabClients := make([]*newznab.Client, 0, len(cfg.Indexers))
 	for name, indexer := range cfg.Indexers {
 		newznabClients = append(newznabClients, newznab.NewClient(name, indexer.URL, indexer.APIKey))
 	}
@@ -185,8 +185,8 @@ func runServer(configPath string) error {
 
 	// Build quality profiles map for API
 	profiles := make(map[string][]string)
-	for name, p := range cfg.Quality.Profiles {
-		profiles[name] = p.Resolution
+	for name := range cfg.Quality.Profiles {
+		profiles[name] = cfg.Quality.Profiles[name].Resolution
 	}
 
 	// Native API v1
@@ -243,7 +243,6 @@ func runServer(configPath string) error {
 		"plex", plexClient != nil,
 		"log_level", cfg.Server.LogLevel,
 	)
-
 
 	// === HTTP Server ===
 	srv := &http.Server{
@@ -333,7 +332,7 @@ func poll(ctx context.Context, manager *download.Manager, imp *importer.Importer
 
 	// Find completed downloads
 	status := download.StatusCompleted
-	completed, err := store.List(download.DownloadFilter{Status: &status})
+	completed, err := store.List(download.Filter{Status: &status})
 	if err != nil {
 		log.Error("list failed", "error", err)
 		return
@@ -381,7 +380,7 @@ func translatePath(path string, sabCfg *config.SABnzbdConfig) string {
 // processImportedDownloads verifies imported content in Plex and cleans up source files.
 func processImportedDownloads(ctx context.Context, store *download.Store, manager *download.Manager, plex *importer.PlexClient, lib *library.Store, sabCfg *config.SABnzbdConfig, log *slog.Logger) {
 	status := download.StatusImported
-	imported, err := store.List(download.DownloadFilter{Status: &status})
+	imported, err := store.List(download.Filter{Status: &status})
 	if err != nil {
 		log.Error("list imported failed", "error", err)
 		return

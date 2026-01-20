@@ -59,7 +59,7 @@ func TestImporter_Import_Movie(t *testing.T) {
 	imp, db, downloadDir, movieRoot := setupTestImporter(t)
 
 	// Create content
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 
 	// Create completed download
 	downloadID := createTestDownload(t, db, contentID, download.StatusCompleted)
@@ -115,7 +115,7 @@ func TestImporter_Import_DownloadNotFound(t *testing.T) {
 func TestImporter_Import_NotCompleted(t *testing.T) {
 	imp, db, downloadDir, _ := setupTestImporter(t)
 
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 	downloadID := createTestDownload(t, db, contentID, download.StatusDownloading)
 
 	_, err := imp.Import(context.Background(), downloadID, downloadDir)
@@ -125,7 +125,7 @@ func TestImporter_Import_NotCompleted(t *testing.T) {
 func TestImporter_Import_NoVideoFile(t *testing.T) {
 	imp, db, downloadDir, _ := setupTestImporter(t)
 
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 	downloadID := createTestDownload(t, db, contentID, download.StatusCompleted)
 
 	downloadPath := filepath.Join(downloadDir, "empty")
@@ -178,7 +178,7 @@ func TestImporter_Import_PathTraversal(t *testing.T) {
 func TestImporter_Import_DestinationExists(t *testing.T) {
 	imp, db, downloadDir, movieRoot := setupTestImporter(t)
 
-	contentID := insertTestContent(t, db, "Test Movie")
+	contentID := insertTestContent(t, db)
 	downloadID := createTestDownload(t, db, contentID, download.StatusCompleted)
 
 	// Create download with video

@@ -145,7 +145,8 @@ func (c *SABnzbdClient) getQueue(ctx context.Context) ([]*ClientStatus, error) {
 	}
 
 	items := make([]*ClientStatus, 0, len(resp.Queue.Slots))
-	for _, slot := range resp.Queue.Slots {
+	for i := range resp.Queue.Slots {
+		slot := &resp.Queue.Slots[i]
 		items = append(items, &ClientStatus{
 			ID:       slot.NzoID,
 			Name:     slot.Filename,
