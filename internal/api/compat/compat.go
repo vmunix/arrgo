@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/vmunix/arrgo/internal/download"
@@ -185,6 +186,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// Sonarr compatibility
 	mux.HandleFunc("GET /api/v3/series", s.authMiddleware(s.listSeries))
+	mux.HandleFunc("GET /api/v3/series/lookup", s.authMiddleware(s.lookupSeries))
 	mux.HandleFunc("GET /api/v3/series/{id}", s.authMiddleware(s.getSeries))
 	mux.HandleFunc("POST /api/v3/series", s.authMiddleware(s.addSeries))
 	mux.HandleFunc("GET /api/v3/languageprofile", s.authMiddleware(s.listLanguageProfiles))
@@ -530,6 +532,97 @@ func (s *Server) getSeries(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, map[string]string{"error": "Series not found"})
 }
 
+func (s *Server) lookupSeries(w http.ResponseWriter, r *http.Request) {
+	term := r.URL.Query().Get("term")
+	if term == "" {
+		writeJSON(w, http.StatusOK, []any{})
+		return
+	}
+
+	// Parse tvdb:12345 format
+	var tvdbID int64
+	if _, err := fmt.Sscanf(term, "tvdb:%d", &tvdbID); err != nil {
+		// Not a TVDB lookup - could be title search, return empty for now
+		writeJSON(w, http.StatusOK, []any{})
+		return
+	}
+
+	// Check if we have this series in library
+	contents, _, err := s.library.ListContent(library.ContentFilter{TVDBID: &tvdbID, Limit: 1})
+	if err == nil && len(contents) > 0 {
+		// Found in library - return with ID (signals "already exists")
+		writeJSON(w, http.StatusOK, []sonarrSeriesResponse{s.contentToSonarrSeries(contents[0])})
+		return
+	}
+
+	// Not in library - return stub that Overseerr can use to add
+	// Overseerr will fill in metadata from TMDB/TVDB on its side
+	response := sonarrSeriesResponse{
+		TVDBID:            tvdbID,
+		Title:             "",
+		SortTitle:         "",
+		Year:              0,
+		SeasonCount:       1,
+		Seasons:           []sonarrSeason{{SeasonNumber: 1, Monitored: false}},
+		Status:            "continuing",
+		SeriesType:        "standard",
+		Monitored:         false,
+		QualityProfileID:  1,
+		LanguageProfileID: 1,
+		SeasonFolder:      true,
+		TitleSlug:         fmt.Sprintf("tvdb-%d", tvdbID),
+		Tags:              []int{},
+		CleanTitle:        "",
+	}
+
+	writeJSON(w, http.StatusOK, []sonarrSeriesResponse{response})
+}
+
+// contentToSonarrSeries converts library content to Sonarr response format.
+func (s *Server) contentToSonarrSeries(c *library.Content) sonarrSeriesResponse {
+	var tvdbID int64
+	if c.TVDBID != nil {
+		tvdbID = *c.TVDBID
+	}
+
+	// Determine profile ID from name
+	profileID := 1
+	for name, id := range s.cfg.QualityProfiles {
+		if name == c.QualityProfile {
+			profileID = id
+			break
+		}
+	}
+
+	// Build path
+	path := fmt.Sprintf("%s/%s", c.RootPath, c.Title)
+
+	// Default to 1 season if we don't have episode data
+	seasons := []sonarrSeason{{SeasonNumber: 1, Monitored: true}}
+
+	return sonarrSeriesResponse{
+		ID:                c.ID,
+		TVDBID:            tvdbID,
+		Title:             c.Title,
+		SortTitle:         strings.ToLower(c.Title),
+		Year:              c.Year,
+		SeasonCount:       len(seasons),
+		Seasons:           seasons,
+		Status:            "continuing",
+		SeriesType:        "standard",
+		Monitored:         c.Status == library.StatusWanted,
+		QualityProfileID:  profileID,
+		LanguageProfileID: 1,
+		SeasonFolder:      true,
+		Path:              path,
+		RootFolderPath:    c.RootPath,
+		TitleSlug:         fmt.Sprintf("tvdb-%d", tvdbID),
+		Tags:              []int{},
+		Added:             c.AddedAt.Format("2006-01-02T15:04:05Z"),
+		CleanTitle:        strings.ToLower(strings.ReplaceAll(c.Title, " ", "")),
+	}
+}
+
 func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 	var req sonarrAddRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -571,14 +664,7 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 
 	// Note: Series auto-search is more complex (episodes), skip for v1
 
-	writeJSON(w, http.StatusCreated, sonarrSeriesResponse{
-		ID:        content.ID,
-		TVDBID:    req.TVDBID,
-		Title:     req.Title,
-		Year:      req.Year,
-		Monitored: req.Monitored,
-		Status:    "continuing",
-	})
+	writeJSON(w, http.StatusCreated, s.contentToSonarrSeries(content))
 }
 
 // Tag handlers (Overseerr uses these for per-user tagging)
