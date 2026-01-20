@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arrgo/arrgo/internal/download"
-	"github.com/arrgo/arrgo/internal/library"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/vmunix/arrgo/internal/download"
+	"github.com/vmunix/arrgo/internal/library"
 )
 
 // Test constants

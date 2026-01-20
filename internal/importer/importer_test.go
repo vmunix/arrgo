@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arrgo/arrgo/internal/download"
-	"github.com/arrgo/arrgo/internal/library"
+	"github.com/vmunix/arrgo/internal/download"
+	"github.com/vmunix/arrgo/internal/library"
 )
 
 // testLogger returns a discard logger for tests.

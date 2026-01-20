@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/arrgo/arrgo/pkg/release"
+	"github.com/vmunix/arrgo/pkg/release"
 )
 
 func printJSON(v any) {

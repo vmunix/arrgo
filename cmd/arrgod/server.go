@@ -16,15 +16,15 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/arrgo/arrgo/internal/api/compat"
-	v1 "github.com/arrgo/arrgo/internal/api/v1"
-	"github.com/arrgo/arrgo/internal/config"
-	"github.com/arrgo/arrgo/internal/download"
-	"github.com/arrgo/arrgo/internal/importer"
-	"github.com/arrgo/arrgo/internal/library"
-	"github.com/arrgo/arrgo/internal/migrations"
-	"github.com/arrgo/arrgo/internal/search"
-	"github.com/arrgo/arrgo/pkg/newznab"
+	"github.com/vmunix/arrgo/internal/api/compat"
+	v1 "github.com/vmunix/arrgo/internal/api/v1"
+	"github.com/vmunix/arrgo/internal/config"
+	"github.com/vmunix/arrgo/internal/download"
+	"github.com/vmunix/arrgo/internal/importer"
+	"github.com/vmunix/arrgo/internal/library"
+	"github.com/vmunix/arrgo/internal/migrations"
+	"github.com/vmunix/arrgo/internal/search"
+	"github.com/vmunix/arrgo/pkg/newznab"
 )
 
 func parseLogLevel(s string) slog.Level {
@@ -162,14 +162,14 @@ func runServer(configPath string) error {
 
 	// Create importer
 	imp := importer.New(db, importer.Config{
-		MovieRoot:       cfg.Libraries.Movies.Root,
-		SeriesRoot:      cfg.Libraries.Series.Root,
-		MovieTemplate:   cfg.Libraries.Movies.Naming,
-		SeriesTemplate:  cfg.Libraries.Series.Naming,
-		PlexURL:         plexURLFromConfig(cfg),
-		PlexToken:       plexTokenFromConfig(cfg),
-		PlexLocalPath:   plexLocalPathFromConfig(cfg),
-		PlexRemotePath:  plexRemotePathFromConfig(cfg),
+		MovieRoot:      cfg.Libraries.Movies.Root,
+		SeriesRoot:     cfg.Libraries.Series.Root,
+		MovieTemplate:  cfg.Libraries.Movies.Naming,
+		SeriesTemplate: cfg.Libraries.Series.Naming,
+		PlexURL:        plexURLFromConfig(cfg),
+		PlexToken:      plexTokenFromConfig(cfg),
+		PlexLocalPath:  plexLocalPathFromConfig(cfg),
+		PlexRemotePath: plexRemotePathFromConfig(cfg),
 	}, logger.With("component", "importer"))
 
 	// === Background Jobs ===

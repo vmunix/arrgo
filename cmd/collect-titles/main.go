@@ -10,8 +10,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/arrgo/arrgo/internal/config"
-	"github.com/arrgo/arrgo/pkg/newznab"
+	"github.com/vmunix/arrgo/internal/config"
+	"github.com/vmunix/arrgo/pkg/newznab"
 )
 
 func main() {

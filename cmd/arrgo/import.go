@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"github.com/arrgo/arrgo/pkg/release"
 	"github.com/spf13/cobra"
+	"github.com/vmunix/arrgo/pkg/release"
 )
 
 var importCmd = &cobra.Command{

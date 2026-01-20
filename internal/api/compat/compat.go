@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/arrgo/arrgo/internal/download"
-	"github.com/arrgo/arrgo/internal/library"
-	"github.com/arrgo/arrgo/internal/search"
+	"github.com/vmunix/arrgo/internal/download"
+	"github.com/vmunix/arrgo/internal/library"
+	"github.com/vmunix/arrgo/internal/search"
 )
 
 // Config holds compat API configuration.
@@ -27,7 +27,7 @@ type radarrAddRequest struct {
 	Title               string `json:"title"`
 	Year                int    `json:"year"`
 	QualityProfileID    int    `json:"qualityProfileId"`
-	ProfileID           int    `json:"profileId"`           // Overseerr sends both
+	ProfileID           int    `json:"profileId"` // Overseerr sends both
 	RootFolderPath      string `json:"rootFolderPath"`
 	Monitored           bool   `json:"monitored"`
 	TitleSlug           string `json:"titleSlug"`           // Overseerr sets to tmdbId

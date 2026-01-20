@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/arrgo/arrgo/pkg/release"
+	"github.com/vmunix/arrgo/pkg/release"
 )
 
 func TestFormatSize(t *testing.T) {

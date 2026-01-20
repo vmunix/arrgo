@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/arrgo/arrgo/pkg/newznab"
+	"github.com/vmunix/arrgo/pkg/newznab"
 )
 
 // ErrNoIndexers is returned when no indexers are configured.

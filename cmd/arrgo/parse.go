@@ -7,9 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/arrgo/arrgo/internal/config"
-	"github.com/arrgo/arrgo/pkg/release"
 	"github.com/spf13/cobra"
+	"github.com/vmunix/arrgo/internal/config"
+	"github.com/vmunix/arrgo/pkg/release"
 )
 
 // ScoreBonus represents a single bonus in the score breakdown.
