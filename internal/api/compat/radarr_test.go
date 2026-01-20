@@ -559,3 +559,108 @@ func TestLookupMovie_WithTMDB(t *testing.T) {
 	tmdbRating := ratings["tmdb"].(map[string]any)
 	assert.InDelta(t, 8.5, tmdbRating["value"], 0.001)
 }
+
+// Sonarr endpoint tests
+
+func TestSonarrLookup(t *testing.T) {
+	_, mux, _ := setupServer(t, testAPIKey)
+
+	// Test lookup for non-existent series
+	req := httptest.NewRequest(http.MethodGet, "/api/v3/series/lookup?term=tvdb:12345", nil)
+	req.Header.Set("X-Api-Key", testAPIKey)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var results []map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &results))
+	require.Len(t, results, 1)
+	assert.EqualValues(t, 12345, results[0]["tvdbId"])
+	assert.Equal(t, "continuing", results[0]["status"])
+}
+
+func TestSonarrAddSeries(t *testing.T) {
+	_, mux, db := setupServer(t, testAPIKey)
+
+	body := `{
+		"tvdbId": 12345,
+		"title": "Test Show",
+		"year": 2024,
+		"qualityProfileId": 1,
+		"languageProfileId": 1,
+		"rootFolderPath": "/series",
+		"seriesType": "standard",
+		"monitored": true,
+		"seasons": [1],
+		"addOptions": {"searchForMissingEpisodes": false}
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v3/series", strings.NewReader(body))
+	req.Header.Set("X-Api-Key", testAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code, "response body: %s", w.Body.String())
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+	assert.Equal(t, "Test Show", result["title"])
+	assert.EqualValues(t, 12345, result["tvdbId"])
+	assert.NotNil(t, result["id"])
+
+	// Verify content was created in database
+	var count int
+	err := db.QueryRow("SELECT COUNT(*) FROM content WHERE title = ?", "Test Show").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+}
+
+func TestLanguageProfiles(t *testing.T) {
+	_, mux, _ := setupServer(t, testAPIKey)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v3/languageprofile", nil)
+	req.Header.Set("X-Api-Key", testAPIKey)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var results []map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &results))
+	require.Len(t, results, 1)
+	assert.Equal(t, "English", results[0]["name"])
+	assert.EqualValues(t, 1, results[0]["id"])
+}
+
+func TestListSeries_Empty(t *testing.T) {
+	_, mux, _ := setupServer(t, testAPIKey)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v3/series", nil)
+	req.Header.Set("X-Api-Key", testAPIKey)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var results []sonarrSeriesResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &results))
+	assert.Empty(t, results)
+}
+
+func TestGetSeries_NotFound(t *testing.T) {
+	_, mux, _ := setupServer(t, testAPIKey)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v3/series/999", nil)
+	req.Header.Set("X-Api-Key", testAPIKey)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
