@@ -114,7 +114,7 @@ func grabRelease(client *Client, rel ReleaseResponse, contentType, profile strin
 
 	input := prompt("Confirm? [Y/n]: ")
 	if input != "" && input != "y" && input != "Y" {
-		fmt.Println("Cancelled")
+		fmt.Println("Canceled")
 		return
 	}
 

@@ -125,7 +125,7 @@ func (s *Server) verifyDownload(ctx context.Context, dl *download.Download) *Ver
 					Since:      since,
 					Issue:      "Not found in SABnzbd queue",
 					Checks:     []string{"SABnzbd queue: not found"},
-					Likely:     "Download was cancelled or SABnzbd cleared it",
+					Likely:     "Download was canceled or SABnzbd cleared it",
 					Fixes:      []string{"arrgo retry " + strconv.FormatInt(dl.ID, 10), "arrgo skip " + strconv.FormatInt(dl.ID, 10)},
 				}
 			}
