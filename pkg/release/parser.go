@@ -22,6 +22,11 @@ var (
 	multiEpRangeRegex = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,2})-E?(\d{1,2})`) // S01E05-06 or S01E05-E06
 	multiEpSeqRegex   = regexp.MustCompile(`(?i)S(\d{1,2})((?:E\d{1,2})+)`)        // S01E05E06E07
 	epSeqExtractRegex = regexp.MustCompile(`(?i)E(\d{1,2})`)                       // Extract episode numbers
+
+	// Season pack patterns
+	seasonPackRegex  = regexp.MustCompile(`(?i)(?:Complete[\s.]+)?Season[\s.]?(\d{1,2})(?:\s|\.|\b)`)
+	seasonOnlyRegex  = regexp.MustCompile(`(?i)\bS(\d{1,2})(?:\b|\.|$)`) // S01 without E## (checked separately)
+	splitSeasonRegex = regexp.MustCompile(`(?i)(?:Season[\s.]?(\d{1,2})|S(\d{1,2}))[\s.]+(?:Part|Vol)[\s.]?(\d{1,2})`)
 )
 
 // serviceMap maps streaming service codes to their full names.
@@ -140,6 +145,36 @@ func Parse(name string) *Info {
 		if episode, err := strconv.Atoi(matches[2]); err == nil {
 			info.Episode = episode
 			info.Episodes = []int{episode}
+		}
+	}
+
+	// Season pack detection (only if no episode info found)
+	if info.Episode == 0 && len(info.Episodes) == 0 {
+		// Check for split season first (more specific)
+		if matches := splitSeasonRegex.FindStringSubmatch(normalized); len(matches) == 4 {
+			season := matches[1]
+			if season == "" {
+				season = matches[2]
+			}
+			if s, err := strconv.Atoi(season); err == nil {
+				info.Season = s
+			}
+			if part, err := strconv.Atoi(matches[3]); err == nil {
+				info.SplitPart = part
+			}
+			info.IsSplitSeason = true
+		} else if matches := seasonPackRegex.FindStringSubmatch(normalized); len(matches) == 2 {
+			// Complete season pack: "Season 01" or "Complete Season 1"
+			if season, err := strconv.Atoi(matches[1]); err == nil {
+				info.Season = season
+			}
+			info.IsCompleteSeason = true
+		} else if matches := seasonOnlyRegex.FindStringSubmatch(normalized); len(matches) == 2 {
+			// S01 without episode number
+			if season, err := strconv.Atoi(matches[1]); err == nil {
+				info.Season = season
+			}
+			info.IsCompleteSeason = true
 		}
 	}
 

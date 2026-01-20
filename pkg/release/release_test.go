@@ -562,3 +562,63 @@ func TestParse_MultiEpisode(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_SeasonPack(t *testing.T) {
+	tests := []struct {
+		name               string
+		input              string
+		wantSeason         int
+		wantCompleteSeason bool
+		wantSplitSeason    bool
+		wantSplitPart      int
+	}{
+		{
+			name:               "Season 01 pack",
+			input:              "Show.Season.01.1080p.BluRay.x264-GRP",
+			wantSeason:         1,
+			wantCompleteSeason: true,
+		},
+		{
+			name:               "S01 pack no episodes",
+			input:              "Show.S01.1080p.BluRay.x264-GRP",
+			wantSeason:         1,
+			wantCompleteSeason: true,
+		},
+		{
+			name:               "Complete Season",
+			input:              "Show.Complete.Season.2.720p.WEB-DL.x264-GRP",
+			wantSeason:         2,
+			wantCompleteSeason: true,
+		},
+		{
+			name:            "Season 1 Part 2",
+			input:           "Show.Season.1.Part.2.1080p.WEB-DL.x264-GRP",
+			wantSeason:      1,
+			wantSplitSeason: true,
+			wantSplitPart:   2,
+		},
+		{
+			name:            "S01 Vol 1",
+			input:           "Show.S01.Vol.1.1080p.WEB-DL.x264-GRP",
+			wantSeason:      1,
+			wantSplitSeason: true,
+			wantSplitPart:   1,
+		},
+		{
+			name:               "Regular episode not a pack",
+			input:              "Show.S01E05.720p.HDTV.x264-GRP",
+			wantSeason:         1,
+			wantCompleteSeason: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			assert.Equal(t, tt.wantSeason, got.Season, "Season")
+			assert.Equal(t, tt.wantCompleteSeason, got.IsCompleteSeason, "IsCompleteSeason")
+			assert.Equal(t, tt.wantSplitSeason, got.IsSplitSeason, "IsSplitSeason")
+			assert.Equal(t, tt.wantSplitPart, got.SplitPart, "SplitPart")
+		})
+	}
+}
