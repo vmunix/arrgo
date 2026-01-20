@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 	"github.com/vmunix/arrgo/internal/config"
 	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/importer"
@@ -127,7 +127,7 @@ func setupIntegrationTest(t *testing.T) *testEnv {
 	t.Cleanup(env.cleanup)
 
 	// Create in-memory database
-	db, err := sql.Open("sqlite3", ":memory:?_foreign_keys=on")
+	db, err := sql.Open("sqlite", ":memory:?_foreign_keys=on")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -409,7 +409,7 @@ func newTestEnv(t *testing.T) *simpleTestEnv {
 	t.Cleanup(env.cleanup)
 
 	// Create in-memory database
-	db, err := sql.Open("sqlite3", ":memory:?_foreign_keys=on")
+	db, err := sql.Open("sqlite", ":memory:?_foreign_keys=on")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
@@ -566,7 +566,7 @@ func TestIntegration_ManualImport(t *testing.T) {
 	}
 
 	// Set up in-memory database
-	db, err := sql.Open("sqlite3", ":memory:?_foreign_keys=on")
+	db, err := sql.Open("sqlite", ":memory:?_foreign_keys=on")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
