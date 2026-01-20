@@ -33,7 +33,7 @@ func setupTestImporter(t *testing.T) (*Importer, *sql.DB, string, string) {
 		library:    library.NewStore(db),
 		history:    NewHistoryStore(db),
 		renamer:    NewRenamer("", ""),
-		plex:       nil, // No Plex in tests
+		mediaServer:       nil, // No Plex in tests
 		movieRoot:  movieRoot,
 		seriesRoot: t.TempDir(),
 		log:        testLogger(),

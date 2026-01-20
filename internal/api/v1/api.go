@@ -27,44 +27,30 @@ type Config struct {
 
 // Server is the v1 API server.
 type Server struct {
-	library   *library.Store
-	downloads *download.Store
-	manager   *download.Manager
-	searcher  *search.Searcher
-	history   *importer.HistoryStore
-	plex      *importer.PlexClient
-	importer  *importer.Importer
-	cfg       Config
+	deps ServerDeps
+	cfg  Config
 }
 
-// New creates a new v1 API server.
-func New(db *sql.DB, cfg Config) *Server {
-	return &Server{
-		library:   library.NewStore(db),
-		downloads: download.NewStore(db),
-		history:   importer.NewHistoryStore(db),
-		cfg:       cfg,
+// NewWithDeps creates a new v1 API server with explicit dependencies.
+// Required dependencies (Library, Downloads, History) must be non-nil.
+// Optional dependencies (Searcher, Manager, Plex, Importer) may be nil.
+func NewWithDeps(deps ServerDeps, cfg Config) (*Server, error) {
+	if err := deps.Validate(); err != nil {
+		return nil, err
 	}
+	return &Server{deps: deps, cfg: cfg}, nil
 }
 
-// SetSearcher configures the searcher (requires external Prowlarr client).
-func (s *Server) SetSearcher(searcher *search.Searcher) {
-	s.searcher = searcher
-}
-
-// SetManager configures the download manager (requires external SABnzbd client).
-func (s *Server) SetManager(manager *download.Manager) {
-	s.manager = manager
-}
-
-// SetPlex configures the Plex client for library scans.
-func (s *Server) SetPlex(plex *importer.PlexClient) {
-	s.plex = plex
-}
-
-// SetImporter configures the importer for file imports.
-func (s *Server) SetImporter(imp *importer.Importer) {
-	s.importer = imp
+// New creates a new v1 API server with default stores from the database.
+// This is a convenience constructor primarily for testing.
+// For production use with optional dependencies, use NewWithDeps.
+func New(db *sql.DB, cfg Config) *Server {
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+	}
+	return &Server{deps: deps, cfg: cfg}
 }
 
 // RegisterRoutes registers API routes on the given mux.
@@ -80,14 +66,14 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/content/{id}/episodes", s.listEpisodes)
 	mux.HandleFunc("PUT /api/v1/episodes/{id}", s.updateEpisode)
 
-	// Search & grab
-	mux.HandleFunc("POST /api/v1/search", s.search)
-	mux.HandleFunc("POST /api/v1/grab", s.grab)
+	// Search & grab (require optional dependencies)
+	mux.HandleFunc("POST /api/v1/search", s.requireSearcher(s.search))
+	mux.HandleFunc("POST /api/v1/grab", s.requireManager(s.grab))
 
 	// Downloads
 	mux.HandleFunc("GET /api/v1/downloads", s.listDownloads)
 	mux.HandleFunc("GET /api/v1/downloads/{id}", s.getDownload)
-	mux.HandleFunc("DELETE /api/v1/downloads/{id}", s.deleteDownload)
+	mux.HandleFunc("DELETE /api/v1/downloads/{id}", s.requireManager(s.deleteDownload))
 
 	// History
 	mux.HandleFunc("GET /api/v1/history", s.listHistory)
@@ -101,16 +87,16 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/dashboard", s.getDashboard)
 	mux.HandleFunc("GET /api/v1/verify", s.verify)
 	mux.HandleFunc("GET /api/v1/profiles", s.listProfiles)
-	mux.HandleFunc("POST /api/v1/scan", s.triggerScan)
+	mux.HandleFunc("POST /api/v1/scan", s.requirePlex(s.triggerScan))
 
-	// Plex
+	// Plex (getPlexStatus handles nil gracefully, others require Plex)
 	mux.HandleFunc("GET /api/v1/plex/status", s.getPlexStatus)
-	mux.HandleFunc("POST /api/v1/plex/scan", s.scanPlexLibraries)
-	mux.HandleFunc("GET /api/v1/plex/libraries/{name}/items", s.listPlexLibraryItems)
-	mux.HandleFunc("GET /api/v1/plex/search", s.searchPlex)
+	mux.HandleFunc("POST /api/v1/plex/scan", s.requirePlex(s.scanPlexLibraries))
+	mux.HandleFunc("GET /api/v1/plex/libraries/{name}/items", s.requirePlex(s.listPlexLibraryItems))
+	mux.HandleFunc("GET /api/v1/plex/search", s.requirePlex(s.searchPlex))
 
 	// Import
-	mux.HandleFunc("POST /api/v1/import", s.importContent)
+	mux.HandleFunc("POST /api/v1/import", s.requireImporter(s.importContent))
 }
 
 // Error response
@@ -188,7 +174,7 @@ func (s *Server) listContent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	items, total, err := s.library.ListContent(filter)
+	items, total, err := s.deps.Library.ListContent(filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
@@ -215,7 +201,7 @@ func (s *Server) getContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c, err := s.library.GetContent(id)
+	c, err := s.deps.Library.GetContent(id)
 	if err != nil {
 		if errors.Is(err, library.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "Content not found")
@@ -279,7 +265,7 @@ func (s *Server) addContent(w http.ResponseWriter, r *http.Request) {
 		RootPath:       rootPath,
 	}
 
-	if err := s.library.AddContent(c); err != nil {
+	if err := s.deps.Library.AddContent(c); err != nil {
 		if errors.Is(err, library.ErrDuplicate) {
 			writeError(w, http.StatusConflict, "DUPLICATE", "Content already exists")
 			return
@@ -304,7 +290,7 @@ func (s *Server) updateContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c, err := s.library.GetContent(id)
+	c, err := s.deps.Library.GetContent(id)
 	if err != nil {
 		if errors.Is(err, library.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "Content not found")
@@ -322,7 +308,7 @@ func (s *Server) updateContent(w http.ResponseWriter, r *http.Request) {
 		c.QualityProfile = *req.QualityProfile
 	}
 
-	if err := s.library.UpdateContent(c); err != nil {
+	if err := s.deps.Library.UpdateContent(c); err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
 	}
@@ -337,7 +323,7 @@ func (s *Server) deleteContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.library.DeleteContent(id); err != nil {
+	if err := s.deps.Library.DeleteContent(id); err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
 	}
@@ -353,7 +339,7 @@ func (s *Server) listEpisodes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	filter := library.EpisodeFilter{ContentID: &contentID}
-	episodes, total, err := s.library.ListEpisodes(filter)
+	episodes, total, err := s.deps.Library.ListEpisodes(filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
@@ -396,7 +382,7 @@ func (s *Server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ep, err := s.library.GetEpisode(id)
+	ep, err := s.deps.Library.GetEpisode(id)
 	if err != nil {
 		if errors.Is(err, library.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "Episode not found")
@@ -410,7 +396,7 @@ func (s *Server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 		ep.Status = library.ContentStatus(*req.Status)
 	}
 
-	if err := s.library.UpdateEpisode(ep); err != nil {
+	if err := s.deps.Library.UpdateEpisode(ep); err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
 	}
@@ -419,11 +405,6 @@ func (s *Server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) search(w http.ResponseWriter, r *http.Request) {
-	if s.searcher == nil {
-		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Searcher not configured")
-		return
-	}
-
 	var req searchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
@@ -445,7 +426,7 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 		q.ContentID = *req.ContentID
 	}
 
-	result, err := s.searcher.Search(r.Context(), q, profile)
+	result, err := s.deps.Searcher.Search(r.Context(), q, profile)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "SEARCH_ERROR", err.Error())
 		return
@@ -480,18 +461,13 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) grab(w http.ResponseWriter, r *http.Request) {
-	if s.manager == nil {
-		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Download manager not configured")
-		return
-	}
-
 	var req grabRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
 		return
 	}
 
-	d, err := s.manager.Grab(r.Context(), req.ContentID, req.EpisodeID, req.DownloadURL, req.Title, req.Indexer)
+	d, err := s.deps.Manager.Grab(r.Context(), req.ContentID, req.EpisodeID, req.DownloadURL, req.Title, req.Indexer)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GRAB_ERROR", err.Error())
 		return
@@ -509,7 +485,7 @@ func (s *Server) listDownloads(w http.ResponseWriter, r *http.Request) {
 		filter.Active = true
 	}
 
-	downloads, err := s.downloads.List(filter)
+	downloads, err := s.deps.Downloads.List(filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
@@ -549,7 +525,7 @@ func (s *Server) getDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d, err := s.downloads.Get(id)
+	d, err := s.deps.Downloads.Get(id)
 	if err != nil {
 		if errors.Is(err, download.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "Download not found")
@@ -563,11 +539,6 @@ func (s *Server) getDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteDownload(w http.ResponseWriter, r *http.Request) {
-	if s.manager == nil {
-		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Download manager not configured")
-		return
-	}
-
 	id, err := pathID(r, "id")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
@@ -575,7 +546,7 @@ func (s *Server) deleteDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	deleteFiles := r.URL.Query().Get("delete_files") == "true"
-	if err := s.manager.Cancel(r.Context(), id, deleteFiles); err != nil {
+	if err := s.deps.Manager.Cancel(r.Context(), id, deleteFiles); err != nil {
 		writeError(w, http.StatusInternalServerError, "CANCEL_ERROR", err.Error())
 		return
 	}
@@ -593,7 +564,7 @@ func (s *Server) listHistory(w http.ResponseWriter, r *http.Request) {
 		filter.ContentID = &id
 	}
 
-	entries, err := s.history.List(filter)
+	entries, err := s.deps.History.List(filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
@@ -625,7 +596,7 @@ func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
 		filter.ContentID = &id
 	}
 
-	files, _, err := s.library.ListFiles(filter)
+	files, _, err := s.deps.Library.ListFiles(filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
@@ -659,7 +630,7 @@ func (s *Server) deleteFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.library.DeleteFile(id); err != nil {
+	if err := s.deps.Library.DeleteFile(id); err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
 	}
@@ -681,8 +652,8 @@ func (s *Server) getDashboard(w http.ResponseWriter, _ *http.Request) {
 
 	// Connection status
 	resp.Connections.Server = true
-	resp.Connections.Plex = s.plex != nil
-	resp.Connections.SABnzbd = s.manager != nil
+	resp.Connections.Plex = s.deps.Plex != nil
+	resp.Connections.SABnzbd = s.deps.Manager != nil
 
 	// Download counts by status
 	for _, status := range []download.Status{
@@ -694,7 +665,7 @@ func (s *Server) getDashboard(w http.ResponseWriter, _ *http.Request) {
 		download.StatusFailed,
 	} {
 		st := status
-		downloads, _ := s.downloads.List(download.DownloadFilter{Status: &st})
+		downloads, _ := s.deps.Downloads.List(download.DownloadFilter{Status: &st})
 		switch status {
 		case download.StatusQueued:
 			resp.Downloads.Queued = len(downloads)
@@ -718,14 +689,14 @@ func (s *Server) getDashboard(w http.ResponseWriter, _ *http.Request) {
 		download.StatusDownloading: time.Hour,
 		download.StatusCompleted:   time.Hour,
 	}
-	stuck, _ := s.downloads.ListStuck(thresholds)
+	stuck, _ := s.deps.Downloads.ListStuck(thresholds)
 	resp.Stuck.Count = len(stuck)
 
 	// Library counts
 	movieType := library.ContentTypeMovie
 	seriesType := library.ContentTypeSeries
-	movies, _, _ := s.library.ListContent(library.ContentFilter{Type: &movieType})
-	series, _, _ := s.library.ListContent(library.ContentFilter{Type: &seriesType})
+	movies, _, _ := s.deps.Library.ListContent(library.ContentFilter{Type: &movieType})
+	series, _, _ := s.deps.Library.ListContent(library.ContentFilter{Type: &seriesType})
 	resp.Library.Movies = len(movies)
 	resp.Library.Series = len(series)
 
@@ -745,11 +716,6 @@ func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) triggerScan(w http.ResponseWriter, r *http.Request) {
-	if s.plex == nil {
-		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Plex not configured")
-		return
-	}
-
 	var req scanRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
@@ -757,7 +723,7 @@ func (s *Server) triggerScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Path != "" {
-		if err := s.plex.ScanPath(r.Context(), req.Path); err != nil {
+		if err := s.deps.Plex.ScanPath(r.Context(), req.Path); err != nil {
 			writeError(w, http.StatusInternalServerError, "SCAN_ERROR", err.Error())
 			return
 		}
@@ -769,7 +735,7 @@ func (s *Server) triggerScan(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getPlexStatus(w http.ResponseWriter, r *http.Request) {
 	resp := plexStatusResponse{}
 
-	if s.plex == nil {
+	if s.deps.Plex == nil {
 		resp.Error = "Plex not configured"
 		writeJSON(w, http.StatusOK, resp)
 		return
@@ -778,7 +744,7 @@ func (s *Server) getPlexStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Get identity
-	identity, err := s.plex.GetIdentity(ctx)
+	identity, err := s.deps.Plex.GetIdentity(ctx)
 	if err != nil {
 		resp.Error = fmt.Sprintf("connection failed: %v", err)
 		writeJSON(w, http.StatusOK, resp)
@@ -790,7 +756,7 @@ func (s *Server) getPlexStatus(w http.ResponseWriter, r *http.Request) {
 	resp.Version = identity.Version
 
 	// Get sections
-	sections, err := s.plex.GetSections(ctx)
+	sections, err := s.deps.Plex.GetSections(ctx)
 	if err != nil {
 		resp.Error = fmt.Sprintf("failed to get libraries: %v", err)
 		writeJSON(w, http.StatusOK, resp)
@@ -804,7 +770,7 @@ func (s *Server) getPlexStatus(w http.ResponseWriter, r *http.Request) {
 			location = sec.Locations[0].Path
 		}
 
-		count, _ := s.plex.GetLibraryCount(ctx, sec.Key)
+		count, _ := s.deps.Plex.GetLibraryCount(ctx, sec.Key)
 
 		resp.Libraries[i] = plexLibrary{
 			Key:        sec.Key,
@@ -821,11 +787,6 @@ func (s *Server) getPlexStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) scanPlexLibraries(w http.ResponseWriter, r *http.Request) {
-	if s.plex == nil {
-		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Plex not configured")
-		return
-	}
-
 	var req plexScanRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
@@ -835,7 +796,7 @@ func (s *Server) scanPlexLibraries(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Get all sections
-	sections, err := s.plex.GetSections(ctx)
+	sections, err := s.deps.Plex.GetSections(ctx)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "PLEX_ERROR", err.Error())
 		return
@@ -883,7 +844,7 @@ func (s *Server) scanPlexLibraries(w http.ResponseWriter, r *http.Request) {
 	// Trigger scans
 	var scanned []string
 	for _, lib := range toScan {
-		if err := s.plex.RefreshLibrary(ctx, lib.key); err != nil {
+		if err := s.deps.Plex.RefreshLibrary(ctx, lib.key); err != nil {
 			writeError(w, http.StatusInternalServerError, "SCAN_ERROR",
 				fmt.Sprintf("failed to scan %q: %v", lib.name, err))
 			return
@@ -895,22 +856,17 @@ func (s *Server) scanPlexLibraries(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listPlexLibraryItems(w http.ResponseWriter, r *http.Request) {
-	if s.plex == nil {
-		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Plex not configured")
-		return
-	}
-
 	name := r.PathValue("name")
 	ctx := r.Context()
 
 	// Find section (case-insensitive)
-	section, err := s.plex.FindSectionByName(ctx, name)
+	section, err := s.deps.Plex.FindSectionByName(ctx, name)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "PLEX_ERROR", err.Error())
 		return
 	}
 	if section == nil {
-		sections, _ := s.plex.GetSections(ctx)
+		sections, _ := s.deps.Plex.GetSections(ctx)
 		var available []string
 		for _, sec := range sections {
 			available = append(available, sec.Title)
@@ -921,7 +877,7 @@ func (s *Server) listPlexLibraryItems(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get items
-	items, err := s.plex.ListLibraryItems(ctx, section.Key)
+	items, err := s.deps.Plex.ListLibraryItems(ctx, section.Key)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "PLEX_ERROR", err.Error())
 		return
@@ -944,7 +900,7 @@ func (s *Server) listPlexLibraryItems(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Check if tracked in arrgo
-		content, _ := s.library.GetByTitleYear(item.Title, item.Year)
+		content, _ := s.deps.Library.GetByTitleYear(item.Title, item.Year)
 		if content != nil {
 			resp.Items[i].Tracked = true
 			resp.Items[i].ContentID = &content.ID
@@ -955,11 +911,6 @@ func (s *Server) listPlexLibraryItems(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) searchPlex(w http.ResponseWriter, r *http.Request) {
-	if s.plex == nil {
-		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Plex not configured")
-		return
-	}
-
 	query := r.URL.Query().Get("query")
 	if query == "" {
 		writeError(w, http.StatusBadRequest, "MISSING_QUERY", "query parameter is required")
@@ -968,7 +919,7 @@ func (s *Server) searchPlex(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	items, err := s.plex.Search(ctx, query)
+	items, err := s.deps.Plex.Search(ctx, query)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "PLEX_ERROR", err.Error())
 		return
@@ -990,7 +941,7 @@ func (s *Server) searchPlex(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Check if tracked in arrgo
-		content, _ := s.library.GetByTitleYear(item.Title, item.Year)
+		content, _ := s.deps.Library.GetByTitleYear(item.Title, item.Year)
 		if content != nil {
 			resp.Items[i].Tracked = true
 			resp.Items[i].ContentID = &content.ID
@@ -1001,11 +952,6 @@ func (s *Server) searchPlex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) importContent(w http.ResponseWriter, r *http.Request) {
-	if s.importer == nil {
-		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Importer not configured")
-		return
-	}
-
 	var req importRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
@@ -1063,7 +1009,7 @@ func (s *Server) importManual(w http.ResponseWriter, r *http.Request, req import
 
 	// Find or create content record
 	// Note: GetByTitleYear returns nil, nil when not found
-	content, err := s.library.GetByTitleYear(req.Title, req.Year)
+	content, err := s.deps.Library.GetByTitleYear(req.Title, req.Year)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
@@ -1083,7 +1029,7 @@ func (s *Server) importManual(w http.ResponseWriter, r *http.Request, req import
 			QualityProfile: "hd",
 			RootPath:       rootPath,
 		}
-		if err := s.library.AddContent(content); err != nil {
+		if err := s.deps.Library.AddContent(content); err != nil {
 			writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 			return
 		}
@@ -1124,13 +1070,13 @@ func (s *Server) importManual(w http.ResponseWriter, r *http.Request, req import
 		Indexer:     "manual",
 		CompletedAt: &now,
 	}
-	if err := s.downloads.Add(dl); err != nil {
+	if err := s.deps.Downloads.Add(dl); err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
 	}
 
 	// Call importer
-	result, err := s.importer.Import(ctx, dl.ID, req.Path)
+	result, err := s.deps.Importer.Import(ctx, dl.ID, req.Path)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", err.Error())
 		return
@@ -1154,7 +1100,7 @@ func (s *Server) findOrCreateEpisode(contentID int64, season, episode int) (*lib
 		ContentID: &contentID,
 		Season:    &season,
 	}
-	episodes, _, err := s.library.ListEpisodes(filter)
+	episodes, _, err := s.deps.Library.ListEpisodes(filter)
 	if err != nil {
 		return nil, fmt.Errorf("list episodes: %w", err)
 	}
@@ -1173,7 +1119,7 @@ func (s *Server) findOrCreateEpisode(contentID int64, season, episode int) (*lib
 		Episode:   episode,
 		Status:    library.StatusWanted,
 	}
-	if err := s.library.AddEpisode(ep); err != nil {
+	if err := s.deps.Library.AddEpisode(ep); err != nil {
 		return nil, fmt.Errorf("add episode: %w", err)
 	}
 
