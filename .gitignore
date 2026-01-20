@@ -40,3 +40,4 @@ coverage.html
 /vendor/
 /arrgod
 /collect-titles
+.worktrees/

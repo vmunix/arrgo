@@ -71,6 +71,31 @@ type StatusResponse struct {
 	Version string `json:"version"`
 }
 
+type DashboardResponse struct {
+	Version     string `json:"version"`
+	Connections struct {
+		Server  bool `json:"server"`
+		Plex    bool `json:"plex"`
+		SABnzbd bool `json:"sabnzbd"`
+	} `json:"connections"`
+	Downloads struct {
+		Queued      int `json:"queued"`
+		Downloading int `json:"downloading"`
+		Completed   int `json:"completed"`
+		Imported    int `json:"imported"`
+		Cleaned     int `json:"cleaned"`
+		Failed      int `json:"failed"`
+	} `json:"downloads"`
+	Stuck struct {
+		Count     int   `json:"count"`
+		Threshold int64 `json:"threshold_minutes"`
+	} `json:"stuck"`
+	Library struct {
+		Movies int `json:"movies"`
+		Series int `json:"series"`
+	} `json:"library"`
+}
+
 type DownloadResponse struct {
 	ID          int64   `json:"id"`
 	ContentID   int64   `json:"content_id"`
@@ -170,6 +195,14 @@ type PlexStatusResponse struct {
 func (c *Client) Status() (*StatusResponse, error) {
 	var resp StatusResponse
 	if err := c.get("/api/v1/status", &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) Dashboard() (*DashboardResponse, error) {
+	var resp DashboardResponse
+	if err := c.get("/api/v1/dashboard", &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -315,6 +348,41 @@ func (c *Client) PlexListLibrary(library string) (*PlexListResponse, error) {
 func (c *Client) PlexSearch(query string) (*PlexSearchResponse, error) {
 	var resp PlexSearchResponse
 	if err := c.get("/api/v1/plex/search?query="+url.QueryEscape(query), &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+type VerifyProblem struct {
+	DownloadID int64    `json:"download_id"`
+	Status     string   `json:"status"`
+	Title      string   `json:"title"`
+	Since      string   `json:"since"`
+	Issue      string   `json:"issue"`
+	Checks     []string `json:"checks"`
+	Likely     string   `json:"likely_cause"`
+	Fixes      []string `json:"suggested_fixes"`
+}
+
+type VerifyResponse struct {
+	Connections struct {
+		Plex    bool   `json:"plex"`
+		PlexErr string `json:"plex_error,omitempty"`
+		SABnzbd bool   `json:"sabnzbd"`
+		SABErr  string `json:"sabnzbd_error,omitempty"`
+	} `json:"connections"`
+	Checked  int             `json:"checked"`
+	Passed   int             `json:"passed"`
+	Problems []VerifyProblem `json:"problems"`
+}
+
+func (c *Client) Verify(id *int64) (*VerifyResponse, error) {
+	path := "/api/v1/verify"
+	if id != nil {
+		path += fmt.Sprintf("?id=%d", *id)
+	}
+	var resp VerifyResponse
+	if err := c.get(path, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
