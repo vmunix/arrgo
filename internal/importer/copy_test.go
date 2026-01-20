@@ -5,6 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCopyFile(t *testing.T) {
@@ -15,29 +18,19 @@ func TestCopyFile(t *testing.T) {
 	// Create source file
 	srcPath := filepath.Join(srcDir, "test.mkv")
 	content := []byte("test video content")
-	if err := os.WriteFile(srcPath, content, 0644); err != nil {
-		t.Fatalf("create source: %v", err)
-	}
+	require.NoError(t, os.WriteFile(srcPath, content, 0644), "create source")
 
 	// Copy file
 	dstPath := filepath.Join(dstDir, "copied.mkv")
 	size, err := CopyFile(srcPath, dstPath)
-	if err != nil {
-		t.Fatalf("CopyFile: %v", err)
-	}
+	require.NoError(t, err, "CopyFile")
 
-	if size != int64(len(content)) {
-		t.Errorf("size = %d, want %d", size, len(content))
-	}
+	assert.Equal(t, int64(len(content)), size)
 
 	// Verify content
 	got, err := os.ReadFile(dstPath)
-	if err != nil {
-		t.Fatalf("read dest: %v", err)
-	}
-	if string(got) != string(content) {
-		t.Error("content mismatch")
-	}
+	require.NoError(t, err, "read dest")
+	assert.Equal(t, string(content), string(got), "content mismatch")
 }
 
 func TestCopyFile_CreatesDirectory(t *testing.T) {
@@ -45,20 +38,15 @@ func TestCopyFile_CreatesDirectory(t *testing.T) {
 	dstDir := t.TempDir()
 
 	srcPath := filepath.Join(srcDir, "test.mkv")
-	if err := os.WriteFile(srcPath, []byte("content"), 0644); err != nil {
-		t.Fatalf("create source: %v", err)
-	}
+	require.NoError(t, os.WriteFile(srcPath, []byte("content"), 0644), "create source")
 
 	// Destination in nested directory that doesn't exist
 	dstPath := filepath.Join(dstDir, "nested", "deep", "copied.mkv")
 	_, err := CopyFile(srcPath, dstPath)
-	if err != nil {
-		t.Fatalf("CopyFile: %v", err)
-	}
+	require.NoError(t, err, "CopyFile")
 
-	if _, err := os.Stat(dstPath); os.IsNotExist(err) {
-		t.Error("destination file should exist")
-	}
+	_, statErr := os.Stat(dstPath)
+	assert.False(t, os.IsNotExist(statErr), "destination file should exist")
 }
 
 func TestCopyFile_DestinationExists(t *testing.T) {
@@ -66,27 +54,19 @@ func TestCopyFile_DestinationExists(t *testing.T) {
 	dstDir := t.TempDir()
 
 	srcPath := filepath.Join(srcDir, "test.mkv")
-	if err := os.WriteFile(srcPath, []byte("content"), 0644); err != nil {
-		t.Fatalf("create source: %v", err)
-	}
+	require.NoError(t, os.WriteFile(srcPath, []byte("content"), 0644), "create source")
 
 	dstPath := filepath.Join(dstDir, "existing.mkv")
-	if err := os.WriteFile(dstPath, []byte("existing"), 0644); err != nil {
-		t.Fatalf("create existing: %v", err)
-	}
+	require.NoError(t, os.WriteFile(dstPath, []byte("existing"), 0644), "create existing")
 
 	_, err := CopyFile(srcPath, dstPath)
-	if err != ErrDestinationExists {
-		t.Errorf("expected ErrDestinationExists, got %v", err)
-	}
+	assert.ErrorIs(t, err, ErrDestinationExists)
 }
 
 func TestCopyFile_SourceNotFound(t *testing.T) {
 	dstDir := t.TempDir()
 	_, err := CopyFile("/nonexistent/file.mkv", filepath.Join(dstDir, "out.mkv"))
-	if err == nil {
-		t.Error("expected error for missing source")
-	}
+	assert.Error(t, err, "expected error for missing source")
 }
 
 func TestFindLargestVideo(t *testing.T) {
@@ -103,43 +83,27 @@ func TestFindLargestVideo(t *testing.T) {
 
 	for name, size := range files {
 		path := filepath.Join(dir, name)
-		if err := os.WriteFile(path, make([]byte, size), 0644); err != nil {
-			t.Fatalf("create %s: %v", name, err)
-		}
+		require.NoError(t, os.WriteFile(path, make([]byte, size), 0644), "create %s", name)
 	}
 
 	// Also create nested video
 	nested := filepath.Join(dir, "subdir", "nested.mkv")
-	if err := os.MkdirAll(filepath.Dir(nested), 0755); err != nil {
-		t.Fatalf("create subdir: %v", err)
-	}
-	if err := os.WriteFile(nested, make([]byte, 2000), 0644); err != nil {
-		t.Fatalf("create nested: %v", err)
-	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(nested), 0755), "create subdir")
+	require.NoError(t, os.WriteFile(nested, make([]byte, 2000), 0644), "create nested")
 
 	path, size, err := FindLargestVideo(dir)
-	if err != nil {
-		t.Fatalf("FindLargestVideo: %v", err)
-	}
+	require.NoError(t, err, "FindLargestVideo")
 
-	if filepath.Base(path) != "nested.mkv" {
-		t.Errorf("expected nested.mkv, got %s", filepath.Base(path))
-	}
-	if size != 2000 {
-		t.Errorf("size = %d, want 2000", size)
-	}
+	assert.Equal(t, "nested.mkv", filepath.Base(path))
+	assert.Equal(t, int64(2000), size)
 }
 
 func TestFindLargestVideo_NoVideos(t *testing.T) {
 	dir := t.TempDir()
 
 	// Create only non-video files
-	if err := os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("text"), 0644); err != nil {
-		t.Fatalf("create file: %v", err)
-	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("text"), 0644), "create file")
 
 	_, _, err := FindLargestVideo(dir)
-	if err != ErrNoVideoFile {
-		t.Errorf("expected ErrNoVideoFile, got %v", err)
-	}
+	assert.ErrorIs(t, err, ErrNoVideoFile)
 }
