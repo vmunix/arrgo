@@ -4,7 +4,6 @@ package v1
 
 import (
 	"bytes"
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -18,21 +17,16 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/mock/gomock"
 	_ "modernc.org/sqlite"
+
 	"github.com/vmunix/arrgo/internal/config"
 	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/importer"
+	"github.com/vmunix/arrgo/internal/library"
 	"github.com/vmunix/arrgo/internal/search"
+	searchmocks "github.com/vmunix/arrgo/internal/search/mocks"
 )
-
-// mockIndexerAPI implements search.IndexerAPI for testing.
-type mockIndexerAPI struct {
-	releases []search.Release
-}
-
-func (m *mockIndexerAPI) Search(ctx context.Context, q search.Query) ([]search.Release, []error) {
-	return m.releases, nil
-}
 
 // testEnv holds all components needed for integration tests.
 type testEnv struct {
@@ -47,7 +41,8 @@ type testEnv struct {
 
 	// Components for direct access in tests
 	manager     *download.Manager
-	mockIndexer *mockIndexerAPI
+	ctrl        *gomock.Controller
+	mockIndexer *searchmocks.MockIndexerAPI
 
 	// Mock response configuration
 	sabnzbdClientID string
@@ -139,7 +134,8 @@ func setupIntegrationTest(t *testing.T) *testEnv {
 	}
 
 	// Create mock external services
-	env.mockIndexer = &mockIndexerAPI{}
+	env.ctrl = gomock.NewController(t)
+	env.mockIndexer = searchmocks.NewMockIndexerAPI(env.ctrl)
 	env.sabnzbd = env.mockSABnzbdServer()
 
 	// Create scorer with default profiles
@@ -177,9 +173,17 @@ func setupIntegrationTest(t *testing.T) *testEnv {
 		SeriesRoot:      "/tv",
 		QualityProfiles: qualityProfileNames,
 	}
-	srv := New(db, cfg)
-	srv.SetSearcher(searcher)
-	srv.SetManager(manager)
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: downloadStore,
+		History:   importer.NewHistoryStore(db),
+		Searcher:  searcher,
+		Manager:   manager,
+	}
+	srv, err := NewWithDeps(deps, cfg)
+	if err != nil {
+		t.Fatalf("create server: %v", err)
+	}
 
 	// Create HTTP test server
 	mux := http.NewServeMux()
@@ -279,10 +283,11 @@ func TestIntegration_SearchAndGrab(t *testing.T) {
 	env := setupIntegrationTest(t)
 
 	// 1. Configure mock indexer to return releases
-	env.mockIndexer.releases = []search.Release{
+	releases := []search.Release{
 		mockRelease("The.Matrix.1999.1080p.BluRay.x264", 12_000_000_000, "nzbgeek"),
 		mockRelease("The.Matrix.1999.720p.BluRay", 8_000_000_000, "drunken"),
 	}
+	env.mockIndexer.EXPECT().Search(gomock.Any(), gomock.Any()).Return(releases, nil)
 	env.sabnzbdClientID = "SABnzbd_nzo_abc123"
 
 	// 2. POST /api/v1/search - verify results returned
@@ -463,9 +468,10 @@ func TestIntegration_FullHappyPath(t *testing.T) {
 	env := setupIntegrationTest(t)
 
 	// Configure all mocks upfront
-	env.mockIndexer.releases = []search.Release{
+	releases := []search.Release{
 		mockRelease("Inception.2010.1080p.BluRay.x264", 15_000_000_000, "nzbgeek"),
 	}
+	env.mockIndexer.EXPECT().Search(gomock.Any(), gomock.Any()).Return(releases, nil)
 	env.sabnzbdClientID = "SABnzbd_nzo_inception"
 
 	// Phase 1: Search
@@ -591,8 +597,16 @@ func TestIntegration_ManualImport(t *testing.T) {
 		MovieRoot:  movieRoot,
 		SeriesRoot: seriesRoot,
 	}
-	srv := New(db, cfg)
-	srv.SetImporter(imp)
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Importer:  imp,
+	}
+	srv, err := NewWithDeps(deps, cfg)
+	if err != nil {
+		t.Fatalf("create server: %v", err)
+	}
 
 	// Create HTTP test server
 	mux := http.NewServeMux()
