@@ -500,3 +500,65 @@ func TestParse_AlternateEpisodeFormats(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_MultiEpisode(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        string
+		wantSeason   int
+		wantEpisode  int // First episode
+		wantEpisodes []int
+	}{
+		{
+			name:         "S01E05-06 range with hyphen",
+			input:        "Show.S01E05-06.720p.HDTV.x264-GRP",
+			wantSeason:   1,
+			wantEpisode:  5,
+			wantEpisodes: []int{5, 6},
+		},
+		{
+			name:         "S01E05-E06 range with E prefix",
+			input:        "Show.S01E05-E06.720p.HDTV.x264-GRP",
+			wantSeason:   1,
+			wantEpisode:  5,
+			wantEpisodes: []int{5, 6},
+		},
+		{
+			name:         "S01E05E06 sequential",
+			input:        "Show.S01E05E06.720p.HDTV.x264-GRP",
+			wantSeason:   1,
+			wantEpisode:  5,
+			wantEpisodes: []int{5, 6},
+		},
+		{
+			name:         "S01E05E06E07 triple episode",
+			input:        "Show.S01E05E06E07.1080p.WEB-DL.x264-GRP",
+			wantSeason:   1,
+			wantEpisode:  5,
+			wantEpisodes: []int{5, 6, 7},
+		},
+		{
+			name:         "S01E01-03 range spanning 3",
+			input:        "Show.S01E01-03.720p.HDTV.x264-GRP",
+			wantSeason:   1,
+			wantEpisode:  1,
+			wantEpisodes: []int{1, 2, 3},
+		},
+		{
+			name:         "Single episode still works",
+			input:        "Show.S01E05.720p.HDTV.x264-GRP",
+			wantSeason:   1,
+			wantEpisode:  5,
+			wantEpisodes: []int{5},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			assert.Equal(t, tt.wantSeason, got.Season, "Season")
+			assert.Equal(t, tt.wantEpisode, got.Episode, "Episode")
+			assert.Equal(t, tt.wantEpisodes, got.Episodes, "Episodes")
+		})
+	}
+}

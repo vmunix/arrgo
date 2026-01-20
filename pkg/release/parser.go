@@ -17,6 +17,11 @@ var (
 	titleMarkerRegex = regexp.MustCompile(`(?i)\b(19|20)\d{2}\b|\b\d{3,4}p\b|\bS\d{1,2}E\d{1,2}\b|\b4K\b|\bUHD\b`)
 	hdrRegex         = regexp.MustCompile(`(?i)\bHDR10\+|\b(HDR10Plus|HDR10|HDR|DV|Dolby\.?Vision|HLG)\b`)
 	editionRegex     = regexp.MustCompile(`(?i)\b(Directors?[\s.]?Cut|Extended|IMAX|Theatrical[\s.]?Cut?|Unrated|Uncut|Remastered|Anniversary|Criterion|Special[\s.]?Edition)\b`)
+
+	// Multi-episode patterns
+	multiEpRangeRegex = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,2})-E?(\d{1,2})`) // S01E05-06 or S01E05-E06
+	multiEpSeqRegex   = regexp.MustCompile(`(?i)S(\d{1,2})((?:E\d{1,2})+)`)        // S01E05E06E07
+	epSeqExtractRegex = regexp.MustCompile(`(?i)E(\d{1,2})`)                       // Extract episode numbers
 )
 
 // serviceMap maps streaming service codes to their full names.
@@ -90,9 +95,27 @@ func Parse(name string) *Info {
 		}
 	}
 
-	// Season/Episode - try multiple formats in priority order
-	if matches := seasonEpRegex.FindStringSubmatch(normalized); len(matches) == 3 {
-		// Standard S01E01 format
+	// Season/Episode - try multi-episode formats first, then single formats
+	if matches := multiEpRangeRegex.FindStringSubmatch(normalized); len(matches) == 4 {
+		// Range format: S01E05-06 or S01E05-E06
+		if season, err := strconv.Atoi(matches[1]); err == nil {
+			info.Season = season
+		}
+		start, _ := strconv.Atoi(matches[2])
+		end, _ := strconv.Atoi(matches[3])
+		info.Episode = start
+		info.Episodes = expandRange(start, end)
+	} else if matches := multiEpSeqRegex.FindStringSubmatch(normalized); len(matches) == 3 {
+		// Sequential format: S01E05E06E07
+		if season, err := strconv.Atoi(matches[1]); err == nil {
+			info.Season = season
+		}
+		info.Episodes = parseEpisodeSequence(matches[2])
+		if len(info.Episodes) > 0 {
+			info.Episode = info.Episodes[0]
+		}
+	} else if matches := seasonEpRegex.FindStringSubmatch(normalized); len(matches) == 3 {
+		// Standard S01E01 format (single episode)
 		if season, err := strconv.Atoi(matches[1]); err == nil {
 			info.Season = season
 		}
@@ -376,4 +399,28 @@ func parseDailyDate(name string) string {
 		}
 	}
 	return ""
+}
+
+// parseEpisodeSequence extracts episode numbers from patterns like "E05E06E07"
+func parseEpisodeSequence(s string) []int {
+	matches := epSeqExtractRegex.FindAllStringSubmatch(s, -1)
+	episodes := make([]int, 0, len(matches))
+	for _, m := range matches {
+		if ep, err := strconv.Atoi(m[1]); err == nil {
+			episodes = append(episodes, ep)
+		}
+	}
+	return episodes
+}
+
+// expandRange creates a slice from start to end inclusive
+func expandRange(start, end int) []int {
+	if end < start {
+		return []int{start}
+	}
+	episodes := make([]int, 0, end-start+1)
+	for i := start; i <= end; i++ {
+		episodes = append(episodes, i)
+	}
+	return episodes
 }
