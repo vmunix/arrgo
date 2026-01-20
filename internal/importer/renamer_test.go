@@ -1,7 +1,11 @@
 // internal/importer/renamer_test.go
 package importer
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 func TestRenamer_MoviePath(t *testing.T) {
 	r := NewRenamer("", "") // Use defaults
@@ -35,9 +39,7 @@ func TestRenamer_MoviePath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := r.MoviePath(tt.title, tt.year, tt.quality, tt.ext)
-			if got != tt.want {
-				t.Errorf("MoviePath() = %q, want %q", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got, "MoviePath()")
 		})
 	}
 }
@@ -77,9 +79,7 @@ func TestRenamer_EpisodePath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := r.EpisodePath(tt.title, tt.season, tt.episode, tt.quality, tt.ext)
-			if got != tt.want {
-				t.Errorf("EpisodePath() = %q, want %q", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got, "EpisodePath()")
 		})
 	}
 }
@@ -91,14 +91,10 @@ func TestRenamer_CustomTemplate(t *testing.T) {
 	)
 
 	moviePath := r.MoviePath("Movie", 2024, "1080p", "mkv")
-	if moviePath != "Movie/Movie.mkv" {
-		t.Errorf("custom movie template: got %q", moviePath)
-	}
+	assert.Equal(t, "Movie/Movie.mkv", moviePath, "custom movie template")
 
 	episodePath := r.EpisodePath("Show", 1, 5, "720p", "mkv")
-	if episodePath != "Show/S01E05.mkv" {
-		t.Errorf("custom episode template: got %q", episodePath)
-	}
+	assert.Equal(t, "Show/S01E05.mkv", episodePath, "custom episode template")
 }
 
 func TestApplyTemplate(t *testing.T) {
@@ -137,9 +133,7 @@ func TestApplyTemplate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := applyTemplate(tt.template, tt.vars)
-			if got != tt.want {
-				t.Errorf("applyTemplate() = %q, want %q", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got, "applyTemplate()")
 		})
 	}
 }

@@ -4,6 +4,9 @@ import (
 	"encoding/csv"
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParse_Corpus(t *testing.T) {
@@ -15,9 +18,7 @@ func TestParse_Corpus(t *testing.T) {
 
 	r := csv.NewReader(f)
 	records, err := r.ReadAll()
-	if err != nil {
-		t.Fatalf("read csv: %v", err)
-	}
+	require.NoError(t, err, "read csv")
 
 	var stats struct {
 		total         int
@@ -100,19 +101,13 @@ func TestParse_Corpus(t *testing.T) {
 
 	// Updated thresholds based on improvements
 	emptyPct := pct(stats.emptyTitle, stats.total)
-	if emptyPct > 5 {
-		t.Errorf("Too many empty titles: %.1f%% (want < 5%%)", emptyPct)
-	}
+	assert.LessOrEqual(t, emptyPct, 5.0, "Too many empty titles: %.1f%% (want < 5%%)", emptyPct)
 
 	resPct := pct(stats.hasResolution, stats.total)
-	if resPct < 90 {
-		t.Errorf("Resolution detection too low: %.1f%% (want > 90%%)", resPct)
-	}
+	assert.GreaterOrEqual(t, resPct, 90.0, "Resolution detection too low: %.1f%% (want > 90%%)", resPct)
 
 	codecPct := pct(stats.hasCodec, stats.total)
-	if codecPct < 60 {
-		t.Errorf("Codec detection too low: %.1f%% (want > 60%%)", codecPct)
-	}
+	assert.GreaterOrEqual(t, codecPct, 60.0, "Codec detection too low: %.1f%% (want > 60%%)", codecPct)
 }
 
 func pct(n, total int) float64 {

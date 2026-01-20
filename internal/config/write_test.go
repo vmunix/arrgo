@@ -4,8 +4,10 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWriteDefault(t *testing.T) {
@@ -13,25 +15,15 @@ func TestWriteDefault(t *testing.T) {
 	path := filepath.Join(tmp, "arrgo", "config.toml")
 
 	err := WriteDefault(path)
-	if err != nil {
-		t.Fatalf("WriteDefault failed: %v", err)
-	}
+	require.NoError(t, err, "WriteDefault failed")
 
 	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("failed to read written file: %v", err)
-	}
+	require.NoError(t, err, "failed to read written file")
 
 	// Check for key sections
-	if !strings.Contains(string(content), "[server]") {
-		t.Error("expected [server] section")
-	}
-	if !strings.Contains(string(content), "[libraries.movies]") {
-		t.Error("expected [libraries.movies] section")
-	}
-	if !strings.Contains(string(content), "${NZBGEEK_API_KEY}") {
-		t.Error("expected env var placeholder")
-	}
+	assert.Contains(t, string(content), "[server]")
+	assert.Contains(t, string(content), "[libraries.movies]")
+	assert.Contains(t, string(content), "${NZBGEEK_API_KEY}")
 }
 
 func TestWriteDefault_CreatesDir(t *testing.T) {
@@ -39,13 +31,10 @@ func TestWriteDefault_CreatesDir(t *testing.T) {
 	path := filepath.Join(tmp, "nested", "deep", "config.toml")
 
 	err := WriteDefault(path)
-	if err != nil {
-		t.Fatalf("WriteDefault failed: %v", err)
-	}
+	require.NoError(t, err, "WriteDefault failed")
 
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		t.Error("file was not created")
-	}
+	_, err = os.Stat(path)
+	assert.False(t, os.IsNotExist(err), "file was not created")
 }
 
 func TestConfig_Write(t *testing.T) {
@@ -60,15 +49,9 @@ func TestConfig_Write(t *testing.T) {
 	path := filepath.Join(tmp, "config.toml")
 
 	err := cfg.Write(path)
-	if err != nil {
-		t.Fatalf("Write failed: %v", err)
-	}
+	require.NoError(t, err, "Write failed")
 
 	content, _ := os.ReadFile(path)
-	if !strings.Contains(string(content), "127.0.0.1") {
-		t.Error("expected host in output")
-	}
-	if !strings.Contains(string(content), "9000") {
-		t.Error("expected port in output")
-	}
+	assert.Contains(t, string(content), "127.0.0.1")
+	assert.Contains(t, string(content), "9000")
 }

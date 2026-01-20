@@ -12,9 +12,10 @@ import (
 	"strings"
 	"testing"
 
-	_ "modernc.org/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	_ "modernc.org/sqlite"
+
 	"github.com/vmunix/arrgo/internal/api/v1/mocks"
 	"github.com/vmunix/arrgo/internal/library"
 	"github.com/vmunix/arrgo/internal/search"
@@ -27,14 +28,11 @@ var testSchema string
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:?_foreign_keys=on")
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
+	require.NoError(t, err, "open db")
 	t.Cleanup(func() { _ = db.Close() })
 
-	if _, err := db.Exec(testSchema); err != nil {
-		t.Fatalf("apply schema: %v", err)
-	}
+	_, err = db.Exec(testSchema)
+	require.NoError(t, err, "apply schema")
 	return db
 }
 
@@ -82,32 +80,20 @@ func TestListContent_WithItems(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := srv.deps.Library.AddContent(c); err != nil {
-		t.Fatalf("add content: %v", err)
-	}
+	require.NoError(t, srv.deps.Library.AddContent(c))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/content", nil)
 	w := httptest.NewRecorder()
 
 	srv.listContent(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp listContentResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(resp.Items) != 1 {
-		t.Errorf("items = %d, want 1", len(resp.Items))
-	}
-	if resp.Total != 1 {
-		t.Errorf("total = %d, want 1", resp.Total)
-	}
-	if resp.Items[0].Title != "Test Movie" {
-		t.Errorf("title = %q, want %q", resp.Items[0].Title, "Test Movie")
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Len(t, resp.Items, 1)
+	assert.Equal(t, 1, resp.Total)
+	assert.Equal(t, "Test Movie", resp.Items[0].Title)
 }
 
 func TestListContent_WithFilters(t *testing.T) {
@@ -123,9 +109,7 @@ func TestListContent_WithFilters(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := srv.deps.Library.AddContent(movie); err != nil {
-		t.Fatalf("add movie: %v", err)
-	}
+	require.NoError(t, srv.deps.Library.AddContent(movie))
 
 	// Add series
 	series := &library.Content{
@@ -136,9 +120,7 @@ func TestListContent_WithFilters(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/tv",
 	}
-	if err := srv.deps.Library.AddContent(series); err != nil {
-		t.Fatalf("add series: %v", err)
-	}
+	require.NoError(t, srv.deps.Library.AddContent(series))
 
 	// Filter by type
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/content?type=movie", nil)
@@ -146,24 +128,16 @@ func TestListContent_WithFilters(t *testing.T) {
 	srv.listContent(w, req)
 
 	var resp listContentResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(resp.Items) != 1 {
-		t.Errorf("filter by type: items = %d, want 1", len(resp.Items))
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Len(t, resp.Items, 1, "filter by type: items")
 
 	// Filter by status
 	req = httptest.NewRequest(http.MethodGet, "/api/v1/content?status=available", nil)
 	w = httptest.NewRecorder()
 	srv.listContent(w, req)
 
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(resp.Items) != 1 {
-		t.Errorf("filter by status: items = %d, want 1", len(resp.Items))
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Len(t, resp.Items, 1, "filter by status: items")
 }
 
 func TestGetContent_Found(t *testing.T) {
@@ -178,9 +152,7 @@ func TestGetContent_Found(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := srv.deps.Library.AddContent(c); err != nil {
-		t.Fatalf("add content: %v", err)
-	}
+	require.NoError(t, srv.deps.Library.AddContent(c))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/content/1", nil)
 	req.SetPathValue("id", "1")
@@ -188,17 +160,11 @@ func TestGetContent_Found(t *testing.T) {
 
 	srv.getContent(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp contentResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if resp.Title != "Test Movie" {
-		t.Errorf("title = %q, want %q", resp.Title, "Test Movie")
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "Test Movie", resp.Title)
 }
 
 func TestGetContent_NotFound(t *testing.T) {
@@ -211,9 +177,7 @@ func TestGetContent_NotFound(t *testing.T) {
 
 	srv.getContent(w, req)
 
-	if w.Code != http.StatusNotFound {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusNotFound)
-	}
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestAddContent(t *testing.T) {
@@ -227,26 +191,14 @@ func TestAddContent(t *testing.T) {
 
 	srv.addContent(w, req)
 
-	if w.Code != http.StatusCreated {
-		t.Errorf("status = %d, want %d: %s", w.Code, http.StatusCreated, w.Body.String())
-	}
+	assert.Equal(t, http.StatusCreated, w.Code, "response body: %s", w.Body.String())
 
 	var resp contentResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if resp.ID == 0 {
-		t.Error("ID should be set")
-	}
-	if resp.Title != "New Movie" {
-		t.Errorf("title = %q, want %q", resp.Title, "New Movie")
-	}
-	if resp.Status != "wanted" {
-		t.Errorf("status = %q, want wanted", resp.Status)
-	}
-	if resp.RootPath != "/movies" {
-		t.Errorf("root_path = %q, want /movies", resp.RootPath)
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.NotZero(t, resp.ID, "ID should be set")
+	assert.Equal(t, "New Movie", resp.Title)
+	assert.Equal(t, "wanted", resp.Status)
+	assert.Equal(t, "/movies", resp.RootPath)
 }
 
 func TestAddContent_InvalidType(t *testing.T) {
@@ -259,9 +211,7 @@ func TestAddContent_InvalidType(t *testing.T) {
 
 	srv.addContent(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusBadRequest)
-	}
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestUpdateContent(t *testing.T) {
@@ -277,9 +227,7 @@ func TestUpdateContent(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := srv.deps.Library.AddContent(c); err != nil {
-		t.Fatalf("add content: %v", err)
-	}
+	require.NoError(t, srv.deps.Library.AddContent(c))
 
 	body := `{"status":"available"}`
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/content/1", strings.NewReader(body))
@@ -288,18 +236,12 @@ func TestUpdateContent(t *testing.T) {
 
 	srv.updateContent(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d: %s", w.Code, http.StatusOK, w.Body.String())
-	}
+	assert.Equal(t, http.StatusOK, w.Code, "response body: %s", w.Body.String())
 
 	// Verify update
 	updated, err := srv.deps.Library.GetContent(1)
-	if err != nil {
-		t.Fatalf("get content: %v", err)
-	}
-	if updated.Status != library.StatusAvailable {
-		t.Errorf("status = %q, want available", updated.Status)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, library.StatusAvailable, updated.Status)
 }
 
 func TestDeleteContent(t *testing.T) {
@@ -315,9 +257,7 @@ func TestDeleteContent(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := srv.deps.Library.AddContent(c); err != nil {
-		t.Fatalf("add content: %v", err)
-	}
+	require.NoError(t, srv.deps.Library.AddContent(c))
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/content/1", nil)
 	req.SetPathValue("id", "1")
@@ -325,15 +265,11 @@ func TestDeleteContent(t *testing.T) {
 
 	srv.deleteContent(w, req)
 
-	if w.Code != http.StatusNoContent {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusNoContent)
-	}
+	assert.Equal(t, http.StatusNoContent, w.Code)
 
 	// Verify deleted
 	_, err := srv.deps.Library.GetContent(1)
-	if !errors.Is(err, library.ErrNotFound) {
-		t.Errorf("expected ErrNotFound, got %v", err)
-	}
+	assert.True(t, errors.Is(err, library.ErrNotFound), "expected ErrNotFound, got %v", err)
 }
 
 func TestListEpisodes(t *testing.T) {
@@ -349,9 +285,7 @@ func TestListEpisodes(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/tv",
 	}
-	if err := srv.deps.Library.AddContent(series); err != nil {
-		t.Fatalf("add series: %v", err)
-	}
+	require.NoError(t, srv.deps.Library.AddContent(series))
 
 	// Add episodes
 	for i := 1; i <= 3; i++ {
@@ -362,9 +296,7 @@ func TestListEpisodes(t *testing.T) {
 			Title:     fmt.Sprintf("Episode %d", i),
 			Status:    library.StatusWanted,
 		}
-		if err := srv.deps.Library.AddEpisode(ep); err != nil {
-			t.Fatalf("add episode: %v", err)
-		}
+		require.NoError(t, srv.deps.Library.AddEpisode(ep))
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/content/1/episodes", nil)
@@ -373,17 +305,11 @@ func TestListEpisodes(t *testing.T) {
 
 	srv.listEpisodes(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp listEpisodesResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(resp.Items) != 3 {
-		t.Errorf("items = %d, want 3", len(resp.Items))
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Len(t, resp.Items, 3)
 }
 
 func TestUpdateEpisode(t *testing.T) {
@@ -399,9 +325,7 @@ func TestUpdateEpisode(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/tv",
 	}
-	if err := srv.deps.Library.AddContent(series); err != nil {
-		t.Fatalf("add series: %v", err)
-	}
+	require.NoError(t, srv.deps.Library.AddContent(series))
 
 	ep := &library.Episode{
 		ContentID: series.ID,
@@ -410,9 +334,7 @@ func TestUpdateEpisode(t *testing.T) {
 		Title:     "Pilot",
 		Status:    library.StatusWanted,
 	}
-	if err := srv.deps.Library.AddEpisode(ep); err != nil {
-		t.Fatalf("add episode: %v", err)
-	}
+	require.NoError(t, srv.deps.Library.AddEpisode(ep))
 
 	body := `{"status":"available"}`
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/episodes/1", strings.NewReader(body))
@@ -421,18 +343,12 @@ func TestUpdateEpisode(t *testing.T) {
 
 	srv.updateEpisode(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d: %s", w.Code, http.StatusOK, w.Body.String())
-	}
+	assert.Equal(t, http.StatusOK, w.Code, "response body: %s", w.Body.String())
 
 	// Verify update
 	updated, err := srv.deps.Library.GetEpisode(1)
-	if err != nil {
-		t.Fatalf("get episode: %v", err)
-	}
-	if updated.Status != library.StatusAvailable {
-		t.Errorf("status = %q, want available", updated.Status)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, library.StatusAvailable, updated.Status)
 }
 
 func TestSearch_NoSearcher(t *testing.T) {
@@ -448,9 +364,7 @@ func TestSearch_NoSearcher(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusServiceUnavailable {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
-	}
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
 
 func TestGrab_NoManager(t *testing.T) {
@@ -466,9 +380,7 @@ func TestGrab_NoManager(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusServiceUnavailable {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
-	}
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
 
 func TestListDownloads_Empty(t *testing.T) {
@@ -480,17 +392,11 @@ func TestListDownloads_Empty(t *testing.T) {
 
 	srv.listDownloads(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp listDownloadsResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(resp.Items) != 0 {
-		t.Errorf("items = %d, want 0", len(resp.Items))
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Empty(t, resp.Items)
 }
 
 func TestGetDownload_NotFound(t *testing.T) {
@@ -503,9 +409,7 @@ func TestGetDownload_NotFound(t *testing.T) {
 
 	srv.getDownload(w, req)
 
-	if w.Code != http.StatusNotFound {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusNotFound)
-	}
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestDeleteDownload_NoManager(t *testing.T) {
@@ -520,9 +424,7 @@ func TestDeleteDownload_NoManager(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusServiceUnavailable {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
-	}
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
 
 func TestListHistory_Empty(t *testing.T) {
@@ -534,17 +436,11 @@ func TestListHistory_Empty(t *testing.T) {
 
 	srv.listHistory(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp listHistoryResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(resp.Items) != 0 {
-		t.Errorf("items = %d, want 0", len(resp.Items))
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Empty(t, resp.Items)
 }
 
 func TestListFiles_Empty(t *testing.T) {
@@ -556,17 +452,11 @@ func TestListFiles_Empty(t *testing.T) {
 
 	srv.listFiles(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp listFilesResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(resp.Items) != 0 {
-		t.Errorf("items = %d, want 0", len(resp.Items))
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Empty(t, resp.Items)
 }
 
 func TestDeleteFile(t *testing.T) {
@@ -582,9 +472,7 @@ func TestDeleteFile(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := srv.deps.Library.AddContent(c); err != nil {
-		t.Fatalf("add content: %v", err)
-	}
+	require.NoError(t, srv.deps.Library.AddContent(c))
 
 	f := &library.File{
 		ContentID: c.ID,
@@ -593,9 +481,7 @@ func TestDeleteFile(t *testing.T) {
 		Quality:   "1080p",
 		Source:    "test",
 	}
-	if err := srv.deps.Library.AddFile(f); err != nil {
-		t.Fatalf("add file: %v", err)
-	}
+	require.NoError(t, srv.deps.Library.AddFile(f))
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/files/1", nil)
 	req.SetPathValue("id", "1")
@@ -603,9 +489,7 @@ func TestDeleteFile(t *testing.T) {
 
 	srv.deleteFile(w, req)
 
-	if w.Code != http.StatusNoContent {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusNoContent)
-	}
+	assert.Equal(t, http.StatusNoContent, w.Code)
 }
 
 func TestGetStatus(t *testing.T) {
@@ -617,17 +501,11 @@ func TestGetStatus(t *testing.T) {
 
 	srv.getStatus(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp statusResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if resp.Status != "ok" {
-		t.Errorf("status = %q, want ok", resp.Status)
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "ok", resp.Status)
 }
 
 func TestListProfiles(t *testing.T) {
@@ -644,17 +522,11 @@ func TestListProfiles(t *testing.T) {
 
 	srv.listProfiles(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp listProfilesResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(resp.Profiles) != 2 {
-		t.Errorf("profiles = %d, want 2", len(resp.Profiles))
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Len(t, resp.Profiles, 2)
 }
 
 func TestTriggerScan_NoPlex(t *testing.T) {
@@ -669,9 +541,7 @@ func TestTriggerScan_NoPlex(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusServiceUnavailable {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
-	}
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 }
 
 func TestSearch_WithMockSearcher(t *testing.T) {

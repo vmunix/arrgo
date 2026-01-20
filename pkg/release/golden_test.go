@@ -1,6 +1,10 @@
 package release
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
 
 // goldenCases contains curated test cases from real releases to validate parser behavior.
 // Each case tests specific patterns and combinations found in the wild.
@@ -1517,69 +1521,61 @@ func TestParse_Golden(t *testing.T) {
 			info := Parse(tc.input)
 
 			// Resolution - only check if expected is set
-			if tc.resolution != ResolutionUnknown && info.Resolution != tc.resolution {
-				t.Errorf("resolution: got %v, want %v", info.Resolution, tc.resolution)
+			if tc.resolution != ResolutionUnknown {
+				assert.Equal(t, tc.resolution, info.Resolution, "resolution")
 			}
 
 			// Source - only check if expected is set
-			if tc.source != SourceUnknown && info.Source != tc.source {
-				t.Errorf("source: got %v, want %v", info.Source, tc.source)
+			if tc.source != SourceUnknown {
+				assert.Equal(t, tc.source, info.Source, "source")
 			}
 
 			// Codec - only check if expected is set
-			if tc.codec != CodecUnknown && info.Codec != tc.codec {
-				t.Errorf("codec: got %v, want %v", info.Codec, tc.codec)
+			if tc.codec != CodecUnknown {
+				assert.Equal(t, tc.codec, info.Codec, "codec")
 			}
 
 			// HDR - always check (HDRNone is a valid expected value)
-			if info.HDR != tc.hdr {
-				t.Errorf("hdr: got %v, want %v", info.HDR, tc.hdr)
-			}
+			assert.Equal(t, tc.hdr, info.HDR, "hdr")
 
 			// Audio - only check if expected is set
-			if tc.audio != AudioUnknown && info.Audio != tc.audio {
-				t.Errorf("audio: got %v, want %v", info.Audio, tc.audio)
+			if tc.audio != AudioUnknown {
+				assert.Equal(t, tc.audio, info.Audio, "audio")
 			}
 
 			// IsRemux - always check
-			if info.IsRemux != tc.isRemux {
-				t.Errorf("isRemux: got %v, want %v", info.IsRemux, tc.isRemux)
-			}
+			assert.Equal(t, tc.isRemux, info.IsRemux, "isRemux")
 
 			// Edition - only check if expected is set
-			if tc.edition != "" && info.Edition != tc.edition {
-				t.Errorf("edition: got %q, want %q", info.Edition, tc.edition)
+			if tc.edition != "" {
+				assert.Equal(t, tc.edition, info.Edition, "edition")
 			}
 
 			// Title - only check if expected is set
-			if tc.title != "" && info.Title != tc.title {
-				t.Errorf("title: got %q, want %q", info.Title, tc.title)
+			if tc.title != "" {
+				assert.Equal(t, tc.title, info.Title, "title")
 			}
 
 			// Year - only check if expected is set
-			if tc.year != 0 && info.Year != tc.year {
-				t.Errorf("year: got %d, want %d", info.Year, tc.year)
+			if tc.year != 0 {
+				assert.Equal(t, tc.year, info.Year, "year")
 			}
 
 			// Group - only check if expected is set
-			if tc.group != "" && info.Group != tc.group {
-				t.Errorf("group: got %q, want %q", info.Group, tc.group)
+			if tc.group != "" {
+				assert.Equal(t, tc.group, info.Group, "group")
 			}
 
 			// Service - only check if expected is set
-			if tc.service != "" && info.Service != tc.service {
-				t.Errorf("service: got %q, want %q", info.Service, tc.service)
+			if tc.service != "" {
+				assert.Equal(t, tc.service, info.Service, "service")
 			}
 
 			// Proper - always check
-			if info.Proper != tc.proper {
-				t.Errorf("proper: got %v, want %v", info.Proper, tc.proper)
-			}
+			assert.Equal(t, tc.proper, info.Proper, "proper")
 
 			// Repack - always check
-			if info.Repack != tc.repack {
-				t.Errorf("repack: got %v, want %v", info.Repack, tc.repack)
-			}
+			assert.Equal(t, tc.repack, info.Repack, "repack")
 		})
 	}
 }

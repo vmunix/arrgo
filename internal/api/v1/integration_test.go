@@ -4,7 +4,6 @@ package v1
 
 import (
 	"bytes"
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -18,21 +17,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	_ "modernc.org/sqlite"
+
 	"github.com/vmunix/arrgo/internal/config"
 	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/importer"
+	"github.com/vmunix/arrgo/internal/library"
 	"github.com/vmunix/arrgo/internal/search"
+	searchmocks "github.com/vmunix/arrgo/internal/search/mocks"
 )
-
-// mockIndexerAPI implements search.IndexerAPI for testing.
-type mockIndexerAPI struct {
-	releases []search.Release
-}
-
-func (m *mockIndexerAPI) Search(ctx context.Context, q search.Query) ([]search.Release, []error) {
-	return m.releases, nil
-}
 
 // testEnv holds all components needed for integration tests.
 type testEnv struct {
@@ -47,7 +43,8 @@ type testEnv struct {
 
 	// Components for direct access in tests
 	manager     *download.Manager
-	mockIndexer *mockIndexerAPI
+	ctrl        *gomock.Controller
+	mockIndexer *searchmocks.MockIndexerAPI
 
 	// Mock response configuration
 	sabnzbdClientID string
@@ -128,18 +125,16 @@ func setupIntegrationTest(t *testing.T) *testEnv {
 
 	// Create in-memory database
 	db, err := sql.Open("sqlite", ":memory:?_foreign_keys=on")
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
+	require.NoError(t, err, "open db")
 	env.db = db
 
 	// Apply schema
-	if _, err := db.Exec(testSchema); err != nil {
-		t.Fatalf("apply schema: %v", err)
-	}
+	_, err = db.Exec(testSchema)
+	require.NoError(t, err, "apply schema")
 
 	// Create mock external services
-	env.mockIndexer = &mockIndexerAPI{}
+	env.ctrl = gomock.NewController(t)
+	env.mockIndexer = searchmocks.NewMockIndexerAPI(env.ctrl)
 	env.sabnzbd = env.mockSABnzbdServer()
 
 	// Create scorer with default profiles
@@ -177,9 +172,15 @@ func setupIntegrationTest(t *testing.T) *testEnv {
 		SeriesRoot:      "/tv",
 		QualityProfiles: qualityProfileNames,
 	}
-	srv := New(db, cfg)
-	srv.SetSearcher(searcher)
-	srv.SetManager(manager)
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: downloadStore,
+		History:   importer.NewHistoryStore(db),
+		Searcher:  searcher,
+		Manager:   manager,
+	}
+	srv, err := NewWithDeps(deps, cfg)
+	require.NoError(t, err, "create server")
 
 	// Create HTTP test server
 	mux := http.NewServeMux()
@@ -195,18 +196,14 @@ func httpPost(t *testing.T, url string, body any) *http.Response {
 	t.Helper()
 	jsonBody, _ := json.Marshal(body)
 	resp, err := http.Post(url, "application/json", bytes.NewReader(jsonBody))
-	if err != nil {
-		t.Fatalf("httpPost: %v", err)
-	}
+	require.NoError(t, err, "httpPost")
 	return resp
 }
 
 func httpGet(t *testing.T, url string) *http.Response {
 	t.Helper()
 	resp, err := http.Get(url)
-	if err != nil {
-		t.Fatalf("httpGet: %v", err)
-	}
+	require.NoError(t, err, "httpGet")
 	return resp
 }
 
@@ -214,9 +211,7 @@ func decodeJSON(t *testing.T, resp *http.Response, v any) {
 	t.Helper()
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if err := json.Unmarshal(body, v); err != nil {
-		t.Fatalf("decode JSON: %v\nbody: %s", err, string(body))
-	}
+	require.NoError(t, json.Unmarshal(body, v), "decode JSON, body: %s", string(body))
 }
 
 // Builder helpers
@@ -241,9 +236,7 @@ func insertTestContent(t *testing.T, db *sql.DB, contentType, title string, year
 		VALUES (?, ?, ?, 'wanted', 'hd', '/movies')`,
 		contentType, title, year,
 	)
-	if err != nil {
-		t.Fatalf("insert content: %v", err)
-	}
+	require.NoError(t, err, "insert content")
 	id, _ := result.LastInsertId()
 	return id
 }
@@ -255,9 +248,7 @@ func insertTestDownload(t *testing.T, db *sql.DB, contentID int64, clientID, sta
 		VALUES (?, 'sabnzbd', ?, ?, 'Test.Release', 'TestIndexer', datetime('now'))`,
 		contentID, clientID, status,
 	)
-	if err != nil {
-		t.Fatalf("insert download: %v", err)
-	}
+	require.NoError(t, err, "insert download")
 	id, _ := result.LastInsertId()
 	return id
 }
@@ -269,9 +260,7 @@ func queryDownload(t *testing.T, db *sql.DB, contentID int64) *download.Download
 		SELECT id, content_id, client, client_id, status, release_name, indexer
 		FROM downloads WHERE content_id = ?`, contentID,
 	).Scan(&d.ID, &d.ContentID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer)
-	if err != nil {
-		t.Fatalf("query download: %v", err)
-	}
+	require.NoError(t, err, "query download")
 	return d
 }
 
@@ -279,10 +268,11 @@ func TestIntegration_SearchAndGrab(t *testing.T) {
 	env := setupIntegrationTest(t)
 
 	// 1. Configure mock indexer to return releases
-	env.mockIndexer.releases = []search.Release{
+	releases := []search.Release{
 		mockRelease("The.Matrix.1999.1080p.BluRay.x264", 12_000_000_000, "nzbgeek"),
 		mockRelease("The.Matrix.1999.720p.BluRay", 8_000_000_000, "drunken"),
 	}
+	env.mockIndexer.EXPECT().Search(gomock.Any(), gomock.Any()).Return(releases, nil)
 	env.sabnzbdClientID = "SABnzbd_nzo_abc123"
 
 	// 2. POST /api/v1/search - verify results returned
@@ -291,20 +281,13 @@ func TestIntegration_SearchAndGrab(t *testing.T) {
 		"type":    "movie",
 		"profile": "hd",
 	})
-	if searchResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(searchResp.Body)
-		t.Fatalf("search status = %d, want 200: %s", searchResp.StatusCode, body)
-	}
+	require.Equal(t, http.StatusOK, searchResp.StatusCode, "search failed: %s", readBody(t, searchResp))
 
 	var searchResult searchResponse
 	decodeJSON(t, searchResp, &searchResult)
 
-	if len(searchResult.Releases) != 2 {
-		t.Errorf("releases = %d, want 2", len(searchResult.Releases))
-	}
-	if searchResult.Releases[0].Title != "The.Matrix.1999.1080p.BluRay.x264" {
-		t.Errorf("first release = %q, want 1080p version", searchResult.Releases[0].Title)
-	}
+	assert.Len(t, searchResult.Releases, 2)
+	assert.Equal(t, "The.Matrix.1999.1080p.BluRay.x264", searchResult.Releases[0].Title, "first release should be 1080p version")
 
 	// 3. POST /api/v1/content - create content entry
 	contentResp := httpPost(t, env.api.URL+"/api/v1/content", map[string]any{
@@ -313,17 +296,12 @@ func TestIntegration_SearchAndGrab(t *testing.T) {
 		"year":            1999,
 		"quality_profile": "hd",
 	})
-	if contentResp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(contentResp.Body)
-		t.Fatalf("add content status = %d, want 201: %s", contentResp.StatusCode, body)
-	}
+	require.Equal(t, http.StatusCreated, contentResp.StatusCode, "add content failed: %s", readBody(t, contentResp))
 
 	var content contentResponse
 	decodeJSON(t, contentResp, &content)
 
-	if content.ID == 0 {
-		t.Fatal("content ID should be set")
-	}
+	require.NotZero(t, content.ID, "content ID should be set")
 
 	// 4. POST /api/v1/grab - verify SABnzbd called, download record created
 	grabResp := httpPost(t, env.api.URL+"/api/v1/grab", map[string]any{
@@ -332,32 +310,19 @@ func TestIntegration_SearchAndGrab(t *testing.T) {
 		"title":        searchResult.Releases[0].Title,
 		"indexer":      searchResult.Releases[0].Indexer,
 	})
-	if grabResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(grabResp.Body)
-		t.Fatalf("grab status = %d, want 200: %s", grabResp.StatusCode, body)
-	}
+	require.Equal(t, http.StatusOK, grabResp.StatusCode, "grab failed: %s", readBody(t, grabResp))
 
 	var grab grabResponse
 	decodeJSON(t, grabResp, &grab)
 
-	if grab.DownloadID == 0 {
-		t.Error("download ID should be set")
-	}
-	if grab.Status != "queued" {
-		t.Errorf("status = %q, want queued", grab.Status)
-	}
+	assert.NotZero(t, grab.DownloadID, "download ID should be set")
+	assert.Equal(t, "queued", grab.Status)
 
 	// 5. Verify DB state
 	dl := queryDownload(t, env.db, content.ID)
-	if dl.ClientID != "SABnzbd_nzo_abc123" {
-		t.Errorf("client_id = %q, want SABnzbd_nzo_abc123", dl.ClientID)
-	}
-	if dl.Status != download.StatusQueued {
-		t.Errorf("status = %q, want queued", dl.Status)
-	}
-	if dl.ReleaseName != "The.Matrix.1999.1080p.BluRay.x264" {
-		t.Errorf("release_name = %q, want The.Matrix.1999.1080p.BluRay.x264", dl.ReleaseName)
-	}
+	assert.Equal(t, "SABnzbd_nzo_abc123", dl.ClientID)
+	assert.Equal(t, download.StatusQueued, dl.Status)
+	assert.Equal(t, "The.Matrix.1999.1080p.BluRay.x264", dl.ReleaseName)
 }
 
 func TestIntegration_DownloadComplete(t *testing.T) {
@@ -377,15 +342,11 @@ func TestIntegration_DownloadComplete(t *testing.T) {
 
 	// 3. Trigger status refresh
 	ctx := t.Context()
-	if err := env.manager.Refresh(ctx); err != nil {
-		t.Fatalf("refresh: %v", err)
-	}
+	require.NoError(t, env.manager.Refresh(ctx))
 
 	// 4. Verify DB: download status updated to completed
 	dl := queryDownload(t, env.db, contentID)
-	if dl.Status != download.StatusCompleted {
-		t.Errorf("status = %q, want completed", dl.Status)
-	}
+	assert.Equal(t, download.StatusCompleted, dl.Status)
 }
 
 // simpleTestEnv holds minimal components for tests that don't need full integration setup.
@@ -410,15 +371,12 @@ func newTestEnv(t *testing.T) *simpleTestEnv {
 
 	// Create in-memory database
 	db, err := sql.Open("sqlite", ":memory:?_foreign_keys=on")
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
+	require.NoError(t, err, "open db")
 	env.db = db
 
 	// Apply schema
-	if _, err := db.Exec(testSchema); err != nil {
-		t.Fatalf("apply schema: %v", err)
-	}
+	_, err = db.Exec(testSchema)
+	require.NoError(t, err, "apply schema")
 
 	// Create API server with minimal config
 	cfg := Config{
@@ -442,30 +400,23 @@ func TestIntegration_PlexStatus_NotConfigured(t *testing.T) {
 	env.server.RegisterRoutes(env.mux)
 	env.mux.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Errorf("status: got %d, want %d", rr.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, rr.Code)
 
 	var resp map[string]any
-	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 
-	if resp["connected"] != false {
-		t.Errorf("connected: got %v, want false", resp["connected"])
-	}
-	if resp["error"] != "Plex not configured" {
-		t.Errorf("error: got %v, want 'Plex not configured'", resp["error"])
-	}
+	assert.Equal(t, false, resp["connected"])
+	assert.Equal(t, "Plex not configured", resp["error"])
 }
 
 func TestIntegration_FullHappyPath(t *testing.T) {
 	env := setupIntegrationTest(t)
 
 	// Configure all mocks upfront
-	env.mockIndexer.releases = []search.Release{
+	releases := []search.Release{
 		mockRelease("Inception.2010.1080p.BluRay.x264", 15_000_000_000, "nzbgeek"),
 	}
+	env.mockIndexer.EXPECT().Search(gomock.Any(), gomock.Any()).Return(releases, nil)
 	env.sabnzbdClientID = "SABnzbd_nzo_inception"
 
 	// Phase 1: Search
@@ -473,17 +424,12 @@ func TestIntegration_FullHappyPath(t *testing.T) {
 		"query": "inception 2010",
 		"type":  "movie",
 	})
-	if searchResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(searchResp.Body)
-		t.Fatalf("search status = %d, want 200: %s", searchResp.StatusCode, body)
-	}
+	require.Equal(t, http.StatusOK, searchResp.StatusCode, "search failed: %s", readBody(t, searchResp))
 
 	var searchResult searchResponse
 	decodeJSON(t, searchResp, &searchResult)
 
-	if len(searchResult.Releases) == 0 {
-		t.Fatal("expected at least one release")
-	}
+	require.NotEmpty(t, searchResult.Releases, "expected at least one release")
 
 	// Phase 2: Add content
 	contentResp := httpPost(t, env.api.URL+"/api/v1/content", map[string]any{
@@ -492,10 +438,7 @@ func TestIntegration_FullHappyPath(t *testing.T) {
 		"year":            2010,
 		"quality_profile": "hd",
 	})
-	if contentResp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(contentResp.Body)
-		t.Fatalf("add content status = %d, want 201: %s", contentResp.StatusCode, body)
-	}
+	require.Equal(t, http.StatusCreated, contentResp.StatusCode, "add content failed: %s", readBody(t, contentResp))
 
 	var content contentResponse
 	decodeJSON(t, contentResp, &content)
@@ -507,16 +450,11 @@ func TestIntegration_FullHappyPath(t *testing.T) {
 		"title":        searchResult.Releases[0].Title,
 		"indexer":      searchResult.Releases[0].Indexer,
 	})
-	if grabResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(grabResp.Body)
-		t.Fatalf("grab status = %d, want 200: %s", grabResp.StatusCode, body)
-	}
+	require.Equal(t, http.StatusOK, grabResp.StatusCode, "grab failed: %s", readBody(t, grabResp))
 
 	// Verify download created with queued status
 	dl := queryDownload(t, env.db, content.ID)
-	if dl.Status != download.StatusQueued {
-		t.Errorf("initial status = %q, want queued", dl.Status)
-	}
+	assert.Equal(t, download.StatusQueued, dl.Status, "initial status")
 
 	// Phase 4: Simulate download completion
 	env.sabnzbdStatus = &download.ClientStatus{
@@ -528,22 +466,15 @@ func TestIntegration_FullHappyPath(t *testing.T) {
 
 	// Trigger refresh
 	ctx := t.Context()
-	if err := env.manager.Refresh(ctx); err != nil {
-		t.Fatalf("refresh: %v", err)
-	}
+	require.NoError(t, env.manager.Refresh(ctx))
 
 	// Verify final state: download completed
 	dl = queryDownload(t, env.db, content.ID)
-	if dl.Status != download.StatusCompleted {
-		t.Errorf("final status = %q, want completed", dl.Status)
-	}
+	assert.Equal(t, download.StatusCompleted, dl.Status, "final status")
 
 	// Verify content still exists and can be retrieved via API
 	getResp := httpGet(t, env.api.URL+"/api/v1/content/"+fmt.Sprintf("%d", content.ID))
-	if getResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(getResp.Body)
-		t.Fatalf("get content status = %d, want 200: %s", getResp.StatusCode, body)
-	}
+	require.Equal(t, http.StatusOK, getResp.StatusCode, "get content failed: %s", readBody(t, getResp))
 }
 
 func TestIntegration_ManualImport(t *testing.T) {
@@ -555,26 +486,19 @@ func TestIntegration_ManualImport(t *testing.T) {
 	// Create a fake video file in a directory with a release name
 	releaseName := "Back.to.the.Future.1985.1080p.BluRay.x264"
 	releaseDir := filepath.Join(sourceDir, releaseName)
-	if err := os.MkdirAll(releaseDir, 0755); err != nil {
-		t.Fatalf("create release dir: %v", err)
-	}
+	require.NoError(t, os.MkdirAll(releaseDir, 0755), "create release dir")
 
 	videoPath := filepath.Join(releaseDir, "back.to.the.future.mkv")
 	videoContent := make([]byte, 5000) // 5KB fake video
-	if err := os.WriteFile(videoPath, videoContent, 0644); err != nil {
-		t.Fatalf("create video file: %v", err)
-	}
+	require.NoError(t, os.WriteFile(videoPath, videoContent, 0644), "create video file")
 
 	// Set up in-memory database
 	db, err := sql.Open("sqlite", ":memory:?_foreign_keys=on")
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
+	require.NoError(t, err, "open db")
 	t.Cleanup(func() { _ = db.Close() })
 
-	if _, err := db.Exec(testSchema); err != nil {
-		t.Fatalf("apply schema: %v", err)
-	}
+	_, err = db.Exec(testSchema)
+	require.NoError(t, err, "apply schema")
 
 	// Create importer with test configuration
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -591,8 +515,14 @@ func TestIntegration_ManualImport(t *testing.T) {
 		MovieRoot:  movieRoot,
 		SeriesRoot: seriesRoot,
 	}
-	srv := New(db, cfg)
-	srv.SetImporter(imp)
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Importer:  imp,
+	}
+	srv, err := NewWithDeps(deps, cfg)
+	require.NoError(t, err, "create server")
 
 	// Create HTTP test server
 	mux := http.NewServeMux()
@@ -610,83 +540,58 @@ func TestIntegration_ManualImport(t *testing.T) {
 	}
 
 	resp := httpPost(t, ts.URL+"/api/v1/import", importReq)
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		t.Fatalf("import status = %d, want 200: %s", resp.StatusCode, body)
-	}
+	require.Equal(t, http.StatusOK, resp.StatusCode, "import failed: %s", readBody(t, resp))
 
 	var importResp importResponse
 	decodeJSON(t, resp, &importResp)
 
 	// Verify the response has correct fields
-	if importResp.FileID == 0 {
-		t.Error("file_id should be set")
-	}
-	if importResp.ContentID == 0 {
-		t.Error("content_id should be set")
-	}
-	if importResp.SourcePath != videoPath {
-		t.Errorf("source_path = %q, want %q", importResp.SourcePath, videoPath)
-	}
-	if importResp.SizeBytes != int64(len(videoContent)) {
-		t.Errorf("size_bytes = %d, want %d", importResp.SizeBytes, len(videoContent))
-	}
+	assert.NotZero(t, importResp.FileID, "file_id should be set")
+	assert.NotZero(t, importResp.ContentID, "content_id should be set")
+	assert.Equal(t, videoPath, importResp.SourcePath)
+	assert.Equal(t, int64(len(videoContent)), importResp.SizeBytes)
 
 	// Verify dest_path is within movie root
-	if !strings.HasPrefix(importResp.DestPath, movieRoot) {
-		t.Errorf("dest_path = %q, should be under %q", importResp.DestPath, movieRoot)
-	}
+	assert.True(t, strings.HasPrefix(importResp.DestPath, movieRoot), "dest_path = %q, should be under %q", importResp.DestPath, movieRoot)
 
 	// Verify dest_path contains expected elements
-	if !strings.Contains(importResp.DestPath, "Back to the Future") {
-		t.Errorf("dest_path should contain title: %s", importResp.DestPath)
-	}
-	if !strings.Contains(importResp.DestPath, "1985") {
-		t.Errorf("dest_path should contain year: %s", importResp.DestPath)
-	}
+	assert.Contains(t, importResp.DestPath, "Back to the Future", "dest_path should contain title")
+	assert.Contains(t, importResp.DestPath, "1985", "dest_path should contain year")
 
 	// Verify the file was copied to the destination
-	if _, err := os.Stat(importResp.DestPath); os.IsNotExist(err) {
-		t.Error("destination file should exist")
-	}
+	_, err = os.Stat(importResp.DestPath)
+	assert.False(t, os.IsNotExist(err), "destination file should exist")
 
 	// Verify file content is correct
 	destContent, err := os.ReadFile(importResp.DestPath)
-	if err != nil {
-		t.Fatalf("read dest file: %v", err)
-	}
-	if len(destContent) != len(videoContent) {
-		t.Errorf("dest file size = %d, want %d", len(destContent), len(videoContent))
-	}
+	require.NoError(t, err, "read dest file")
+	assert.Len(t, destContent, len(videoContent))
 
 	// Verify content record was created with correct status
 	var contentStatus string
-	if err := db.QueryRow("SELECT status FROM content WHERE id = ?", importResp.ContentID).Scan(&contentStatus); err != nil {
-		t.Fatalf("query content status: %v", err)
-	}
-	if contentStatus != "available" {
-		t.Errorf("content status = %q, want available", contentStatus)
-	}
+	err = db.QueryRow("SELECT status FROM content WHERE id = ?", importResp.ContentID).Scan(&contentStatus)
+	require.NoError(t, err, "query content status")
+	assert.Equal(t, "available", contentStatus)
 
 	// Verify file record was created in database
 	var filePath string
 	var fileQuality string
-	if err := db.QueryRow("SELECT path, quality FROM files WHERE id = ?", importResp.FileID).Scan(&filePath, &fileQuality); err != nil {
-		t.Fatalf("query file record: %v", err)
-	}
-	if filePath != importResp.DestPath {
-		t.Errorf("file path = %q, want %q", filePath, importResp.DestPath)
-	}
-	if fileQuality != "1080p" {
-		t.Errorf("file quality = %q, want 1080p", fileQuality)
-	}
+	err = db.QueryRow("SELECT path, quality FROM files WHERE id = ?", importResp.FileID).Scan(&filePath, &fileQuality)
+	require.NoError(t, err, "query file record")
+	assert.Equal(t, importResp.DestPath, filePath)
+	assert.Equal(t, "1080p", fileQuality)
 
 	// Verify history entry was created
 	var historyCount int
-	if err := db.QueryRow("SELECT COUNT(*) FROM history WHERE content_id = ?", importResp.ContentID).Scan(&historyCount); err != nil {
-		t.Fatalf("query history: %v", err)
-	}
-	if historyCount != 1 {
-		t.Errorf("history entries = %d, want 1", historyCount)
-	}
+	err = db.QueryRow("SELECT COUNT(*) FROM history WHERE content_id = ?", importResp.ContentID).Scan(&historyCount)
+	require.NoError(t, err, "query history")
+	assert.Equal(t, 1, historyCount)
+}
+
+// readBody is a helper to read response body for error messages
+func readBody(t *testing.T, resp *http.Response) string {
+	t.Helper()
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	return string(body)
 }

@@ -10,7 +10,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
+
 	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/library"
 )
@@ -60,14 +63,11 @@ var testSchema string
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:?_foreign_keys=on")
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
+	require.NoError(t, err, "open db")
 	t.Cleanup(func() { _ = db.Close() })
 
-	if _, err := db.Exec(testSchema); err != nil {
-		t.Fatalf("apply schema: %v", err)
-	}
+	_, err = db.Exec(testSchema)
+	require.NoError(t, err, "apply schema")
 	return db
 }
 
@@ -101,17 +101,11 @@ func TestAuthMiddleware_NoAPIKey(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusUnauthorized {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusUnauthorized)
-	}
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
 
 	var resp testErrorResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if resp.Error != "Invalid API key" {
-		t.Errorf("error = %q, want %q", resp.Error, "Invalid API key")
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "Invalid API key", resp.Error)
 }
 
 func TestAuthMiddleware_WrongAPIKey(t *testing.T) {
@@ -123,17 +117,11 @@ func TestAuthMiddleware_WrongAPIKey(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusUnauthorized {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusUnauthorized)
-	}
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
 
 	var resp testErrorResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if resp.Error != "Invalid API key" {
-		t.Errorf("error = %q, want %q", resp.Error, "Invalid API key")
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "Invalid API key", resp.Error)
 }
 
 func TestAuthMiddleware_CorrectAPIKey(t *testing.T) {
@@ -145,9 +133,7 @@ func TestAuthMiddleware_CorrectAPIKey(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestAuthMiddleware_APIKeyQueryParam(t *testing.T) {
@@ -158,9 +144,7 @@ func TestAuthMiddleware_APIKeyQueryParam(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 // Quality Profiles Tests
@@ -174,18 +158,11 @@ func TestListQualityProfiles_ReturnsConfiguredProfiles(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var profiles []testQualityProfile
-	if err := json.Unmarshal(w.Body.Bytes(), &profiles); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-
-	if len(profiles) != 2 {
-		t.Errorf("profiles count = %d, want 2", len(profiles))
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &profiles))
+	assert.Len(t, profiles, 2)
 }
 
 func TestListQualityProfiles_IncludesIDAndName(t *testing.T) {
@@ -198,9 +175,7 @@ func TestListQualityProfiles_IncludesIDAndName(t *testing.T) {
 	mux.ServeHTTP(w, req)
 
 	var profiles []testQualityProfile
-	if err := json.Unmarshal(w.Body.Bytes(), &profiles); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &profiles))
 
 	// Verify specific mappings exist
 	foundHD := false
@@ -213,12 +188,8 @@ func TestListQualityProfiles_IncludesIDAndName(t *testing.T) {
 			foundUHD = true
 		}
 	}
-	if !foundHD {
-		t.Error("hd profile with id=1 not found")
-	}
-	if !foundUHD {
-		t.Error("uhd profile with id=2 not found")
-	}
+	assert.True(t, foundHD, "hd profile with id=1 not found")
+	assert.True(t, foundUHD, "uhd profile with id=2 not found")
 }
 
 // Root Folders Tests
@@ -232,30 +203,19 @@ func TestListRootFolders_ReturnsConfiguredRoots(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var folders []testRootFolder
-	if err := json.Unmarshal(w.Body.Bytes(), &folders); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-
-	if len(folders) != 2 {
-		t.Errorf("folders count = %d, want 2", len(folders))
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &folders))
+	assert.Len(t, folders, 2)
 
 	// Verify paths
 	paths := make(map[string]bool)
 	for _, folder := range folders {
 		paths[folder.Path] = true
 	}
-	if !paths[testMovieRoot] {
-		t.Errorf("%s root folder not found", testMovieRoot)
-	}
-	if !paths[testSeriesRoot] {
-		t.Errorf("%s root folder not found", testSeriesRoot)
-	}
+	assert.True(t, paths[testMovieRoot], "%s root folder not found", testMovieRoot)
+	assert.True(t, paths[testSeriesRoot], "%s root folder not found", testSeriesRoot)
 }
 
 func TestListRootFolders_EmptyWhenNoRootsConfigured(t *testing.T) {
@@ -280,18 +240,11 @@ func TestListRootFolders_EmptyWhenNoRootsConfigured(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var folders []testRootFolder
-	if err := json.Unmarshal(w.Body.Bytes(), &folders); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-
-	if len(folders) != 0 {
-		t.Errorf("folders count = %d, want 0", len(folders))
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &folders))
+	assert.Empty(t, folders)
 }
 
 // Add Movie Tests
@@ -316,29 +269,19 @@ func TestAddMovie_CreatesContentInLibrary(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusCreated {
-		t.Errorf("status = %d, want %d: %s", w.Code, http.StatusCreated, w.Body.String())
-	}
+	assert.Equal(t, http.StatusCreated, w.Code, "response body: %s", w.Body.String())
 
 	// Verify content was created in database
 	var count int
 	err := db.QueryRow("SELECT COUNT(*) FROM content WHERE title = ?", "Test Movie").Scan(&count)
-	if err != nil {
-		t.Fatalf("query: %v", err)
-	}
-	if count != 1 {
-		t.Errorf("content count = %d, want 1", count)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
 
 	// Verify TMDB ID was stored
 	var tmdbID int64
 	err = db.QueryRow("SELECT tmdb_id FROM content WHERE title = ?", "Test Movie").Scan(&tmdbID)
-	if err != nil {
-		t.Fatalf("query tmdb_id: %v", err)
-	}
-	if tmdbID != 12345 {
-		t.Errorf("tmdb_id = %d, want 12345", tmdbID)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, int64(12345), tmdbID)
 }
 
 func TestAddMovie_ReturnsRadarrFormatResponse(t *testing.T) {
@@ -361,33 +304,17 @@ func TestAddMovie_ReturnsRadarrFormatResponse(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusCreated {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusCreated)
-	}
+	assert.Equal(t, http.StatusCreated, w.Code)
 
 	var resp radarrMovieResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 
-	if resp.ID == 0 {
-		t.Error("response ID should not be 0")
-	}
-	if resp.TMDBID != 67890 {
-		t.Errorf("tmdbId = %d, want 67890", resp.TMDBID)
-	}
-	if resp.Title != "Another Movie" {
-		t.Errorf("title = %q, want %q", resp.Title, "Another Movie")
-	}
-	if resp.Year != 2023 {
-		t.Errorf("year = %d, want 2023", resp.Year)
-	}
-	if !resp.Monitored {
-		t.Error("monitored = false, want true")
-	}
-	if resp.Status != "released" {
-		t.Errorf("status = %q, want %q", resp.Status, "released")
-	}
+	assert.NotZero(t, resp.ID, "response ID should not be 0")
+	assert.Equal(t, int64(67890), resp.TMDBID)
+	assert.Equal(t, "Another Movie", resp.Title)
+	assert.Equal(t, 2023, resp.Year)
+	assert.True(t, resp.Monitored)
+	assert.Equal(t, "released", resp.Status)
 }
 
 func TestAddMovie_InvalidJSON(t *testing.T) {
@@ -402,17 +329,11 @@ func TestAddMovie_InvalidJSON(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusBadRequest)
-	}
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 
 	var resp testErrorResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if resp.Error != "Invalid request" {
-		t.Errorf("error = %q, want %q", resp.Error, "Invalid request")
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "Invalid request", resp.Error)
 }
 
 func TestAddMovie_QualityProfileMappedCorrectly(t *testing.T) {
@@ -436,19 +357,13 @@ func TestAddMovie_QualityProfileMappedCorrectly(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusCreated {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusCreated)
-	}
+	assert.Equal(t, http.StatusCreated, w.Code)
 
 	// Verify quality profile was mapped correctly
 	var qualityProfile string
 	err := db.QueryRow("SELECT quality_profile FROM content WHERE title = ?", "UHD Movie").Scan(&qualityProfile)
-	if err != nil {
-		t.Fatalf("query quality_profile: %v", err)
-	}
-	if qualityProfile != "uhd" {
-		t.Errorf("quality_profile = %q, want %q", qualityProfile, "uhd")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "uhd", qualityProfile)
 }
 
 // List Queue Tests
@@ -466,9 +381,7 @@ func TestListQueue_ReturnsDownloadsInRadarrFormat(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       testMovieRoot,
 	}
-	if err := lib.AddContent(content); err != nil {
-		t.Fatalf("add content: %v", err)
-	}
+	require.NoError(t, lib.AddContent(content))
 
 	// Add a download
 	dl := &download.Download{
@@ -479,9 +392,7 @@ func TestListQueue_ReturnsDownloadsInRadarrFormat(t *testing.T) {
 		ReleaseName: "Test.Movie.2024.1080p.BluRay.x264",
 		Indexer:     "NZBgeek",
 	}
-	if err := srv.downloads.Add(dl); err != nil {
-		t.Fatalf("add download: %v", err)
-	}
+	require.NoError(t, srv.downloads.Add(dl))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v3/queue", nil)
 	req.Header.Set("X-Api-Key", testAPIKey)
@@ -489,34 +400,19 @@ func TestListQueue_ReturnsDownloadsInRadarrFormat(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp testQueueResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 
 	// Verify queue response structure
-	if resp.Page != 1 {
-		t.Errorf("page = %d, want 1", resp.Page)
-	}
-	if resp.TotalRecords != 1 {
-		t.Errorf("totalRecords = %d, want 1", resp.TotalRecords)
-	}
-
-	if len(resp.Records) != 1 {
-		t.Errorf("records count = %d, want 1", len(resp.Records))
-	}
+	assert.Equal(t, 1, resp.Page)
+	assert.Equal(t, 1, resp.TotalRecords)
+	assert.Len(t, resp.Records, 1)
 
 	record := resp.Records[0]
-	if record.Title != "Test.Movie.2024.1080p.BluRay.x264" {
-		t.Errorf("title = %q, want %q", record.Title, "Test.Movie.2024.1080p.BluRay.x264")
-	}
-	if record.Indexer != "NZBgeek" {
-		t.Errorf("indexer = %q, want %q", record.Indexer, "NZBgeek")
-	}
+	assert.Equal(t, "Test.Movie.2024.1080p.BluRay.x264", record.Title)
+	assert.Equal(t, "NZBgeek", record.Indexer)
 }
 
 func TestListQueue_EmptyQueueReturnsEmptyRecords(t *testing.T) {
@@ -528,21 +424,13 @@ func TestListQueue_EmptyQueueReturnsEmptyRecords(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp testQueueResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 
-	if len(resp.Records) != 0 {
-		t.Errorf("records count = %d, want 0", len(resp.Records))
-	}
-	if resp.TotalRecords != 0 {
-		t.Errorf("totalRecords = %d, want 0", resp.TotalRecords)
-	}
+	assert.Empty(t, resp.Records)
+	assert.Zero(t, resp.TotalRecords)
 }
 
 // List Movies Tests
@@ -556,17 +444,11 @@ func TestListMovies_ReturnsEmptyArray(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp []radarrMovieResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(resp) != 0 {
-		t.Errorf("response length = %d, want 0", len(resp))
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Empty(t, resp)
 }
 
 // Get Movie Tests
@@ -580,9 +462,7 @@ func TestGetMovie_NotFound(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	if w.Code != http.StatusNotFound {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusNotFound)
-	}
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 // Auth middleware: API key not configured (testing mode - auth skipped)
@@ -610,7 +490,5 @@ func TestAuthMiddleware_APIKeyNotConfigured_SkipsAuth(t *testing.T) {
 	mux.ServeHTTP(w, req)
 
 	// Should succeed (200 OK) when no API key configured
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 }
