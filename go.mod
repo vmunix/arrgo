@@ -1,4 +1,4 @@
-module github.com/arrgo/arrgo
+module github.com/vmunix/arrgo
 
 go 1.24.0
 

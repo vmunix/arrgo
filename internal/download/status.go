@@ -20,7 +20,7 @@ var validTransitions = map[Status][]Status{
 	StatusDownloading: {StatusCompleted, StatusFailed},
 	StatusCompleted:   {StatusImported, StatusFailed},
 	StatusImported:    {StatusCleaned, StatusFailed},
-	StatusCleaned:     {}, // terminal - no transitions out
+	StatusCleaned:     {},             // terminal - no transitions out
 	StatusFailed:      {StatusQueued}, // allow retry
 }
 

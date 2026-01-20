@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/arrgo/arrgo/internal/library"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/vmunix/arrgo/internal/library"
 )
 
 //go:embed testdata/schema.sql

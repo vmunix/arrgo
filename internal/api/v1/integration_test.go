@@ -18,11 +18,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arrgo/arrgo/internal/config"
-	"github.com/arrgo/arrgo/internal/download"
-	"github.com/arrgo/arrgo/internal/importer"
-	"github.com/arrgo/arrgo/internal/search"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/vmunix/arrgo/internal/config"
+	"github.com/vmunix/arrgo/internal/download"
+	"github.com/vmunix/arrgo/internal/importer"
+	"github.com/vmunix/arrgo/internal/search"
 )
 
 // mockIndexerAPI implements search.IndexerAPI for testing.

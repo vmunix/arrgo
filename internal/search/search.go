@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arrgo/arrgo/pkg/release"
+	"github.com/vmunix/arrgo/pkg/release"
 )
 
 // sequelPattern matches sequel indicators in titles.

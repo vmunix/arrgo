@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arrgo/arrgo/internal/config"
-	"github.com/arrgo/arrgo/pkg/release"
+	"github.com/vmunix/arrgo/internal/config"
+	"github.com/vmunix/arrgo/pkg/release"
 )
 
 // testLogger returns a discard logger for tests.

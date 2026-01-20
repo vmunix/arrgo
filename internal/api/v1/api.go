@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arrgo/arrgo/internal/download"
-	"github.com/arrgo/arrgo/internal/importer"
-	"github.com/arrgo/arrgo/internal/library"
-	"github.com/arrgo/arrgo/internal/search"
+	"github.com/vmunix/arrgo/internal/download"
+	"github.com/vmunix/arrgo/internal/importer"
+	"github.com/vmunix/arrgo/internal/library"
+	"github.com/vmunix/arrgo/internal/search"
 )
 
 // Config holds API server configuration.

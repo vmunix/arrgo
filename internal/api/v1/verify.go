@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/arrgo/arrgo/internal/download"
+	"github.com/vmunix/arrgo/internal/download"
 )
 
 // VerifyProblem describes a problem found during verification.

@@ -3,8 +3,8 @@ package search
 import (
 	"strings"
 
-	"github.com/arrgo/arrgo/internal/config"
-	"github.com/arrgo/arrgo/pkg/release"
+	"github.com/vmunix/arrgo/internal/config"
+	"github.com/vmunix/arrgo/pkg/release"
 )
 
 // Base scores for resolutions.

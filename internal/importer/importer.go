@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/arrgo/arrgo/internal/download"
-	"github.com/arrgo/arrgo/internal/library"
+	"github.com/vmunix/arrgo/internal/download"
+	"github.com/vmunix/arrgo/internal/library"
 )
 
 // Importer processes completed downloads.
@@ -30,14 +30,14 @@ type Importer struct {
 
 // Config for the importer.
 type Config struct {
-	MovieRoot       string
-	SeriesRoot      string
-	MovieTemplate   string
-	SeriesTemplate  string
-	PlexURL         string
-	PlexToken       string
-	PlexLocalPath   string // Local path prefix (e.g., /srv/data/media)
-	PlexRemotePath  string // Plex's path prefix (e.g., /data/media)
+	MovieRoot      string
+	SeriesRoot     string
+	MovieTemplate  string
+	SeriesTemplate string
+	PlexURL        string
+	PlexToken      string
+	PlexLocalPath  string // Local path prefix (e.g., /srv/data/media)
+	PlexRemotePath string // Plex's path prefix (e.g., /data/media)
 }
 
 // New creates a new importer.
