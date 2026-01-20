@@ -23,6 +23,7 @@ type Config struct {
 	Compat        CompatConfig        `toml:"compat"`
 	AI            AIConfig            `toml:"ai"`
 	Importer      ImporterConfig      `toml:"importer"`
+	TMDB          *TMDBConfig         `toml:"tmdb"`
 }
 
 type ServerConfig struct {
@@ -132,6 +133,10 @@ type AnthropicConfig struct {
 
 type ImporterConfig struct {
 	CleanupSource *bool `toml:"cleanup_source"`
+}
+
+type TMDBConfig struct {
+	APIKey string `toml:"api_key"`
 }
 
 // ShouldCleanupSource returns whether to delete source files after import.
