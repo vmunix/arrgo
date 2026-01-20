@@ -57,27 +57,78 @@ type radarrMovieResponse struct {
 	Added            string `json:"added"`
 }
 
-// sonarrAddRequest is the Sonarr format for adding a series.
-type sonarrAddRequest struct {
-	TVDBID           int64  `json:"tvdbId"`
-	Title            string `json:"title"`
-	Year             int    `json:"year"`
-	QualityProfileID int    `json:"qualityProfileId"`
-	RootFolderPath   string `json:"rootFolderPath"`
-	Monitored        bool   `json:"monitored"`
-	AddOptions       struct {
-		SearchForMissingEpisodes bool `json:"searchForMissingEpisodes"`
-	} `json:"addOptions"`
+// sonarrSeason represents a season in Sonarr format.
+type sonarrSeason struct {
+	SeasonNumber int  `json:"seasonNumber"`
+	Monitored    bool `json:"monitored"`
+	Statistics   *struct {
+		EpisodeFileCount  int `json:"episodeFileCount"`
+		EpisodeCount      int `json:"episodeCount"`
+		TotalEpisodeCount int `json:"totalEpisodeCount"`
+		SizeOnDisk        int `json:"sizeOnDisk"`
+		PercentOfEpisodes int `json:"percentOfEpisodes"`
+	} `json:"statistics,omitempty"`
 }
 
-// sonarrSeriesResponse is the Sonarr format for a series.
+// sonarrSeriesResponse is the full Sonarr format for a series.
 type sonarrSeriesResponse struct {
-	ID        int64  `json:"id"`
-	TVDBID    int64  `json:"tvdbId"`
-	Title     string `json:"title"`
-	Year      int    `json:"year"`
-	Monitored bool   `json:"monitored"`
-	Status    string `json:"status"`
+	ID                int64          `json:"id,omitempty"`
+	TVDBID            int64          `json:"tvdbId"`
+	Title             string         `json:"title"`
+	SortTitle         string         `json:"sortTitle"`
+	Year              int            `json:"year"`
+	SeasonCount       int            `json:"seasonCount"`
+	Seasons           []sonarrSeason `json:"seasons"`
+	Status            string         `json:"status"`
+	Overview          string         `json:"overview,omitempty"`
+	Network           string         `json:"network,omitempty"`
+	Runtime           int            `json:"runtime,omitempty"`
+	Images            []struct {
+		CoverType string `json:"coverType"`
+		URL       string `json:"url"`
+	} `json:"images,omitempty"`
+	SeriesType        string   `json:"seriesType"`
+	Monitored         bool     `json:"monitored"`
+	QualityProfileID  int      `json:"qualityProfileId"`
+	LanguageProfileID int      `json:"languageProfileId"`
+	SeasonFolder      bool     `json:"seasonFolder"`
+	Path              string   `json:"path,omitempty"`
+	RootFolderPath    string   `json:"rootFolderPath,omitempty"`
+	TitleSlug         string   `json:"titleSlug"`
+	Certification     string   `json:"certification,omitempty"`
+	Genres            []string `json:"genres,omitempty"`
+	Tags              []int    `json:"tags"`
+	Added             string   `json:"added,omitempty"`
+	FirstAired        string   `json:"firstAired,omitempty"`
+	CleanTitle        string   `json:"cleanTitle"`
+	ImdbID            string   `json:"imdbId,omitempty"`
+	Statistics        *struct {
+		SeasonCount       int `json:"seasonCount"`
+		EpisodeFileCount  int `json:"episodeFileCount"`
+		EpisodeCount      int `json:"episodeCount"`
+		TotalEpisodeCount int `json:"totalEpisodeCount"`
+		SizeOnDisk        int `json:"sizeOnDisk"`
+		PercentOfEpisodes int `json:"percentOfEpisodes"`
+	} `json:"statistics,omitempty"`
+}
+
+// sonarrAddRequest is the Sonarr format for adding a series (full Overseerr format).
+type sonarrAddRequest struct {
+	TVDBID            int64  `json:"tvdbId"`
+	Title             string `json:"title"`
+	Year              int    `json:"year"`
+	QualityProfileID  int    `json:"qualityProfileId"`
+	LanguageProfileID int    `json:"languageProfileId"`
+	Seasons           []int  `json:"seasons"` // Season numbers to monitor
+	SeasonFolder      bool   `json:"seasonFolder"`
+	RootFolderPath    string `json:"rootFolderPath"`
+	SeriesType        string `json:"seriesType"` // standard, daily, anime
+	Monitored         bool   `json:"monitored"`
+	Tags              []int  `json:"tags"`
+	AddOptions        struct {
+		IgnoreEpisodesWithFiles  bool `json:"ignoreEpisodesWithFiles"`
+		SearchForMissingEpisodes bool `json:"searchForMissingEpisodes"`
+	} `json:"addOptions"`
 }
 
 // Server provides Radarr/Sonarr API compatibility.
