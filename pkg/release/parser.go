@@ -34,6 +34,10 @@ var (
 	seasonPackRegex  = regexp.MustCompile(`(?i)(?:Complete[\s.]+)?Season[\s.]?(\d{1,2})(?:\s|\.|\b)`)
 	seasonOnlyRegex  = regexp.MustCompile(`(?i)\bS(\d{1,2})(?:\b|\.|$)`) // S01 without E## (checked separately)
 	splitSeasonRegex = regexp.MustCompile(`(?i)(?:Season[\s.]?(\d{1,2})|S(\d{1,2}))[\s.]+(?:Part|Vol)[\s.]?(\d{1,2})`)
+
+	// Audio detection patterns (must work with both raw and normalized names)
+	ddPlusRegex = regexp.MustCompile(`(?i)\bdd\+[\s.]?\d`)
+	ddRegex     = regexp.MustCompile(`(?i)\bdd[\s.]+\d[\s.]+\d`) // DD 5 1 or DD.5.1 or DD 5.1
 )
 
 // serviceMap maps streaming service codes to their full names.
@@ -345,12 +349,12 @@ func parseAudio(name string) AudioCodec {
 	}
 
 	// DD+ / DDP / EAC3 before DD / AC3
-	if containsAny(lower, "ddp", "dd+", "eac3", "e-ac3") {
+	if containsAny(lower, "ddp", "dd+", "eac3", "e-ac3") || ddPlusRegex.MatchString(name) {
 		return AudioEAC3
 	}
 
-	// DD / AC3
-	if containsAny(lower, "dd5", "dd2", "dd7", "ac3", "dolby digital") {
+	// DD / AC3 - improved pattern matching for dd5.1, dd.5.1, dd 5.1
+	if containsAny(lower, "dd5", "dd2", "dd7", "ac3", "dolby digital") || ddRegex.MatchString(name) {
 		return AudioAC3
 	}
 

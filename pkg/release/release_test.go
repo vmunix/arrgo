@@ -563,6 +563,47 @@ func TestParse_MultiEpisode(t *testing.T) {
 	}
 }
 
+func TestParse_AudioGaps(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantAudio AudioCodec
+	}{
+		{
+			name:      "DD.5.1 with dots",
+			input:     "Movie.2024.1080p.BluRay.DD.5.1.x264-GRP",
+			wantAudio: AudioAC3,
+		},
+		{
+			name:      "DD.2.0 stereo",
+			input:     "Movie.2024.1080p.BluRay.DD.2.0.x264-GRP",
+			wantAudio: AudioAC3,
+		},
+		{
+			name:      "DD 5.1 with space",
+			input:     "Movie.2024.1080p.BluRay.DD 5.1.x264-GRP",
+			wantAudio: AudioAC3,
+		},
+		{
+			name:      "DD+ 5.1 (should be EAC3)",
+			input:     "Movie.2024.1080p.WEB-DL.DD+.5.1.x264-GRP",
+			wantAudio: AudioEAC3,
+		},
+		{
+			name:      "Dolby Digital explicit",
+			input:     "Movie.2024.1080p.BluRay.Dolby.Digital.5.1.x264-GRP",
+			wantAudio: AudioAC3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			assert.Equal(t, tt.wantAudio, got.Audio, "Audio")
+		})
+	}
+}
+
 func TestParse_DailyShowFormats(t *testing.T) {
 	tests := []struct {
 		name          string
