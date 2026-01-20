@@ -85,7 +85,7 @@ Or use defaults syntax in config: `${VAR:-default_value}`
 ./arrgo status           # Dashboard (connections, pipeline state, problems)
 ./arrgo queue            # Show active downloads
 ./arrgo queue --all      # Include terminal states (cleaned, failed)
-./arrgo imports          # Pending imports and recent completions
+./arrgo import list      # Pending imports and recent completions
 ./arrgo verify           # Reality-check against SABnzbd/filesystem/Plex
 ./arrgo plex status      # Check Plex connection
 ./arrgo plex list movies # List Plex library contents

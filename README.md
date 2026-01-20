@@ -79,7 +79,7 @@ arrgo search "Movie"     # Search indexers for releases
 arrgo queue              # Show active downloads
 arrgo queue --all        # Include terminal states (cleaned, failed)
 arrgo queue --state X    # Filter by state
-arrgo imports            # Show pending imports and recent completions
+arrgo import list        # Show pending imports and recent completions
 arrgo verify             # Reality-check downloads against SABnzbd/Plex
 arrgo verify 42          # Verify specific download
 arrgo init               # Interactive setup wizard
