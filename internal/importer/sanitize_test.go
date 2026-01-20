@@ -3,6 +3,8 @@ package importer
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSanitizeFilename(t *testing.T) {
@@ -27,9 +29,7 @@ func TestSanitizeFilename(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := SanitizeFilename(tt.input)
-			if got != tt.want {
-				t.Errorf("SanitizeFilename(%q) = %q, want %q", tt.input, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got, "SanitizeFilename(%q)", tt.input)
 		})
 	}
 }
@@ -53,8 +53,10 @@ func TestValidatePath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := ValidatePath(tt.path, root)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidatePath(%q, %q) error = %v, wantErr %v", tt.path, root, err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err, "ValidatePath(%q, %q)", tt.path, root)
+			} else {
+				assert.NoError(t, err, "ValidatePath(%q, %q)", tt.path, root)
 			}
 		})
 	}
@@ -78,9 +80,7 @@ func TestIsVideoFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
-			if got := IsVideoFile(tt.path); got != tt.want {
-				t.Errorf("IsVideoFile(%q) = %v, want %v", tt.path, got, tt.want)
-			}
+			assert.Equal(t, tt.want, IsVideoFile(tt.path), "IsVideoFile(%q)", tt.path)
 		})
 	}
 }

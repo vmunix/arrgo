@@ -2,6 +2,8 @@ package release
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestResolution_String(t *testing.T) {
@@ -18,9 +20,7 @@ func TestResolution_String(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.r.String(); got != tt.want {
-				t.Errorf("Resolution.String() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, tt.r.String())
 		})
 	}
 }
@@ -40,9 +40,7 @@ func TestSource_String(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.s.String(); got != tt.want {
-				t.Errorf("Source.String() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, tt.s.String())
 		})
 	}
 }
@@ -60,9 +58,7 @@ func TestCodec_String(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.c.String(); got != tt.want {
-				t.Errorf("Codec.String() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, tt.c.String())
 		})
 	}
 }
@@ -221,27 +217,13 @@ func TestParse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := Parse(tt.input)
 
-			if got.Resolution != tt.wantRes {
-				t.Errorf("Resolution = %v, want %v", got.Resolution, tt.wantRes)
-			}
-			if got.Source != tt.wantSource {
-				t.Errorf("Source = %v, want %v", got.Source, tt.wantSource)
-			}
-			if got.Codec != tt.wantCodec {
-				t.Errorf("Codec = %v, want %v", got.Codec, tt.wantCodec)
-			}
-			if got.Year != tt.wantYear {
-				t.Errorf("Year = %v, want %v", got.Year, tt.wantYear)
-			}
-			if got.Group != tt.wantGroup {
-				t.Errorf("Group = %v, want %v", got.Group, tt.wantGroup)
-			}
-			if got.Proper != tt.wantProper {
-				t.Errorf("Proper = %v, want %v", got.Proper, tt.wantProper)
-			}
-			if got.Repack != tt.wantRepack {
-				t.Errorf("Repack = %v, want %v", got.Repack, tt.wantRepack)
-			}
+			assert.Equal(t, tt.wantRes, got.Resolution, "Resolution")
+			assert.Equal(t, tt.wantSource, got.Source, "Source")
+			assert.Equal(t, tt.wantCodec, got.Codec, "Codec")
+			assert.Equal(t, tt.wantYear, got.Year, "Year")
+			assert.Equal(t, tt.wantGroup, got.Group, "Group")
+			assert.Equal(t, tt.wantProper, got.Proper, "Proper")
+			assert.Equal(t, tt.wantRepack, got.Repack, "Repack")
 		})
 	}
 }
@@ -277,12 +259,8 @@ func TestParse_SeasonEpisode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := Parse(tt.input)
 
-			if got.Season != tt.wantSeason {
-				t.Errorf("Season = %v, want %v", got.Season, tt.wantSeason)
-			}
-			if got.Episode != tt.wantEpisode {
-				t.Errorf("Episode = %v, want %v", got.Episode, tt.wantEpisode)
-			}
+			assert.Equal(t, tt.wantSeason, got.Season, "Season")
+			assert.Equal(t, tt.wantEpisode, got.Episode, "Episode")
 		})
 	}
 }
@@ -314,9 +292,7 @@ func TestParse_Title(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := Parse(tt.input)
 
-			if got.Title != tt.wantTitle {
-				t.Errorf("Title = %q, want %q", got.Title, tt.wantTitle)
-			}
+			assert.Equal(t, tt.wantTitle, got.Title, "Title")
 		})
 	}
 }
@@ -339,9 +315,7 @@ func TestParse_HDR(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := Parse(tt.input)
-			if got.HDR != tt.wantHDR {
-				t.Errorf("HDR = %v, want %v", got.HDR, tt.wantHDR)
-			}
+			assert.Equal(t, tt.wantHDR, got.HDR, "HDR")
 		})
 	}
 }
@@ -368,9 +342,7 @@ func TestParse_Audio(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := Parse(tt.input)
-			if got.Audio != tt.wantAudio {
-				t.Errorf("Audio = %v, want %v", got.Audio, tt.wantAudio)
-			}
+			assert.Equal(t, tt.wantAudio, got.Audio, "Audio")
 		})
 	}
 }
@@ -391,12 +363,8 @@ func TestParse_Remux(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := Parse(tt.input)
-			if got.IsRemux != tt.wantRemux {
-				t.Errorf("IsRemux = %v, want %v", got.IsRemux, tt.wantRemux)
-			}
-			if got.Source != tt.wantSource {
-				t.Errorf("Source = %v, want %v", got.Source, tt.wantSource)
-			}
+			assert.Equal(t, tt.wantRemux, got.IsRemux, "IsRemux")
+			assert.Equal(t, tt.wantSource, got.Source, "Source")
 		})
 	}
 }
@@ -418,9 +386,7 @@ func TestParse_Edition(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := Parse(tt.input)
-			if got.Edition != tt.wantEdition {
-				t.Errorf("Edition = %q, want %q", got.Edition, tt.wantEdition)
-			}
+			assert.Equal(t, tt.wantEdition, got.Edition, "Edition")
 		})
 	}
 }
@@ -444,9 +410,7 @@ func TestParse_Service(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := Parse(tt.input)
-			if got.Service != tt.wantService {
-				t.Errorf("Service = %q, want %q", got.Service, tt.wantService)
-			}
+			assert.Equal(t, tt.wantService, got.Service, "Service")
 		})
 	}
 }
@@ -467,9 +431,7 @@ func TestParse_ImprovedCodec(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := Parse(tt.input)
-			if got.Codec != tt.wantCodec {
-				t.Errorf("Codec = %v, want %v", got.Codec, tt.wantCodec)
-			}
+			assert.Equal(t, tt.wantCodec, got.Codec, "Codec")
 		})
 	}
 }
@@ -489,12 +451,8 @@ func TestParse_DailyShow(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := Parse(tt.input)
-			if got.DailyDate != tt.wantDailyDate {
-				t.Errorf("DailyDate = %q, want %q", got.DailyDate, tt.wantDailyDate)
-			}
-			if got.Year != tt.wantYear {
-				t.Errorf("Year = %v, want %v", got.Year, tt.wantYear)
-			}
+			assert.Equal(t, tt.wantDailyDate, got.DailyDate, "DailyDate")
+			assert.Equal(t, tt.wantYear, got.Year, "Year")
 		})
 	}
 }

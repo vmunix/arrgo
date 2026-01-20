@@ -4,7 +4,6 @@ package importer
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -12,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/library"
 )
@@ -29,14 +30,14 @@ func setupTestImporter(t *testing.T) (*Importer, *sql.DB, string, string) {
 	movieRoot := t.TempDir()
 
 	imp := &Importer{
-		downloads:  download.NewStore(db),
-		library:    library.NewStore(db),
-		history:    NewHistoryStore(db),
-		renamer:    NewRenamer("", ""),
-		mediaServer:       nil, // No Plex in tests
-		movieRoot:  movieRoot,
-		seriesRoot: t.TempDir(),
-		log:        testLogger(),
+		downloads:   download.NewStore(db),
+		library:     library.NewStore(db),
+		history:     NewHistoryStore(db),
+		renamer:     NewRenamer("", ""),
+		mediaServer: nil, // No Plex in tests
+		movieRoot:   movieRoot,
+		seriesRoot:  t.TempDir(),
+		log:         testLogger(),
 	}
 
 	return imp, db, downloadDir, movieRoot
@@ -49,9 +50,7 @@ func createTestDownload(t *testing.T, db *sql.DB, contentID int64, status downlo
 		VALUES (?, 'sabnzbd', 'nzo_test', ?, 'Test.Movie.2024.1080p.BluRay', 'TestIndexer', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
 		contentID, status,
 	)
-	if err != nil {
-		t.Fatalf("create download: %v", err)
-	}
+	require.NoError(t, err, "create download")
 	id, _ := result.LastInsertId()
 	return id
 }
@@ -67,81 +66,50 @@ func TestImporter_Import_Movie(t *testing.T) {
 
 	// Create download directory with video
 	downloadPath := filepath.Join(downloadDir, "Test.Movie.2024.1080p.BluRay")
-	if err := os.MkdirAll(downloadPath, 0755); err != nil {
-		t.Fatalf("create download dir: %v", err)
-	}
+	require.NoError(t, os.MkdirAll(downloadPath, 0755), "create download dir")
 
 	videoPath := filepath.Join(downloadPath, "test.movie.mkv")
-	if err := os.WriteFile(videoPath, make([]byte, 1000), 0644); err != nil {
-		t.Fatalf("create video: %v", err)
-	}
+	require.NoError(t, os.WriteFile(videoPath, make([]byte, 1000), 0644), "create video")
 
 	// Import
 	result, err := imp.Import(context.Background(), downloadID, downloadPath)
-	if err != nil {
-		t.Fatalf("Import: %v", err)
-	}
+	require.NoError(t, err, "Import")
 
 	// Verify result
-	if result.FileID == 0 {
-		t.Error("FileID should be set")
-	}
-	if result.SourcePath != videoPath {
-		t.Errorf("SourcePath = %q, want %q", result.SourcePath, videoPath)
-	}
+	assert.NotZero(t, result.FileID, "FileID should be set")
+	assert.Equal(t, videoPath, result.SourcePath)
 	expectedDest := filepath.Join(movieRoot, "Test Movie (2024)", "Test Movie (2024) - 1080p.mkv")
-	if result.DestPath != expectedDest {
-		t.Errorf("DestPath = %q, want %q", result.DestPath, expectedDest)
-	}
+	assert.Equal(t, expectedDest, result.DestPath)
 
 	// Verify file was copied
-	if _, err := os.Stat(result.DestPath); os.IsNotExist(err) {
-		t.Error("destination file should exist")
-	}
+	_, statErr := os.Stat(result.DestPath)
+	assert.False(t, os.IsNotExist(statErr), "destination file should exist")
 
 	// Verify download status updated
 	var status string
-	if err := db.QueryRow("SELECT status FROM downloads WHERE id = ?", downloadID).Scan(&status); err != nil {
-		t.Fatalf("query download status: %v", err)
-	}
-	if status != "imported" {
-		t.Errorf("download status = %q, want imported", status)
-	}
+	require.NoError(t, db.QueryRow("SELECT status FROM downloads WHERE id = ?", downloadID).Scan(&status), "query download status")
+	assert.Equal(t, "imported", status)
 
 	// Verify content status updated
-	if err := db.QueryRow("SELECT status FROM content WHERE id = ?", contentID).Scan(&status); err != nil {
-		t.Fatalf("query content status: %v", err)
-	}
-	if status != "available" {
-		t.Errorf("content status = %q, want available", status)
-	}
+	require.NoError(t, db.QueryRow("SELECT status FROM content WHERE id = ?", contentID).Scan(&status), "query content status")
+	assert.Equal(t, "available", status)
 
 	// Verify history entry
 	entries, _ := imp.history.List(HistoryFilter{ContentID: &contentID})
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 history entry, got %d", len(entries))
-	}
-	if entries[0].Event != EventImported {
-		t.Errorf("history event = %q, want imported", entries[0].Event)
-	}
+	require.Len(t, entries, 1, "expected 1 history entry")
+	assert.Equal(t, EventImported, entries[0].Event)
 
 	// Verify file record
 	var filePath string
-	if err := db.QueryRow("SELECT path FROM files WHERE content_id = ?", contentID).Scan(&filePath); err != nil {
-		t.Fatalf("query file path: %v", err)
-	}
-	if filePath != result.DestPath {
-		t.Errorf("file path = %q, want %q", filePath, result.DestPath)
-	}
+	require.NoError(t, db.QueryRow("SELECT path FROM files WHERE content_id = ?", contentID).Scan(&filePath), "query file path")
+	assert.Equal(t, result.DestPath, filePath)
 }
 
 func TestImporter_Import_DownloadNotFound(t *testing.T) {
 	imp, _, _, _ := setupTestImporter(t)
 
 	_, err := imp.Import(context.Background(), 9999, "/some/path")
-	if !errors.Is(err, ErrDownloadNotFound) {
-		t.Errorf("expected ErrDownloadNotFound, got %v", err)
-	}
+	assert.ErrorIs(t, err, ErrDownloadNotFound)
 }
 
 func TestImporter_Import_NotCompleted(t *testing.T) {
@@ -151,9 +119,7 @@ func TestImporter_Import_NotCompleted(t *testing.T) {
 	downloadID := createTestDownload(t, db, contentID, download.StatusDownloading)
 
 	_, err := imp.Import(context.Background(), downloadID, downloadDir)
-	if !errors.Is(err, ErrDownloadNotReady) {
-		t.Errorf("expected ErrDownloadNotReady, got %v", err)
-	}
+	assert.ErrorIs(t, err, ErrDownloadNotReady)
 }
 
 func TestImporter_Import_NoVideoFile(t *testing.T) {
@@ -163,14 +129,10 @@ func TestImporter_Import_NoVideoFile(t *testing.T) {
 	downloadID := createTestDownload(t, db, contentID, download.StatusCompleted)
 
 	downloadPath := filepath.Join(downloadDir, "empty")
-	if err := os.MkdirAll(downloadPath, 0755); err != nil {
-		t.Fatalf("create download dir: %v", err)
-	}
+	require.NoError(t, os.MkdirAll(downloadPath, 0755), "create download dir")
 
 	_, err := imp.Import(context.Background(), downloadID, downloadPath)
-	if !errors.Is(err, ErrNoVideoFile) {
-		t.Errorf("expected ErrNoVideoFile, got %v", err)
-	}
+	assert.ErrorIs(t, err, ErrNoVideoFile)
 }
 
 func TestImporter_Import_PathTraversal(t *testing.T) {
@@ -181,9 +143,7 @@ func TestImporter_Import_PathTraversal(t *testing.T) {
 		root := "/movies"
 		badPath := "/movies/../../../etc/passwd"
 		err := ValidatePath(badPath, root)
-		if !errors.Is(err, ErrPathTraversal) {
-			t.Errorf("ValidatePath should reject traversal, got %v", err)
-		}
+		assert.ErrorIs(t, err, ErrPathTraversal)
 	})
 
 	t.Run("SanitizeFilename prevents traversal in title", func(t *testing.T) {
@@ -198,28 +158,20 @@ func TestImporter_Import_PathTraversal(t *testing.T) {
 		downloadID := createTestDownload(t, db, contentID, download.StatusCompleted)
 
 		downloadPath := filepath.Join(downloadDir, "download")
-		if err := os.MkdirAll(downloadPath, 0755); err != nil {
-			t.Fatalf("create download dir: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(downloadPath, "movie.mkv"), make([]byte, 100), 0644); err != nil {
-			t.Fatalf("create video: %v", err)
-		}
+		require.NoError(t, os.MkdirAll(downloadPath, 0755), "create download dir")
+		require.NoError(t, os.WriteFile(filepath.Join(downloadPath, "movie.mkv"), make([]byte, 100), 0644), "create video")
 
 		// Import should succeed because SanitizeFilename cleans the title
 		importResult, err := imp.Import(context.Background(), downloadID, downloadPath)
-		if err != nil {
-			t.Fatalf("Import should succeed with sanitized title: %v", err)
-		}
+		require.NoError(t, err, "Import should succeed with sanitized title")
 
 		// Verify the file is inside the movie root (not escaped)
-		if !strings.HasPrefix(importResult.DestPath, movieRoot) {
-			t.Errorf("DestPath %q should be inside movieRoot %q", importResult.DestPath, movieRoot)
-		}
+		assert.True(t, strings.HasPrefix(importResult.DestPath, movieRoot),
+			"DestPath %q should be inside movieRoot %q", importResult.DestPath, movieRoot)
 
 		// Verify no file was created at a dangerous location
-		if _, err := os.Stat("/etc/passwd/etc passwd (2024)"); err == nil {
-			t.Error("file should not be created outside movie root")
-		}
+		_, statErr := os.Stat("/etc/passwd/etc passwd (2024)")
+		assert.True(t, os.IsNotExist(statErr) || statErr != nil, "file should not be created outside movie root")
 	})
 }
 
@@ -231,26 +183,16 @@ func TestImporter_Import_DestinationExists(t *testing.T) {
 
 	// Create download with video
 	downloadPath := filepath.Join(downloadDir, "download")
-	if err := os.MkdirAll(downloadPath, 0755); err != nil {
-		t.Fatalf("create download dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(downloadPath, "movie.mkv"), make([]byte, 100), 0644); err != nil {
-		t.Fatalf("create video: %v", err)
-	}
+	require.NoError(t, os.MkdirAll(downloadPath, 0755), "create download dir")
+	require.NoError(t, os.WriteFile(filepath.Join(downloadPath, "movie.mkv"), make([]byte, 100), 0644), "create video")
 
 	// Pre-create destination
 	destDir := filepath.Join(movieRoot, "Test Movie (2024)")
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		t.Fatalf("create dest dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(destDir, "Test Movie (2024) - 1080p.mkv"), []byte("existing"), 0644); err != nil {
-		t.Fatalf("create existing file: %v", err)
-	}
+	require.NoError(t, os.MkdirAll(destDir, 0755), "create dest dir")
+	require.NoError(t, os.WriteFile(filepath.Join(destDir, "Test Movie (2024) - 1080p.mkv"), []byte("existing"), 0644), "create existing file")
 
 	_, err := imp.Import(context.Background(), downloadID, downloadPath)
-	if !errors.Is(err, ErrDestinationExists) {
-		t.Errorf("expected ErrDestinationExists, got %v", err)
-	}
+	assert.ErrorIs(t, err, ErrDestinationExists)
 }
 
 // Helper to create series content
@@ -261,9 +203,7 @@ func insertTestSeries(t *testing.T, db *sql.DB, title string) int64 {
 		VALUES ('series', ?, 2024, 'wanted', 'hd', '/tv')`,
 		title,
 	)
-	if err != nil {
-		t.Fatalf("insert test series: %v", err)
-	}
+	require.NoError(t, err, "insert test series")
 	id, _ := result.LastInsertId()
 	return id
 }
@@ -276,9 +216,7 @@ func insertTestEpisode(t *testing.T, db *sql.DB, contentID int64, season, episod
 		VALUES (?, ?, ?, 'Test Episode', 'wanted')`,
 		contentID, season, episode,
 	)
-	if err != nil {
-		t.Fatalf("insert test episode: %v", err)
-	}
+	require.NoError(t, err, "insert test episode")
 	id, _ := result.LastInsertId()
 	return id
 }
@@ -291,9 +229,7 @@ func createTestEpisodeDownload(t *testing.T, db *sql.DB, contentID, episodeID in
 		VALUES (?, ?, 'sabnzbd', 'nzo_test', ?, 'Test.Show.S01E05.1080p.WEB', 'TestIndexer', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
 		contentID, episodeID, status,
 	)
-	if err != nil {
-		t.Fatalf("create episode download: %v", err)
-	}
+	require.NoError(t, err, "create episode download")
 	id, _ := result.LastInsertId()
 	return id
 }
@@ -310,71 +246,44 @@ func TestImporter_Import_Episode(t *testing.T) {
 
 	// Create download directory with video
 	downloadPath := filepath.Join(downloadDir, "Test.Show.S01E05.1080p.WEB")
-	if err := os.MkdirAll(downloadPath, 0755); err != nil {
-		t.Fatalf("create download dir: %v", err)
-	}
+	require.NoError(t, os.MkdirAll(downloadPath, 0755), "create download dir")
 	videoPath := filepath.Join(downloadPath, "test.show.s01e05.mkv")
-	if err := os.WriteFile(videoPath, make([]byte, 1000), 0644); err != nil {
-		t.Fatalf("create video: %v", err)
-	}
+	require.NoError(t, os.WriteFile(videoPath, make([]byte, 1000), 0644), "create video")
 
 	// Import
 	result, err := imp.Import(context.Background(), downloadID, downloadPath)
-	if err != nil {
-		t.Fatalf("Import: %v", err)
-	}
+	require.NoError(t, err, "Import")
 
 	// Verify destination path uses series template
-	if !strings.Contains(result.DestPath, "Test Show") {
-		t.Errorf("DestPath should contain series title: %s", result.DestPath)
-	}
-	if !strings.Contains(result.DestPath, "Season 01") {
-		t.Errorf("DestPath should contain season folder: %s", result.DestPath)
-	}
-	if !strings.Contains(result.DestPath, "S01E05") {
-		t.Errorf("DestPath should contain episode number: %s", result.DestPath)
-	}
+	assert.Contains(t, result.DestPath, "Test Show")
+	assert.Contains(t, result.DestPath, "Season 01")
+	assert.Contains(t, result.DestPath, "S01E05")
 
 	// Verify file was copied
-	if _, err := os.Stat(result.DestPath); os.IsNotExist(err) {
-		t.Error("destination file should exist")
-	}
+	_, statErr := os.Stat(result.DestPath)
+	assert.False(t, os.IsNotExist(statErr), "destination file should exist")
 
 	// Verify episode status updated to available
 	var epStatus string
-	if err := db.QueryRow("SELECT status FROM episodes WHERE id = ?", episodeID).Scan(&epStatus); err != nil {
-		t.Fatalf("query episode status: %v", err)
-	}
-	if epStatus != "available" {
-		t.Errorf("episode status = %q, want available", epStatus)
-	}
+	require.NoError(t, db.QueryRow("SELECT status FROM episodes WHERE id = ?", episodeID).Scan(&epStatus), "query episode status")
+	assert.Equal(t, "available", epStatus)
 
 	// Verify series status unchanged (still wanted)
 	var seriesStatus string
-	if err := db.QueryRow("SELECT status FROM content WHERE id = ?", seriesID).Scan(&seriesStatus); err != nil {
-		t.Fatalf("query series status: %v", err)
-	}
-	if seriesStatus != "wanted" {
-		t.Errorf("series status = %q, want wanted (unchanged)", seriesStatus)
-	}
+	require.NoError(t, db.QueryRow("SELECT status FROM content WHERE id = ?", seriesID).Scan(&seriesStatus), "query series status")
+	assert.Equal(t, "wanted", seriesStatus, "series status should remain unchanged")
 
 	// Verify file record has episode ID
 	var fileEpisodeID sql.NullInt64
-	if err := db.QueryRow("SELECT episode_id FROM files WHERE content_id = ?", seriesID).Scan(&fileEpisodeID); err != nil {
-		t.Fatalf("query file episode_id: %v", err)
-	}
-	if !fileEpisodeID.Valid || fileEpisodeID.Int64 != episodeID {
-		t.Errorf("file episode_id = %v, want %d", fileEpisodeID, episodeID)
-	}
+	require.NoError(t, db.QueryRow("SELECT episode_id FROM files WHERE content_id = ?", seriesID).Scan(&fileEpisodeID), "query file episode_id")
+	assert.True(t, fileEpisodeID.Valid)
+	assert.Equal(t, episodeID, fileEpisodeID.Int64)
 
 	// Verify history entry has episode ID
 	entries, _ := imp.history.List(HistoryFilter{ContentID: &seriesID})
-	if len(entries) != 1 {
-		t.Fatalf("expected 1 history entry, got %d", len(entries))
-	}
-	if entries[0].EpisodeID == nil || *entries[0].EpisodeID != episodeID {
-		t.Errorf("history episode_id = %v, want %d", entries[0].EpisodeID, episodeID)
-	}
+	require.Len(t, entries, 1, "expected 1 history entry")
+	require.NotNil(t, entries[0].EpisodeID)
+	assert.Equal(t, episodeID, *entries[0].EpisodeID)
 }
 
 func TestImporter_Import_Episode_NoEpisodeID(t *testing.T) {
@@ -389,24 +298,16 @@ func TestImporter_Import_Episode_NoEpisodeID(t *testing.T) {
 		VALUES (?, 'sabnzbd', 'nzo_test', 'completed', 'Test.Show.S01E05.1080p', 'Indexer', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
 		seriesID,
 	)
-	if err != nil {
-		t.Fatalf("create download: %v", err)
-	}
+	require.NoError(t, err, "create download")
 	downloadID, _ := result.LastInsertId()
 
 	// Create download directory with video
 	downloadPath := filepath.Join(downloadDir, "download")
-	if err := os.MkdirAll(downloadPath, 0755); err != nil {
-		t.Fatalf("create download dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(downloadPath, "episode.mkv"), make([]byte, 100), 0644); err != nil {
-		t.Fatalf("create video: %v", err)
-	}
+	require.NoError(t, os.MkdirAll(downloadPath, 0755), "create download dir")
+	require.NoError(t, os.WriteFile(filepath.Join(downloadPath, "episode.mkv"), make([]byte, 100), 0644), "create video")
 
 	_, err = imp.Import(context.Background(), downloadID, downloadPath)
-	if !errors.Is(err, ErrEpisodeNotSpecified) {
-		t.Errorf("expected ErrEpisodeNotSpecified, got %v", err)
-	}
+	assert.ErrorIs(t, err, ErrEpisodeNotSpecified)
 }
 
 func TestImporter_Import_Episode_EpisodeNotFound(t *testing.T) {
@@ -420,30 +321,20 @@ func TestImporter_Import_Episode_EpisodeNotFound(t *testing.T) {
 	downloadID := createTestEpisodeDownload(t, db, seriesID, episodeID, download.StatusCompleted)
 
 	// Disable foreign keys temporarily to simulate data inconsistency
-	if _, err := db.Exec("PRAGMA foreign_keys = OFF"); err != nil {
-		t.Fatalf("disable foreign keys: %v", err)
-	}
+	_, err := db.Exec("PRAGMA foreign_keys = OFF")
+	require.NoError(t, err, "disable foreign keys")
 	defer func() { _, _ = db.Exec("PRAGMA foreign_keys = ON") }()
 
 	// Delete the episode (with FK disabled, download stays)
-	if _, err := db.Exec("DELETE FROM episodes WHERE id = ?", episodeID); err != nil {
-		t.Fatalf("delete episode: %v", err)
-	}
+	_, err = db.Exec("DELETE FROM episodes WHERE id = ?", episodeID)
+	require.NoError(t, err, "delete episode")
 
 	// Create download directory with video
 	downloadPath := filepath.Join(downloadDir, "download")
-	if err := os.MkdirAll(downloadPath, 0755); err != nil {
-		t.Fatalf("create download dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(downloadPath, "episode.mkv"), make([]byte, 100), 0644); err != nil {
-		t.Fatalf("create video: %v", err)
-	}
+	require.NoError(t, os.MkdirAll(downloadPath, 0755), "create download dir")
+	require.NoError(t, os.WriteFile(filepath.Join(downloadPath, "episode.mkv"), make([]byte, 100), 0644), "create video")
 
-	_, err := imp.Import(context.Background(), downloadID, downloadPath)
-	if err == nil {
-		t.Error("expected error for non-existent episode")
-	}
-	if !strings.Contains(err.Error(), "get episode") {
-		t.Errorf("expected 'get episode' error, got %v", err)
-	}
+	_, err = imp.Import(context.Background(), downloadID, downloadPath)
+	assert.Error(t, err, "expected error for non-existent episode")
+	assert.True(t, strings.Contains(err.Error(), "get episode"), "expected 'get episode' error, got %v", err)
 }

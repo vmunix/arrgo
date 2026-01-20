@@ -4,6 +4,9 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // createTestSeries creates a series Content for episode tests
@@ -18,9 +21,7 @@ func createTestSeries(t *testing.T, store *Store) *Content {
 		QualityProfile: "hd",
 		RootPath:       "/tv",
 	}
-	if err := store.AddContent(c); err != nil {
-		t.Fatalf("create test series: %v", err)
-	}
+	require.NoError(t, store.AddContent(c), "create test series should succeed")
 	return c
 }
 
@@ -39,14 +40,10 @@ func TestStore_AddEpisode(t *testing.T) {
 		AirDate:   &airDate,
 	}
 
-	if err := store.AddEpisode(e); err != nil {
-		t.Fatalf("AddEpisode: %v", err)
-	}
+	require.NoError(t, store.AddEpisode(e), "AddEpisode should succeed")
 
 	// ID should be set
-	if e.ID == 0 {
-		t.Error("ID should be set after AddEpisode")
-	}
+	assert.NotZero(t, e.ID, "ID should be set after AddEpisode")
 }
 
 func TestStore_AddEpisode_Duplicate(t *testing.T) {
@@ -62,9 +59,7 @@ func TestStore_AddEpisode_Duplicate(t *testing.T) {
 		Status:    StatusWanted,
 	}
 
-	if err := store.AddEpisode(e1); err != nil {
-		t.Fatalf("AddEpisode first: %v", err)
-	}
+	require.NoError(t, store.AddEpisode(e1), "AddEpisode first should succeed")
 
 	// Try to add duplicate (same content_id, season, episode)
 	e2 := &Episode{
@@ -76,9 +71,7 @@ func TestStore_AddEpisode_Duplicate(t *testing.T) {
 	}
 
 	err := store.AddEpisode(e2)
-	if !errors.Is(err, ErrDuplicate) {
-		t.Errorf("AddEpisode duplicate error = %v, want ErrDuplicate", err)
-	}
+	assert.True(t, errors.Is(err, ErrDuplicate), "AddEpisode duplicate should return ErrDuplicate, got %v", err)
 }
 
 func TestStore_GetEpisode(t *testing.T) {
@@ -95,39 +88,20 @@ func TestStore_GetEpisode(t *testing.T) {
 		Status:    StatusWanted,
 		AirDate:   &airDate,
 	}
-	if err := store.AddEpisode(original); err != nil {
-		t.Fatalf("AddEpisode: %v", err)
-	}
+	require.NoError(t, store.AddEpisode(original), "AddEpisode should succeed")
 
 	retrieved, err := store.GetEpisode(original.ID)
-	if err != nil {
-		t.Fatalf("GetEpisode: %v", err)
-	}
+	require.NoError(t, err, "GetEpisode should succeed")
 
 	// Verify all fields
-	if retrieved.ID != original.ID {
-		t.Errorf("ID = %d, want %d", retrieved.ID, original.ID)
-	}
-	if retrieved.ContentID != original.ContentID {
-		t.Errorf("ContentID = %d, want %d", retrieved.ContentID, original.ContentID)
-	}
-	if retrieved.Season != original.Season {
-		t.Errorf("Season = %d, want %d", retrieved.Season, original.Season)
-	}
-	if retrieved.Episode != original.Episode {
-		t.Errorf("Episode = %d, want %d", retrieved.Episode, original.Episode)
-	}
-	if retrieved.Title != original.Title {
-		t.Errorf("Title = %q, want %q", retrieved.Title, original.Title)
-	}
-	if retrieved.Status != original.Status {
-		t.Errorf("Status = %q, want %q", retrieved.Status, original.Status)
-	}
-	if retrieved.AirDate == nil {
-		t.Error("AirDate should not be nil")
-	} else if !retrieved.AirDate.Equal(*original.AirDate) {
-		t.Errorf("AirDate = %v, want %v", retrieved.AirDate, original.AirDate)
-	}
+	assert.Equal(t, original.ID, retrieved.ID)
+	assert.Equal(t, original.ContentID, retrieved.ContentID)
+	assert.Equal(t, original.Season, retrieved.Season)
+	assert.Equal(t, original.Episode, retrieved.Episode)
+	assert.Equal(t, original.Title, retrieved.Title)
+	assert.Equal(t, original.Status, retrieved.Status)
+	require.NotNil(t, retrieved.AirDate, "AirDate should not be nil")
+	assert.True(t, retrieved.AirDate.Equal(*original.AirDate), "AirDate = %v, want %v", retrieved.AirDate, original.AirDate)
 }
 
 func TestStore_GetEpisode_NotFound(t *testing.T) {
@@ -135,9 +109,7 @@ func TestStore_GetEpisode_NotFound(t *testing.T) {
 	store := NewStore(db)
 
 	_, err := store.GetEpisode(9999)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("GetEpisode(9999) error = %v, want ErrNotFound", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "GetEpisode(9999) should return ErrNotFound, got %v", err)
 }
 
 func TestStore_ListEpisodes_FilterByContentID(t *testing.T) {
@@ -155,37 +127,21 @@ func TestStore_ListEpisodes_FilterByContentID(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/tv",
 	}
-	if err := store.AddContent(series2); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(series2), "AddContent should succeed")
 
 	// Add episodes to both
-	if err := store.AddEpisode(&Episode{ContentID: series1.ID, Season: 1, Episode: 1, Title: "BB S01E01", Status: StatusWanted}); err != nil {
-		t.Fatalf("AddEpisode: %v", err)
-	}
-	if err := store.AddEpisode(&Episode{ContentID: series1.ID, Season: 1, Episode: 2, Title: "BB S01E02", Status: StatusWanted}); err != nil {
-		t.Fatalf("AddEpisode: %v", err)
-	}
-	if err := store.AddEpisode(&Episode{ContentID: series2.ID, Season: 1, Episode: 1, Title: "Wire S01E01", Status: StatusWanted}); err != nil {
-		t.Fatalf("AddEpisode: %v", err)
-	}
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series1.ID, Season: 1, Episode: 1, Title: "BB S01E01", Status: StatusWanted}), "AddEpisode should succeed")
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series1.ID, Season: 1, Episode: 2, Title: "BB S01E02", Status: StatusWanted}), "AddEpisode should succeed")
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series2.ID, Season: 1, Episode: 1, Title: "Wire S01E01", Status: StatusWanted}), "AddEpisode should succeed")
 
 	// Filter by ContentID
 	results, total, err := store.ListEpisodes(EpisodeFilter{ContentID: &series1.ID})
-	if err != nil {
-		t.Fatalf("ListEpisodes: %v", err)
-	}
+	require.NoError(t, err, "ListEpisodes should succeed")
 
-	if total != 2 {
-		t.Errorf("total = %d, want 2", total)
-	}
-	if len(results) != 2 {
-		t.Errorf("len(results) = %d, want 2", len(results))
-	}
+	assert.Equal(t, 2, total)
+	assert.Len(t, results, 2)
 	for _, ep := range results {
-		if ep.ContentID != series1.ID {
-			t.Errorf("episode ContentID = %d, want %d", ep.ContentID, series1.ID)
-		}
+		assert.Equal(t, series1.ID, ep.ContentID, "episode ContentID should match")
 	}
 }
 
@@ -195,33 +151,19 @@ func TestStore_ListEpisodes_FilterBySeason(t *testing.T) {
 	series := createTestSeries(t, store)
 
 	// Add episodes in different seasons
-	if err := store.AddEpisode(&Episode{ContentID: series.ID, Season: 1, Episode: 1, Title: "S01E01", Status: StatusWanted}); err != nil {
-		t.Fatalf("AddEpisode: %v", err)
-	}
-	if err := store.AddEpisode(&Episode{ContentID: series.ID, Season: 1, Episode: 2, Title: "S01E02", Status: StatusWanted}); err != nil {
-		t.Fatalf("AddEpisode: %v", err)
-	}
-	if err := store.AddEpisode(&Episode{ContentID: series.ID, Season: 2, Episode: 1, Title: "S02E01", Status: StatusWanted}); err != nil {
-		t.Fatalf("AddEpisode: %v", err)
-	}
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series.ID, Season: 1, Episode: 1, Title: "S01E01", Status: StatusWanted}), "AddEpisode should succeed")
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series.ID, Season: 1, Episode: 2, Title: "S01E02", Status: StatusWanted}), "AddEpisode should succeed")
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series.ID, Season: 2, Episode: 1, Title: "S02E01", Status: StatusWanted}), "AddEpisode should succeed")
 
 	// Filter by season 1
 	season := 1
 	results, total, err := store.ListEpisodes(EpisodeFilter{Season: &season})
-	if err != nil {
-		t.Fatalf("ListEpisodes: %v", err)
-	}
+	require.NoError(t, err, "ListEpisodes should succeed")
 
-	if total != 2 {
-		t.Errorf("total = %d, want 2", total)
-	}
-	if len(results) != 2 {
-		t.Errorf("len(results) = %d, want 2", len(results))
-	}
+	assert.Equal(t, 2, total)
+	assert.Len(t, results, 2)
 	for _, ep := range results {
-		if ep.Season != 1 {
-			t.Errorf("episode Season = %d, want 1", ep.Season)
-		}
+		assert.Equal(t, 1, ep.Season, "episode Season should be 1")
 	}
 }
 
@@ -239,41 +181,25 @@ func TestStore_ListEpisodes_Pagination(t *testing.T) {
 			Title:     "Episode",
 			Status:    StatusWanted,
 		}
-		if err := store.AddEpisode(e); err != nil {
-			t.Fatalf("AddEpisode: %v", err)
-		}
+		require.NoError(t, store.AddEpisode(e), "AddEpisode should succeed")
 	}
 
 	// Get page 1 (first 2)
 	results, total, err := store.ListEpisodes(EpisodeFilter{Limit: 2, Offset: 0})
-	if err != nil {
-		t.Fatalf("ListEpisodes: %v", err)
-	}
+	require.NoError(t, err, "ListEpisodes should succeed")
 
-	if total != 5 {
-		t.Errorf("total = %d, want 5", total)
-	}
-	if len(results) != 2 {
-		t.Errorf("len(results) = %d, want 2", len(results))
-	}
+	assert.Equal(t, 5, total)
+	assert.Len(t, results, 2)
 
 	// Get page 2 (next 2)
 	results2, total2, err := store.ListEpisodes(EpisodeFilter{Limit: 2, Offset: 2})
-	if err != nil {
-		t.Fatalf("ListEpisodes: %v", err)
-	}
+	require.NoError(t, err, "ListEpisodes should succeed")
 
-	if total2 != 5 {
-		t.Errorf("total = %d, want 5", total2)
-	}
-	if len(results2) != 2 {
-		t.Errorf("len(results) = %d, want 2", len(results2))
-	}
+	assert.Equal(t, 5, total2)
+	assert.Len(t, results2, 2)
 
 	// Results should be different
-	if results[0].ID == results2[0].ID {
-		t.Error("pagination should return different items")
-	}
+	assert.NotEqual(t, results[0].ID, results2[0].ID, "pagination should return different items")
 }
 
 func TestStore_UpdateEpisode(t *testing.T) {
@@ -288,30 +214,20 @@ func TestStore_UpdateEpisode(t *testing.T) {
 		Title:     "Pilot",
 		Status:    StatusWanted,
 	}
-	if err := store.AddEpisode(e); err != nil {
-		t.Fatalf("AddEpisode: %v", err)
-	}
+	require.NoError(t, store.AddEpisode(e), "AddEpisode should succeed")
 
 	// Update the episode
 	e.Title = "Pilot (Renamed)"
 	e.Status = StatusAvailable
 
-	if err := store.UpdateEpisode(e); err != nil {
-		t.Fatalf("UpdateEpisode: %v", err)
-	}
+	require.NoError(t, store.UpdateEpisode(e), "UpdateEpisode should succeed")
 
 	// Verify in database
 	retrieved, err := store.GetEpisode(e.ID)
-	if err != nil {
-		t.Fatalf("GetEpisode: %v", err)
-	}
+	require.NoError(t, err, "GetEpisode should succeed")
 
-	if retrieved.Title != "Pilot (Renamed)" {
-		t.Errorf("Title = %q, want Pilot (Renamed)", retrieved.Title)
-	}
-	if retrieved.Status != StatusAvailable {
-		t.Errorf("Status = %q, want available", retrieved.Status)
-	}
+	assert.Equal(t, "Pilot (Renamed)", retrieved.Title)
+	assert.Equal(t, StatusAvailable, retrieved.Status)
 }
 
 func TestStore_UpdateEpisode_NotFound(t *testing.T) {
@@ -329,9 +245,7 @@ func TestStore_UpdateEpisode_NotFound(t *testing.T) {
 	}
 
 	err := store.UpdateEpisode(e)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("UpdateEpisode error = %v, want ErrNotFound", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "UpdateEpisode should return ErrNotFound, got %v", err)
 }
 
 func TestStore_DeleteEpisode(t *testing.T) {
@@ -346,20 +260,14 @@ func TestStore_DeleteEpisode(t *testing.T) {
 		Title:     "Pilot",
 		Status:    StatusWanted,
 	}
-	if err := store.AddEpisode(e); err != nil {
-		t.Fatalf("AddEpisode: %v", err)
-	}
+	require.NoError(t, store.AddEpisode(e), "AddEpisode should succeed")
 
 	// Delete
-	if err := store.DeleteEpisode(e.ID); err != nil {
-		t.Fatalf("DeleteEpisode: %v", err)
-	}
+	require.NoError(t, store.DeleteEpisode(e.ID), "DeleteEpisode should succeed")
 
 	// Verify deleted
 	_, err := store.GetEpisode(e.ID)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("GetEpisode after delete: error = %v, want ErrNotFound", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "GetEpisode after delete should return ErrNotFound, got %v", err)
 }
 
 func TestStore_DeleteEpisode_Idempotent(t *testing.T) {
@@ -367,9 +275,7 @@ func TestStore_DeleteEpisode_Idempotent(t *testing.T) {
 	store := NewStore(db)
 
 	// Delete non-existent should not error
-	if err := store.DeleteEpisode(9999); err != nil {
-		t.Errorf("DeleteEpisode(9999) = %v, want nil (idempotent)", err)
-	}
+	assert.NoError(t, store.DeleteEpisode(9999), "DeleteEpisode(9999) should be idempotent")
 }
 
 func TestTx_AddEpisode(t *testing.T) {
@@ -378,9 +284,7 @@ func TestTx_AddEpisode(t *testing.T) {
 	series := createTestSeries(t, store)
 
 	tx, err := store.Begin()
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
+	require.NoError(t, err, "Begin should succeed")
 	defer func() { _ = tx.Rollback() }()
 
 	e := &Episode{
@@ -391,36 +295,21 @@ func TestTx_AddEpisode(t *testing.T) {
 		Status:    StatusWanted,
 	}
 
-	if err := tx.AddEpisode(e); err != nil {
-		t.Fatalf("tx.AddEpisode: %v", err)
-	}
-
-	if e.ID == 0 {
-		t.Error("ID should be set")
-	}
+	require.NoError(t, tx.AddEpisode(e), "tx.AddEpisode should succeed")
+	assert.NotZero(t, e.ID, "ID should be set")
 
 	// Should be visible within transaction
 	retrieved, err := tx.GetEpisode(e.ID)
-	if err != nil {
-		t.Fatalf("tx.GetEpisode: %v", err)
-	}
-	if retrieved.Title != e.Title {
-		t.Errorf("Title = %q, want %q", retrieved.Title, e.Title)
-	}
+	require.NoError(t, err, "tx.GetEpisode should succeed")
+	assert.Equal(t, e.Title, retrieved.Title)
 
 	// Commit
-	if err := tx.Commit(); err != nil {
-		t.Fatalf("Commit: %v", err)
-	}
+	require.NoError(t, tx.Commit(), "Commit should succeed")
 
 	// Should be visible after commit
 	retrieved, err = store.GetEpisode(e.ID)
-	if err != nil {
-		t.Fatalf("store.GetEpisode after commit: %v", err)
-	}
-	if retrieved.Title != e.Title {
-		t.Errorf("Title = %q, want %q", retrieved.Title, e.Title)
-	}
+	require.NoError(t, err, "store.GetEpisode after commit should succeed")
+	assert.Equal(t, e.Title, retrieved.Title)
 }
 
 func TestTx_Rollback_Episode(t *testing.T) {
@@ -429,9 +318,7 @@ func TestTx_Rollback_Episode(t *testing.T) {
 	series := createTestSeries(t, store)
 
 	tx, err := store.Begin()
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
+	require.NoError(t, err, "Begin should succeed")
 
 	e := &Episode{
 		ContentID: series.ID,
@@ -441,20 +328,14 @@ func TestTx_Rollback_Episode(t *testing.T) {
 		Status:    StatusWanted,
 	}
 
-	if err := tx.AddEpisode(e); err != nil {
-		t.Fatalf("tx.AddEpisode: %v", err)
-	}
+	require.NoError(t, tx.AddEpisode(e), "tx.AddEpisode should succeed")
 
 	id := e.ID
 
 	// Rollback
-	if err := tx.Rollback(); err != nil {
-		t.Fatalf("Rollback: %v", err)
-	}
+	require.NoError(t, tx.Rollback(), "Rollback should succeed")
 
 	// Should NOT be visible after rollback
 	_, err = store.GetEpisode(id)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("GetEpisode after rollback: error = %v, want ErrNotFound", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "GetEpisode after rollback should return ErrNotFound, got %v", err)
 }

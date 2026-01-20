@@ -4,6 +4,9 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // createTestMovie creates a movie Content for file tests
@@ -18,9 +21,7 @@ func createTestMovie(t *testing.T, store *Store) *Content {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := store.AddContent(c); err != nil {
-		t.Fatalf("create test movie: %v", err)
-	}
+	require.NoError(t, store.AddContent(c), "create test movie should succeed")
 	return c
 }
 
@@ -38,20 +39,15 @@ func TestStore_AddFile(t *testing.T) {
 	}
 
 	before := time.Now()
-	if err := store.AddFile(f); err != nil {
-		t.Fatalf("AddFile: %v", err)
-	}
+	require.NoError(t, store.AddFile(f), "AddFile should succeed")
 	after := time.Now()
 
 	// ID should be set
-	if f.ID == 0 {
-		t.Error("ID should be set after AddFile")
-	}
+	assert.NotZero(t, f.ID, "ID should be set after AddFile")
 
 	// AddedAt should be set
-	if f.AddedAt.Before(before) || f.AddedAt.After(after) {
-		t.Errorf("AddedAt %v not in expected range [%v, %v]", f.AddedAt, before, after)
-	}
+	assert.False(t, f.AddedAt.Before(before) || f.AddedAt.After(after),
+		"AddedAt %v not in expected range [%v, %v]", f.AddedAt, before, after)
 }
 
 func TestStore_AddFile_DuplicatePath(t *testing.T) {
@@ -67,9 +63,7 @@ func TestStore_AddFile_DuplicatePath(t *testing.T) {
 		Source:    "usenet",
 	}
 
-	if err := store.AddFile(f1); err != nil {
-		t.Fatalf("AddFile first: %v", err)
-	}
+	require.NoError(t, store.AddFile(f1), "AddFile first should succeed")
 
 	// Try to add duplicate (same path)
 	f2 := &File{
@@ -81,9 +75,7 @@ func TestStore_AddFile_DuplicatePath(t *testing.T) {
 	}
 
 	err := store.AddFile(f2)
-	if !errors.Is(err, ErrDuplicate) {
-		t.Errorf("AddFile duplicate error = %v, want ErrDuplicate", err)
-	}
+	assert.True(t, errors.Is(err, ErrDuplicate), "AddFile duplicate should return ErrDuplicate, got %v", err)
 }
 
 func TestStore_GetFile(t *testing.T) {
@@ -98,37 +90,19 @@ func TestStore_GetFile(t *testing.T) {
 		Quality:   "1080p bluray",
 		Source:    "usenet",
 	}
-	if err := store.AddFile(original); err != nil {
-		t.Fatalf("AddFile: %v", err)
-	}
+	require.NoError(t, store.AddFile(original), "AddFile should succeed")
 
 	retrieved, err := store.GetFile(original.ID)
-	if err != nil {
-		t.Fatalf("GetFile: %v", err)
-	}
+	require.NoError(t, err, "GetFile should succeed")
 
 	// Verify all fields
-	if retrieved.ID != original.ID {
-		t.Errorf("ID = %d, want %d", retrieved.ID, original.ID)
-	}
-	if retrieved.ContentID != original.ContentID {
-		t.Errorf("ContentID = %d, want %d", retrieved.ContentID, original.ContentID)
-	}
-	if retrieved.EpisodeID != nil {
-		t.Errorf("EpisodeID = %v, want nil", retrieved.EpisodeID)
-	}
-	if retrieved.Path != original.Path {
-		t.Errorf("Path = %q, want %q", retrieved.Path, original.Path)
-	}
-	if retrieved.SizeBytes != original.SizeBytes {
-		t.Errorf("SizeBytes = %d, want %d", retrieved.SizeBytes, original.SizeBytes)
-	}
-	if retrieved.Quality != original.Quality {
-		t.Errorf("Quality = %q, want %q", retrieved.Quality, original.Quality)
-	}
-	if retrieved.Source != original.Source {
-		t.Errorf("Source = %q, want %q", retrieved.Source, original.Source)
-	}
+	assert.Equal(t, original.ID, retrieved.ID)
+	assert.Equal(t, original.ContentID, retrieved.ContentID)
+	assert.Nil(t, retrieved.EpisodeID, "EpisodeID should be nil")
+	assert.Equal(t, original.Path, retrieved.Path)
+	assert.Equal(t, original.SizeBytes, retrieved.SizeBytes)
+	assert.Equal(t, original.Quality, retrieved.Quality)
+	assert.Equal(t, original.Source, retrieved.Source)
 }
 
 func TestStore_GetFile_NotFound(t *testing.T) {
@@ -136,9 +110,7 @@ func TestStore_GetFile_NotFound(t *testing.T) {
 	store := NewStore(db)
 
 	_, err := store.GetFile(9999)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("GetFile(9999) error = %v, want ErrNotFound", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "GetFile(9999) should return ErrNotFound, got %v", err)
 }
 
 func TestStore_ListFiles_FilterByContentID(t *testing.T) {
@@ -156,37 +128,21 @@ func TestStore_ListFiles_FilterByContentID(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := store.AddContent(movie2); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(movie2), "AddContent should succeed")
 
 	// Add files to both movies
-	if err := store.AddFile(&File{ContentID: movie1.ID, Path: "/movies/fight1.mkv", Quality: "1080p bluray"}); err != nil {
-		t.Fatalf("AddFile: %v", err)
-	}
-	if err := store.AddFile(&File{ContentID: movie1.ID, Path: "/movies/fight2.mkv", Quality: "720p webdl"}); err != nil {
-		t.Fatalf("AddFile: %v", err)
-	}
-	if err := store.AddFile(&File{ContentID: movie2.ID, Path: "/movies/pulp1.mkv", Quality: "1080p bluray"}); err != nil {
-		t.Fatalf("AddFile: %v", err)
-	}
+	require.NoError(t, store.AddFile(&File{ContentID: movie1.ID, Path: "/movies/fight1.mkv", Quality: "1080p bluray"}), "AddFile should succeed")
+	require.NoError(t, store.AddFile(&File{ContentID: movie1.ID, Path: "/movies/fight2.mkv", Quality: "720p webdl"}), "AddFile should succeed")
+	require.NoError(t, store.AddFile(&File{ContentID: movie2.ID, Path: "/movies/pulp1.mkv", Quality: "1080p bluray"}), "AddFile should succeed")
 
 	// Filter by ContentID
 	results, total, err := store.ListFiles(FileFilter{ContentID: &movie1.ID})
-	if err != nil {
-		t.Fatalf("ListFiles: %v", err)
-	}
+	require.NoError(t, err, "ListFiles should succeed")
 
-	if total != 2 {
-		t.Errorf("total = %d, want 2", total)
-	}
-	if len(results) != 2 {
-		t.Errorf("len(results) = %d, want 2", len(results))
-	}
+	assert.Equal(t, 2, total)
+	assert.Len(t, results, 2)
 	for _, f := range results {
-		if f.ContentID != movie1.ID {
-			t.Errorf("file ContentID = %d, want %d", f.ContentID, movie1.ID)
-		}
+		assert.Equal(t, movie1.ID, f.ContentID, "file ContentID should match")
 	}
 }
 
@@ -202,41 +158,25 @@ func TestStore_ListFiles_Pagination(t *testing.T) {
 			Path:      "/movies/file" + string(rune('0'+i)) + ".mkv",
 			Quality:   "1080p bluray",
 		}
-		if err := store.AddFile(f); err != nil {
-			t.Fatalf("AddFile: %v", err)
-		}
+		require.NoError(t, store.AddFile(f), "AddFile should succeed")
 	}
 
 	// Get page 1 (first 2)
 	results, total, err := store.ListFiles(FileFilter{Limit: 2, Offset: 0})
-	if err != nil {
-		t.Fatalf("ListFiles: %v", err)
-	}
+	require.NoError(t, err, "ListFiles should succeed")
 
-	if total != 5 {
-		t.Errorf("total = %d, want 5", total)
-	}
-	if len(results) != 2 {
-		t.Errorf("len(results) = %d, want 2", len(results))
-	}
+	assert.Equal(t, 5, total)
+	assert.Len(t, results, 2)
 
 	// Get page 2 (next 2)
 	results2, total2, err := store.ListFiles(FileFilter{Limit: 2, Offset: 2})
-	if err != nil {
-		t.Fatalf("ListFiles: %v", err)
-	}
+	require.NoError(t, err, "ListFiles should succeed")
 
-	if total2 != 5 {
-		t.Errorf("total = %d, want 5", total2)
-	}
-	if len(results2) != 2 {
-		t.Errorf("len(results) = %d, want 2", len(results2))
-	}
+	assert.Equal(t, 5, total2)
+	assert.Len(t, results2, 2)
 
 	// Results should be different
-	if results[0].ID == results2[0].ID {
-		t.Error("pagination should return different items")
-	}
+	assert.NotEqual(t, results[0].ID, results2[0].ID, "pagination should return different items")
 }
 
 func TestStore_UpdateFile(t *testing.T) {
@@ -251,34 +191,22 @@ func TestStore_UpdateFile(t *testing.T) {
 		Quality:   "720p webdl",
 		Source:    "torrent",
 	}
-	if err := store.AddFile(f); err != nil {
-		t.Fatalf("AddFile: %v", err)
-	}
+	require.NoError(t, store.AddFile(f), "AddFile should succeed")
 
 	// Update the file
 	f.Quality = "1080p bluray"
 	f.Source = "usenet"
 	f.SizeBytes = 8589934592
 
-	if err := store.UpdateFile(f); err != nil {
-		t.Fatalf("UpdateFile: %v", err)
-	}
+	require.NoError(t, store.UpdateFile(f), "UpdateFile should succeed")
 
 	// Verify in database
 	retrieved, err := store.GetFile(f.ID)
-	if err != nil {
-		t.Fatalf("GetFile: %v", err)
-	}
+	require.NoError(t, err, "GetFile should succeed")
 
-	if retrieved.Quality != "1080p bluray" {
-		t.Errorf("Quality = %q, want 1080p bluray", retrieved.Quality)
-	}
-	if retrieved.Source != "usenet" {
-		t.Errorf("Source = %q, want usenet", retrieved.Source)
-	}
-	if retrieved.SizeBytes != 8589934592 {
-		t.Errorf("SizeBytes = %d, want 8589934592", retrieved.SizeBytes)
-	}
+	assert.Equal(t, "1080p bluray", retrieved.Quality)
+	assert.Equal(t, "usenet", retrieved.Source)
+	assert.Equal(t, int64(8589934592), retrieved.SizeBytes)
 }
 
 func TestStore_UpdateFile_NotFound(t *testing.T) {
@@ -294,9 +222,7 @@ func TestStore_UpdateFile_NotFound(t *testing.T) {
 	}
 
 	err := store.UpdateFile(f)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("UpdateFile error = %v, want ErrNotFound", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "UpdateFile should return ErrNotFound, got %v", err)
 }
 
 func TestStore_DeleteFile(t *testing.T) {
@@ -311,20 +237,14 @@ func TestStore_DeleteFile(t *testing.T) {
 		Quality:   "1080p bluray",
 		Source:    "usenet",
 	}
-	if err := store.AddFile(f); err != nil {
-		t.Fatalf("AddFile: %v", err)
-	}
+	require.NoError(t, store.AddFile(f), "AddFile should succeed")
 
 	// Delete
-	if err := store.DeleteFile(f.ID); err != nil {
-		t.Fatalf("DeleteFile: %v", err)
-	}
+	require.NoError(t, store.DeleteFile(f.ID), "DeleteFile should succeed")
 
 	// Verify deleted
 	_, err := store.GetFile(f.ID)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("GetFile after delete: error = %v, want ErrNotFound", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "GetFile after delete should return ErrNotFound, got %v", err)
 }
 
 func TestStore_DeleteFile_Idempotent(t *testing.T) {
@@ -332,9 +252,7 @@ func TestStore_DeleteFile_Idempotent(t *testing.T) {
 	store := NewStore(db)
 
 	// Delete non-existent should not error
-	if err := store.DeleteFile(9999); err != nil {
-		t.Errorf("DeleteFile(9999) = %v, want nil (idempotent)", err)
-	}
+	assert.NoError(t, store.DeleteFile(9999), "DeleteFile(9999) should be idempotent")
 }
 
 func TestStore_AddFile_ForEpisode(t *testing.T) {
@@ -350,9 +268,7 @@ func TestStore_AddFile_ForEpisode(t *testing.T) {
 		Title:     "Pilot",
 		Status:    StatusWanted,
 	}
-	if err := store.AddEpisode(e); err != nil {
-		t.Fatalf("AddEpisode: %v", err)
-	}
+	require.NoError(t, store.AddEpisode(e), "AddEpisode should succeed")
 
 	// Add file for the episode
 	f := &File{
@@ -364,25 +280,15 @@ func TestStore_AddFile_ForEpisode(t *testing.T) {
 		Source:    "usenet",
 	}
 
-	if err := store.AddFile(f); err != nil {
-		t.Fatalf("AddFile: %v", err)
-	}
-
-	if f.ID == 0 {
-		t.Error("ID should be set after AddFile")
-	}
+	require.NoError(t, store.AddFile(f), "AddFile should succeed")
+	assert.NotZero(t, f.ID, "ID should be set after AddFile")
 
 	// Retrieve and verify EpisodeID
 	retrieved, err := store.GetFile(f.ID)
-	if err != nil {
-		t.Fatalf("GetFile: %v", err)
-	}
+	require.NoError(t, err, "GetFile should succeed")
 
-	if retrieved.EpisodeID == nil {
-		t.Error("EpisodeID should not be nil")
-	} else if *retrieved.EpisodeID != e.ID {
-		t.Errorf("EpisodeID = %d, want %d", *retrieved.EpisodeID, e.ID)
-	}
+	require.NotNil(t, retrieved.EpisodeID, "EpisodeID should not be nil")
+	assert.Equal(t, e.ID, *retrieved.EpisodeID)
 }
 
 func TestStore_ListFiles_FilterByEpisodeID(t *testing.T) {
@@ -393,36 +299,21 @@ func TestStore_ListFiles_FilterByEpisodeID(t *testing.T) {
 	// Create two episodes
 	e1 := &Episode{ContentID: series.ID, Season: 1, Episode: 1, Title: "Pilot", Status: StatusWanted}
 	e2 := &Episode{ContentID: series.ID, Season: 1, Episode: 2, Title: "Cat's in the Bag", Status: StatusWanted}
-	if err := store.AddEpisode(e1); err != nil {
-		t.Fatalf("AddEpisode: %v", err)
-	}
-	if err := store.AddEpisode(e2); err != nil {
-		t.Fatalf("AddEpisode: %v", err)
-	}
+	require.NoError(t, store.AddEpisode(e1), "AddEpisode should succeed")
+	require.NoError(t, store.AddEpisode(e2), "AddEpisode should succeed")
 
 	// Add files for each episode
-	if err := store.AddFile(&File{ContentID: series.ID, EpisodeID: &e1.ID, Path: "/tv/s01e01.mkv", Quality: "1080p bluray"}); err != nil {
-		t.Fatalf("AddFile: %v", err)
-	}
-	if err := store.AddFile(&File{ContentID: series.ID, EpisodeID: &e2.ID, Path: "/tv/s01e02.mkv", Quality: "1080p bluray"}); err != nil {
-		t.Fatalf("AddFile: %v", err)
-	}
+	require.NoError(t, store.AddFile(&File{ContentID: series.ID, EpisodeID: &e1.ID, Path: "/tv/s01e01.mkv", Quality: "1080p bluray"}), "AddFile should succeed")
+	require.NoError(t, store.AddFile(&File{ContentID: series.ID, EpisodeID: &e2.ID, Path: "/tv/s01e02.mkv", Quality: "1080p bluray"}), "AddFile should succeed")
 
 	// Filter by EpisodeID
 	results, total, err := store.ListFiles(FileFilter{EpisodeID: &e1.ID})
-	if err != nil {
-		t.Fatalf("ListFiles: %v", err)
-	}
+	require.NoError(t, err, "ListFiles should succeed")
 
-	if total != 1 {
-		t.Errorf("total = %d, want 1", total)
-	}
-	if len(results) != 1 {
-		t.Errorf("len(results) = %d, want 1", len(results))
-	}
-	if results[0].EpisodeID == nil || *results[0].EpisodeID != e1.ID {
-		t.Errorf("EpisodeID = %v, want %d", results[0].EpisodeID, e1.ID)
-	}
+	assert.Equal(t, 1, total)
+	require.Len(t, results, 1)
+	require.NotNil(t, results[0].EpisodeID)
+	assert.Equal(t, e1.ID, *results[0].EpisodeID)
 }
 
 func TestStore_ListFiles_FilterByQuality(t *testing.T) {
@@ -431,33 +322,19 @@ func TestStore_ListFiles_FilterByQuality(t *testing.T) {
 	movie := createTestMovie(t, store)
 
 	// Add files with different qualities
-	if err := store.AddFile(&File{ContentID: movie.ID, Path: "/movies/file1.mkv", Quality: "1080p bluray"}); err != nil {
-		t.Fatalf("AddFile: %v", err)
-	}
-	if err := store.AddFile(&File{ContentID: movie.ID, Path: "/movies/file2.mkv", Quality: "720p webdl"}); err != nil {
-		t.Fatalf("AddFile: %v", err)
-	}
-	if err := store.AddFile(&File{ContentID: movie.ID, Path: "/movies/file3.mkv", Quality: "1080p bluray"}); err != nil {
-		t.Fatalf("AddFile: %v", err)
-	}
+	require.NoError(t, store.AddFile(&File{ContentID: movie.ID, Path: "/movies/file1.mkv", Quality: "1080p bluray"}), "AddFile should succeed")
+	require.NoError(t, store.AddFile(&File{ContentID: movie.ID, Path: "/movies/file2.mkv", Quality: "720p webdl"}), "AddFile should succeed")
+	require.NoError(t, store.AddFile(&File{ContentID: movie.ID, Path: "/movies/file3.mkv", Quality: "1080p bluray"}), "AddFile should succeed")
 
 	// Filter by quality
 	quality := "1080p bluray"
 	results, total, err := store.ListFiles(FileFilter{Quality: &quality})
-	if err != nil {
-		t.Fatalf("ListFiles: %v", err)
-	}
+	require.NoError(t, err, "ListFiles should succeed")
 
-	if total != 2 {
-		t.Errorf("total = %d, want 2", total)
-	}
-	if len(results) != 2 {
-		t.Errorf("len(results) = %d, want 2", len(results))
-	}
+	assert.Equal(t, 2, total)
+	assert.Len(t, results, 2)
 	for _, f := range results {
-		if f.Quality != "1080p bluray" {
-			t.Errorf("Quality = %q, want 1080p bluray", f.Quality)
-		}
+		assert.Equal(t, "1080p bluray", f.Quality)
 	}
 }
 
@@ -467,9 +344,7 @@ func TestTx_AddFile(t *testing.T) {
 	movie := createTestMovie(t, store)
 
 	tx, err := store.Begin()
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
+	require.NoError(t, err, "Begin should succeed")
 	defer func() { _ = tx.Rollback() }()
 
 	f := &File{
@@ -480,36 +355,21 @@ func TestTx_AddFile(t *testing.T) {
 		Source:    "usenet",
 	}
 
-	if err := tx.AddFile(f); err != nil {
-		t.Fatalf("tx.AddFile: %v", err)
-	}
-
-	if f.ID == 0 {
-		t.Error("ID should be set")
-	}
+	require.NoError(t, tx.AddFile(f), "tx.AddFile should succeed")
+	assert.NotZero(t, f.ID, "ID should be set")
 
 	// Should be visible within transaction
 	retrieved, err := tx.GetFile(f.ID)
-	if err != nil {
-		t.Fatalf("tx.GetFile: %v", err)
-	}
-	if retrieved.Path != f.Path {
-		t.Errorf("Path = %q, want %q", retrieved.Path, f.Path)
-	}
+	require.NoError(t, err, "tx.GetFile should succeed")
+	assert.Equal(t, f.Path, retrieved.Path)
 
 	// Commit
-	if err := tx.Commit(); err != nil {
-		t.Fatalf("Commit: %v", err)
-	}
+	require.NoError(t, tx.Commit(), "Commit should succeed")
 
 	// Should be visible after commit
 	retrieved, err = store.GetFile(f.ID)
-	if err != nil {
-		t.Fatalf("store.GetFile after commit: %v", err)
-	}
-	if retrieved.Path != f.Path {
-		t.Errorf("Path = %q, want %q", retrieved.Path, f.Path)
-	}
+	require.NoError(t, err, "store.GetFile after commit should succeed")
+	assert.Equal(t, f.Path, retrieved.Path)
 }
 
 func TestTx_Rollback_File(t *testing.T) {
@@ -518,9 +378,7 @@ func TestTx_Rollback_File(t *testing.T) {
 	movie := createTestMovie(t, store)
 
 	tx, err := store.Begin()
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
+	require.NoError(t, err, "Begin should succeed")
 
 	f := &File{
 		ContentID: movie.ID,
@@ -530,20 +388,14 @@ func TestTx_Rollback_File(t *testing.T) {
 		Source:    "usenet",
 	}
 
-	if err := tx.AddFile(f); err != nil {
-		t.Fatalf("tx.AddFile: %v", err)
-	}
+	require.NoError(t, tx.AddFile(f), "tx.AddFile should succeed")
 
 	id := f.ID
 
 	// Rollback
-	if err := tx.Rollback(); err != nil {
-		t.Fatalf("Rollback: %v", err)
-	}
+	require.NoError(t, tx.Rollback(), "Rollback should succeed")
 
 	// Should NOT be visible after rollback
 	_, err = store.GetFile(id)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("GetFile after rollback: error = %v, want ErrNotFound", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "GetFile after rollback should return ErrNotFound, got %v", err)
 }

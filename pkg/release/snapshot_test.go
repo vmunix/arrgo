@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var updateSnapshots = flag.Bool("update", false, "update snapshot files")
@@ -27,9 +30,7 @@ func TestParse_Snapshot(t *testing.T) {
 
 	r := csv.NewReader(f)
 	records, err := r.ReadAll()
-	if err != nil {
-		t.Fatalf("read corpus: %v", err)
-	}
+	require.NoError(t, err, "read corpus")
 
 	// Parse all releases
 	results := make([]SnapshotEntry, 0, len(records)-1)
@@ -48,18 +49,14 @@ func TestParse_Snapshot(t *testing.T) {
 
 	if *updateSnapshots {
 		// Create directory if needed
-		if err := os.MkdirAll("testdata/snapshots", 0755); err != nil {
-			t.Fatalf("create snapshot dir: %v", err)
-		}
+		err := os.MkdirAll("testdata/snapshots", 0755)
+		require.NoError(t, err, "create snapshot dir")
 
 		// Write new snapshot
 		data, err := json.MarshalIndent(results, "", "  ")
-		if err != nil {
-			t.Fatalf("marshal: %v", err)
-		}
-		if err := os.WriteFile(snapshotPath, data, 0644); err != nil {
-			t.Fatalf("write snapshot: %v", err)
-		}
+		require.NoError(t, err, "marshal")
+		err = os.WriteFile(snapshotPath, data, 0644)
+		require.NoError(t, err, "write snapshot")
 		t.Logf("snapshot updated with %d entries", len(results))
 		return
 	}
@@ -71,14 +68,11 @@ func TestParse_Snapshot(t *testing.T) {
 	}
 
 	var expectedResults []SnapshotEntry
-	if err := json.Unmarshal(expected, &expectedResults); err != nil {
-		t.Fatalf("unmarshal snapshot: %v", err)
-	}
+	err = json.Unmarshal(expected, &expectedResults)
+	require.NoError(t, err, "unmarshal snapshot")
 
 	// Compare counts
-	if len(results) != len(expectedResults) {
-		t.Errorf("entry count: got %d, want %d", len(results), len(expectedResults))
-	}
+	assert.Equal(t, len(expectedResults), len(results), "entry count")
 
 	// Compare each entry
 	diffCount := 0

@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/vmunix/arrgo/pkg/release"
 )
 
@@ -27,9 +28,8 @@ func TestFormatSize(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := formatSize(tt.bytes); got != tt.want {
-				t.Errorf("formatSize(%d) = %q, want %q", tt.bytes, got, tt.want)
-			}
+			got := formatSize(tt.bytes)
+			assert.Equal(t, tt.want, got, "formatSize(%d)", tt.bytes)
 		})
 	}
 }
@@ -38,10 +38,7 @@ func TestFormatSizeNegative(t *testing.T) {
 	// Negative numbers are technically invalid but the function handles them
 	// by returning them in bytes format since they're less than 1024
 	got := formatSize(-100)
-	want := "-100 B"
-	if got != want {
-		t.Errorf("formatSize(-100) = %q, want %q", got, want)
-	}
+	assert.Equal(t, "-100 B", got)
 }
 
 func TestBuildBadges(t *testing.T) {
@@ -227,9 +224,8 @@ func TestBuildBadges(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := buildBadges(tt.info); got != tt.want {
-				t.Errorf("buildBadges() = %q, want %q", got, tt.want)
-			}
+			got := buildBadges(tt.info)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

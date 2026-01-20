@@ -4,18 +4,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestClientStatus_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/status" {
-			t.Errorf("unexpected path: %s", r.URL.Path)
-		}
-		if r.Method != http.MethodGet {
-			t.Errorf("unexpected method: %s", r.Method)
-		}
+		assert.Equal(t, "/api/v1/status", r.URL.Path, "unexpected path")
+		assert.Equal(t, http.MethodGet, r.Method, "unexpected method")
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(StatusResponse{
 			Status:  "ok",
@@ -26,15 +24,9 @@ func TestClientStatus_Success(t *testing.T) {
 
 	client := NewClient(srv.URL)
 	status, err := client.Status()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if status.Status != "ok" {
-		t.Errorf("status = %q, want %q", status.Status, "ok")
-	}
-	if status.Version != "1.0.0" {
-		t.Errorf("version = %q, want %q", status.Version, "1.0.0")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "ok", status.Status)
+	assert.Equal(t, "1.0.0", status.Version)
 }
 
 func TestClientStatus_ServerError(t *testing.T) {
@@ -46,15 +38,9 @@ func TestClientStatus_ServerError(t *testing.T) {
 
 	client := NewClient(srv.URL)
 	_, err := client.Status()
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "500") {
-		t.Errorf("error should contain status code 500: %v", err)
-	}
-	if !strings.Contains(err.Error(), "internal server error") {
-		t.Errorf("error should contain response body: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+	assert.Contains(t, err.Error(), "internal server error")
 }
 
 func TestClientStatus_ConnectionError(t *testing.T) {
@@ -64,12 +50,8 @@ func TestClientStatus_ConnectionError(t *testing.T) {
 
 	client := NewClient(srv.URL)
 	_, err := client.Status()
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "request failed") {
-		t.Errorf("error should indicate request failure: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "request failed")
 }
 
 func TestClientStatus_InvalidJSON(t *testing.T) {
@@ -81,9 +63,7 @@ func TestClientStatus_InvalidJSON(t *testing.T) {
 
 	client := NewClient(srv.URL)
 	_, err := client.Status()
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
+	require.Error(t, err)
 }
 
 func TestClientStatus_EmptyResponse(t *testing.T) {
@@ -95,13 +75,7 @@ func TestClientStatus_EmptyResponse(t *testing.T) {
 
 	client := NewClient(srv.URL)
 	status, err := client.Status()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if status.Status != "" {
-		t.Errorf("status = %q, want empty", status.Status)
-	}
-	if status.Version != "" {
-		t.Errorf("version = %q, want empty", status.Version)
-	}
+	require.NoError(t, err)
+	assert.Empty(t, status.Status)
+	assert.Empty(t, status.Version)
 }
