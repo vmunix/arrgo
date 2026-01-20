@@ -5,7 +5,6 @@ Future work items, organized by category.
 ## Post-v1 Feature Complete
 
 - **Subprocess smoke test** - Full end-to-end test starting `arrgod` as subprocess with real ports, validating live system health before releases. Pattern: Radarr's `NzbDroneRunner` spawns app, polls `/api/v1/status` until ready, runs tests against real HTTP server, kills on teardown.
-- **Config init connection validation** - Test indexer/SABnzbd reachability before writing config.toml, with clear error messages if services are unreachable
 
 ## v2 Features
 
