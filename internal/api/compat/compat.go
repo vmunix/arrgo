@@ -525,11 +525,40 @@ func (s *Server) executeCommand(w http.ResponseWriter, r *http.Request) {
 // Sonarr handlers
 
 func (s *Server) listSeries(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, []any{})
+	contentType := library.ContentTypeSeries
+	contents, _, err := s.library.ListContent(library.ContentFilter{Type: &contentType})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	series := make([]sonarrSeriesResponse, 0, len(contents))
+	for _, c := range contents {
+		series = append(series, s.contentToSonarrSeries(c))
+	}
+	writeJSON(w, http.StatusOK, series)
 }
 
 func (s *Server) getSeries(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "Series not found"})
+	idStr := r.PathValue("id")
+	var id int64
+	if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid ID"})
+		return
+	}
+
+	content, err := s.library.GetContent(id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Series not found"})
+		return
+	}
+
+	if content.Type != library.ContentTypeSeries {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Series not found"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, s.contentToSonarrSeries(content))
 }
 
 func (s *Server) lookupSeries(w http.ResponseWriter, r *http.Request) {
