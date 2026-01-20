@@ -61,7 +61,7 @@ func (m *Manager) Grab(ctx context.Context, contentID int64, episodeID *int64,
 
 // Refresh polls the download client for status updates and syncs to the database.
 func (m *Manager) Refresh(ctx context.Context) error {
-	downloads, err := m.store.List(DownloadFilter{Active: true})
+	downloads, err := m.store.List(Filter{Active: true})
 	if err != nil {
 		return fmt.Errorf("list active: %w", err)
 	}
@@ -116,7 +116,7 @@ func (m *Manager) Client() Downloader {
 
 // GetActive returns active downloads with live status from the client.
 func (m *Manager) GetActive(ctx context.Context) ([]*ActiveDownload, error) {
-	downloads, err := m.store.List(DownloadFilter{Active: true})
+	downloads, err := m.store.List(Filter{Active: true})
 	if err != nil {
 		return nil, fmt.Errorf("list active: %w", err)
 	}

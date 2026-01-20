@@ -118,10 +118,10 @@ func writeJSON(w http.ResponseWriter, code int, data any) {
 }
 
 // pathID extracts an integer ID from the URL path.
-func pathID(r *http.Request, name string) (int64, error) {
-	idStr := r.PathValue(name)
+func pathID(r *http.Request) (int64, error) {
+	idStr := r.PathValue("id")
 	if idStr == "" {
-		return 0, fmt.Errorf("missing path parameter: %s", name)
+		return 0, fmt.Errorf("missing path parameter: id")
 	}
 	return strconv.ParseInt(idStr, 10, 64)
 }
@@ -195,7 +195,7 @@ func (s *Server) listContent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getContent(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
+	id, err := pathID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
 		return
@@ -278,7 +278,7 @@ func (s *Server) addContent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) updateContent(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
+	id, err := pathID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
 		return
@@ -317,7 +317,7 @@ func (s *Server) updateContent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteContent(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
+	id, err := pathID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
 		return
@@ -332,7 +332,7 @@ func (s *Server) deleteContent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listEpisodes(w http.ResponseWriter, r *http.Request) {
-	contentID, err := pathID(r, "id")
+	contentID, err := pathID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
 		return
@@ -370,7 +370,7 @@ func episodeToResponse(ep *library.Episode) episodeResponse {
 }
 
 func (s *Server) updateEpisode(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
+	id, err := pathID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
 		return
@@ -480,7 +480,7 @@ func (s *Server) grab(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listDownloads(w http.ResponseWriter, r *http.Request) {
-	filter := download.DownloadFilter{}
+	filter := download.Filter{}
 	if activeStr := r.URL.Query().Get("active"); activeStr == "true" {
 		filter.Active = true
 	}
@@ -519,7 +519,7 @@ func downloadToResponse(d *download.Download) downloadResponse {
 }
 
 func (s *Server) getDownload(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
+	id, err := pathID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
 		return
@@ -539,7 +539,7 @@ func (s *Server) getDownload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteDownload(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
+	id, err := pathID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
 		return
@@ -624,7 +624,7 @@ func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteFile(w http.ResponseWriter, r *http.Request) {
-	id, err := pathID(r, "id")
+	id, err := pathID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
 		return
@@ -665,7 +665,7 @@ func (s *Server) getDashboard(w http.ResponseWriter, _ *http.Request) {
 		download.StatusFailed,
 	} {
 		st := status
-		downloads, _ := s.deps.Downloads.List(download.DownloadFilter{Status: &st})
+		downloads, _ := s.deps.Downloads.List(download.Filter{Status: &st})
 		switch status {
 		case download.StatusQueued:
 			resp.Downloads.Queued = len(downloads)
@@ -842,7 +842,7 @@ func (s *Server) scanPlexLibraries(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Trigger scans
-	var scanned []string
+	scanned := make([]string, 0, len(toScan))
 	for _, lib := range toScan {
 		if err := s.deps.Plex.RefreshLibrary(ctx, lib.key); err != nil {
 			writeError(w, http.StatusInternalServerError, "SCAN_ERROR",

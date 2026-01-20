@@ -39,7 +39,7 @@ func run(configPath, output string, pages, limit int) error {
 	}
 
 	// Create clients
-	var clients []*newznab.Client
+	clients := make([]*newznab.Client, 0, len(cfg.Indexers))
 	for name, idx := range cfg.Indexers {
 		clients = append(clients, newznab.NewClient(name, idx.URL, idx.APIKey))
 	}

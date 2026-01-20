@@ -150,8 +150,8 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
-	// Build ConfigError if any issues
-	configErr := &ConfigError{Path: path, Missing: missing}
+	// Build Error if any issues
+	configErr := &Error{Path: path, Missing: missing}
 
 	// Run validation
 	configErr.Errors = cfg.Validate()

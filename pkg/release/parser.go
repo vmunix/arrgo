@@ -219,8 +219,7 @@ func parseHDR(name string) HDRFormat {
 	// DolbyVision takes priority as DV releases often also have HDR metadata
 	for _, m := range matches {
 		lower := strings.ToLower(m)
-		switch {
-		case lower == "dv" || strings.Contains(lower, "dolby"):
+		if lower == "dv" || strings.Contains(lower, "dolby") {
 			return DolbyVision
 		}
 	}

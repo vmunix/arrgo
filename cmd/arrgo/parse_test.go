@@ -247,7 +247,7 @@ func TestScoreWithBreakdown_RemuxBonus(t *testing.T) {
 
 	score, breakdown := scoreWithBreakdown(info, profile)
 
-	// Expected: 80 (resolution) + 20 (remux) = 100
+	// Expected score: 80 for resolution, 20 for remux, totaling 100.
 	assert.Equal(t, 100, score)
 
 	// Find Remux in breakdown

@@ -223,7 +223,7 @@ func TestStore_List_All(t *testing.T) {
 	}
 
 	// List all
-	results, err := store.List(DownloadFilter{})
+	results, err := store.List(Filter{})
 	require.NoError(t, err)
 	assert.Len(t, results, 3)
 }
@@ -248,7 +248,7 @@ func TestStore_List_Active(t *testing.T) {
 	}
 
 	// List active (excludes terminal states: cleaned, failed)
-	results, err := store.List(DownloadFilter{Active: true})
+	results, err := store.List(Filter{Active: true})
 	require.NoError(t, err)
 	assert.Len(t, results, 4, "should exclude cleaned and failed")
 
@@ -273,7 +273,7 @@ func TestStore_List_FilterByContentID(t *testing.T) {
 	require.NoError(t, store.Add(d2))
 
 	// Filter by content ID
-	results, err := store.List(DownloadFilter{ContentID: &contentID1})
+	results, err := store.List(Filter{ContentID: &contentID1})
 	require.NoError(t, err)
 
 	assert.Len(t, results, 1)
@@ -294,7 +294,7 @@ func TestStore_List_FilterByStatus(t *testing.T) {
 
 	// Filter by status
 	status := StatusDownloading
-	results, err := store.List(DownloadFilter{Status: &status})
+	results, err := store.List(Filter{Status: &status})
 	require.NoError(t, err)
 
 	assert.Len(t, results, 1)
@@ -315,7 +315,7 @@ func TestStore_List_FilterByClient(t *testing.T) {
 
 	// Filter by client
 	client := ClientSABnzbd
-	results, err := store.List(DownloadFilter{Client: &client})
+	results, err := store.List(Filter{Client: &client})
 	require.NoError(t, err)
 
 	assert.Len(t, results, 1)
@@ -416,7 +416,7 @@ func TestStore_List_FilterByEpisodeID(t *testing.T) {
 	require.NoError(t, store.Add(d2))
 
 	// Filter by episode ID
-	results, err := store.List(DownloadFilter{EpisodeID: &ep1ID})
+	results, err := store.List(Filter{EpisodeID: &ep1ID})
 	require.NoError(t, err)
 
 	require.Len(t, results, 1)
@@ -461,7 +461,7 @@ func TestStore_LastTransitionAt(t *testing.T) {
 	assert.False(t, gotByClient.LastTransitionAt.IsZero(), "LastTransitionAt should be set after GetByClientID")
 
 	// Retrieve and verify via List
-	downloads, err := store.List(DownloadFilter{})
+	downloads, err := store.List(Filter{})
 	require.NoError(t, err)
 	require.Len(t, downloads, 1)
 	assert.False(t, downloads[0].LastTransitionAt.IsZero(), "LastTransitionAt should be set in List results")

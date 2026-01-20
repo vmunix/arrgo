@@ -105,7 +105,7 @@ func (i *Importer) prepareImport(downloadID int64, downloadPath string) (*Import
 	dl, err := i.downloads.Get(downloadID)
 	if err != nil {
 		if errors.Is(err, download.ErrNotFound) {
-			return nil, fmt.Errorf("%w: %v", ErrDownloadNotFound, err)
+			return nil, fmt.Errorf("%w: %w", ErrDownloadNotFound, err)
 		}
 		return nil, fmt.Errorf("get download: %w", err)
 	}

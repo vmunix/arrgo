@@ -24,12 +24,11 @@ func setupTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-func insertTestContent(t *testing.T, db *sql.DB, title string) int64 {
+func insertTestContent(t *testing.T, db *sql.DB) int64 {
 	t.Helper()
 	result, err := db.Exec(`
 		INSERT INTO content (type, title, year, status, quality_profile, root_path)
-		VALUES ('movie', ?, 2024, 'wanted', 'hd', '/movies')`,
-		title,
+		VALUES ('movie', 'Test Movie', 2024, 'wanted', 'hd', '/movies')`,
 	)
 	require.NoError(t, err, "insert test content")
 	id, _ := result.LastInsertId()

@@ -11,6 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// SABnzbd API mode constants for tests.
+const (
+	modeQueue   = "queue"
+	modeHistory = "history"
+)
+
 // writeJSON is a helper that writes a JSON response, failing the test on error.
 func writeJSON(t *testing.T, w http.ResponseWriter, v any) {
 	t.Helper()
@@ -70,7 +76,7 @@ func TestSABnzbdClient_Status(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mode := r.URL.Query().Get("mode")
 
-		if mode == "queue" {
+		if mode == modeQueue {
 			resp := map[string]any{
 				"queue": map[string]any{
 					"slots": []map[string]any{
@@ -109,7 +115,7 @@ func TestSABnzbdClient_Status_Completed(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mode := r.URL.Query().Get("mode")
 
-		if mode == "queue" {
+		if mode == modeQueue {
 			// Empty queue
 			resp := map[string]any{
 				"queue": map[string]any{
@@ -120,7 +126,7 @@ func TestSABnzbdClient_Status_Completed(t *testing.T) {
 			return
 		}
 
-		if mode == "history" {
+		if mode == modeHistory {
 			resp := map[string]any{
 				"history": map[string]any{
 					"slots": []map[string]any{
@@ -152,7 +158,7 @@ func TestSABnzbdClient_Status_NotFound(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mode := r.URL.Query().Get("mode")
 
-		if mode == "queue" {
+		if mode == modeQueue {
 			resp := map[string]any{
 				"queue": map[string]any{
 					"slots": []map[string]any{},
@@ -162,7 +168,7 @@ func TestSABnzbdClient_Status_NotFound(t *testing.T) {
 			return
 		}
 
-		if mode == "history" {
+		if mode == modeHistory {
 			resp := map[string]any{
 				"history": map[string]any{
 					"slots": []map[string]any{},
@@ -183,7 +189,7 @@ func TestSABnzbdClient_List(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mode := r.URL.Query().Get("mode")
 
-		if mode == "queue" {
+		if mode == modeQueue {
 			resp := map[string]any{
 				"queue": map[string]any{
 					"slots": []map[string]any{
@@ -210,7 +216,7 @@ func TestSABnzbdClient_List(t *testing.T) {
 			return
 		}
 
-		if mode == "history" {
+		if mode == modeHistory {
 			resp := map[string]any{
 				"history": map[string]any{
 					"slots": []map[string]any{

@@ -20,20 +20,20 @@ func CopyFile(src, dst string) (int64, error) {
 
 	// Create destination directory
 	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
-		return 0, fmt.Errorf("%w: create directory: %v", ErrCopyFailed, err)
+		return 0, fmt.Errorf("%w: create directory: %w", ErrCopyFailed, err)
 	}
 
 	// Open source
 	srcFile, err := os.Open(src)
 	if err != nil {
-		return 0, fmt.Errorf("%w: open source: %v", ErrCopyFailed, err)
+		return 0, fmt.Errorf("%w: open source: %w", ErrCopyFailed, err)
 	}
 	defer func() { _ = srcFile.Close() }()
 
 	// Create destination
 	dstFile, err := os.Create(dst)
 	if err != nil {
-		return 0, fmt.Errorf("%w: create destination: %v", ErrCopyFailed, err)
+		return 0, fmt.Errorf("%w: create destination: %w", ErrCopyFailed, err)
 	}
 	defer func() { _ = dstFile.Close() }()
 
@@ -42,12 +42,12 @@ func CopyFile(src, dst string) (int64, error) {
 	if err != nil {
 		// Clean up partial file on error
 		_ = os.Remove(dst)
-		return 0, fmt.Errorf("%w: copy content: %v", ErrCopyFailed, err)
+		return 0, fmt.Errorf("%w: copy content: %w", ErrCopyFailed, err)
 	}
 
 	// Sync to disk
 	if err := dstFile.Sync(); err != nil {
-		return 0, fmt.Errorf("%w: sync: %v", ErrCopyFailed, err)
+		return 0, fmt.Errorf("%w: sync: %w", ErrCopyFailed, err)
 	}
 
 	return size, nil
@@ -62,7 +62,9 @@ func FindLargestVideo(dir string) (string, int64, error) {
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil // Skip errors, continue walking
+			// Intentionally skip errors and continue walking to find video files
+			// even if some subdirectories are inaccessible.
+			return nil //nolint:nilerr // Skip errors intentionally
 		}
 		if info.IsDir() {
 			return nil
