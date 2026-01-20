@@ -2,12 +2,9 @@ package library
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/mattn/go-sqlite3"
 )
 
 // mapSQLiteError converts SQLite errors to custom error types.
@@ -18,14 +15,15 @@ func mapSQLiteError(err error) error {
 	if err == sql.ErrNoRows {
 		return ErrNotFound
 	}
-	var sqliteErr sqlite3.Error
-	if errors.As(err, &sqliteErr) {
-		switch sqliteErr.ExtendedCode {
-		case sqlite3.ErrConstraintUnique, sqlite3.ErrConstraintPrimaryKey:
-			return ErrDuplicate
-		case sqlite3.ErrConstraintForeignKey, sqlite3.ErrConstraintCheck:
-			return ErrConstraint
-		}
+	// modernc.org/sqlite wraps errors; check error message for constraint violations
+	errStr := err.Error()
+	if strings.Contains(errStr, "UNIQUE constraint failed") ||
+		strings.Contains(errStr, "PRIMARY KEY constraint failed") {
+		return ErrDuplicate
+	}
+	if strings.Contains(errStr, "FOREIGN KEY constraint failed") ||
+		strings.Contains(errStr, "CHECK constraint failed") {
+		return ErrConstraint
 	}
 	return err
 }
