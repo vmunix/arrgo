@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/vmunix/arrgo/internal/config"
 	"github.com/vmunix/arrgo/pkg/release"
 )
@@ -22,14 +23,11 @@ Another.Movie.2023.720p.WEB-DL.x265-TEAM
 
   Spaced.Movie.2022.2160p.UHD.BluRay.x265-RELEASE
 `
-	if err := os.WriteFile(testFile, []byte(content), 0644); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
+	err := os.WriteFile(testFile, []byte(content), 0644)
+	require.NoError(t, err, "failed to write test file")
 
 	names, err := readReleaseFile(testFile)
-	if err != nil {
-		t.Fatalf("readReleaseFile() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	want := []string{
 		"Movie.2024.1080p.BluRay.x264-GROUP",
@@ -37,40 +35,29 @@ Another.Movie.2023.720p.WEB-DL.x265-TEAM
 		"Spaced.Movie.2022.2160p.UHD.BluRay.x265-RELEASE",
 	}
 
-	if len(names) != len(want) {
-		t.Fatalf("got %d names, want %d", len(names), len(want))
-	}
+	require.Len(t, names, len(want))
 
 	for i, got := range names {
-		if got != want[i] {
-			t.Errorf("names[%d] = %q, want %q", i, got, want[i])
-		}
+		assert.Equal(t, want[i], got, "names[%d]", i)
 	}
 }
 
 func TestReadReleaseFile_NotFound(t *testing.T) {
 	_, err := readReleaseFile("/nonexistent/file.txt")
-	if err == nil {
-		t.Error("expected error for nonexistent file, got nil")
-	}
+	assert.Error(t, err, "expected error for nonexistent file")
 }
 
 func TestReadReleaseFile_Empty(t *testing.T) {
 	tmpDir := t.TempDir()
 	testFile := filepath.Join(tmpDir, "empty.txt")
 
-	if err := os.WriteFile(testFile, []byte(""), 0644); err != nil {
-		t.Fatalf("failed to write test file: %v", err)
-	}
+	err := os.WriteFile(testFile, []byte(""), 0644)
+	require.NoError(t, err, "failed to write test file")
 
 	names, err := readReleaseFile(testFile)
-	if err != nil {
-		t.Fatalf("readReleaseFile() error = %v", err)
-	}
+	require.NoError(t, err)
 
-	if len(names) != 0 {
-		t.Errorf("got %d names, want 0", len(names))
-	}
+	assert.Empty(t, names)
 }
 
 func TestParseResult_ToJSON(t *testing.T) {
@@ -96,33 +83,15 @@ func TestParseResult_ToJSON(t *testing.T) {
 
 	jsonResult := result.toJSON()
 
-	if jsonResult.Title != "The Matrix" {
-		t.Errorf("Title = %q, want %q", jsonResult.Title, "The Matrix")
-	}
-	if jsonResult.Year != 1999 {
-		t.Errorf("Year = %d, want %d", jsonResult.Year, 1999)
-	}
-	if jsonResult.Resolution != "1080p" {
-		t.Errorf("Resolution = %q, want %q", jsonResult.Resolution, "1080p")
-	}
-	if jsonResult.Source != "bluray" {
-		t.Errorf("Source = %q, want %q", jsonResult.Source, "bluray")
-	}
-	if jsonResult.IsRemux != true {
-		t.Errorf("IsRemux = %v, want true", jsonResult.IsRemux)
-	}
-	if jsonResult.HDR != "" {
-		t.Errorf("HDR = %q, want empty (HDRNone)", jsonResult.HDR)
-	}
-	if jsonResult.Audio != "DTS-HD MA" {
-		t.Errorf("Audio = %q, want %q", jsonResult.Audio, "DTS-HD MA")
-	}
-	if jsonResult.Score != 100 {
-		t.Errorf("Score = %d, want %d", jsonResult.Score, 100)
-	}
-	if jsonResult.Profile != "hd" {
-		t.Errorf("Profile = %q, want %q", jsonResult.Profile, "hd")
-	}
+	assert.Equal(t, "The Matrix", jsonResult.Title)
+	assert.Equal(t, 1999, jsonResult.Year)
+	assert.Equal(t, "1080p", jsonResult.Resolution)
+	assert.Equal(t, "bluray", jsonResult.Source)
+	assert.True(t, jsonResult.IsRemux)
+	assert.Empty(t, jsonResult.HDR, "HDR should be empty for HDRNone")
+	assert.Equal(t, "DTS-HD MA", jsonResult.Audio)
+	assert.Equal(t, 100, jsonResult.Score)
+	assert.Equal(t, "hd", jsonResult.Profile)
 }
 
 func TestParseResult_ToJSON_WithHDR(t *testing.T) {
@@ -136,9 +105,7 @@ func TestParseResult_ToJSON_WithHDR(t *testing.T) {
 
 	jsonResult := result.toJSON()
 
-	if jsonResult.HDR != "DV" {
-		t.Errorf("HDR = %q, want %q", jsonResult.HDR, "DV")
-	}
+	assert.Equal(t, "DV", jsonResult.HDR)
 }
 
 func TestParseResult_ToJSON_SeriesInfo(t *testing.T) {
@@ -153,12 +120,8 @@ func TestParseResult_ToJSON_SeriesInfo(t *testing.T) {
 
 	jsonResult := result.toJSON()
 
-	if jsonResult.Season != 1 {
-		t.Errorf("Season = %d, want %d", jsonResult.Season, 1)
-	}
-	if jsonResult.Episode != 5 {
-		t.Errorf("Episode = %d, want %d", jsonResult.Episode, 5)
-	}
+	assert.Equal(t, 1, jsonResult.Season)
+	assert.Equal(t, 5, jsonResult.Episode)
 }
 
 func TestParseResultJSON_Marshal(t *testing.T) {
@@ -173,21 +136,13 @@ func TestParseResultJSON_Marshal(t *testing.T) {
 	}
 
 	data, err := json.Marshal(result)
-	if err != nil {
-		t.Fatalf("json.Marshal() error = %v", err)
-	}
+	require.NoError(t, err)
 
 	// Verify key fields are in the JSON
 	jsonStr := string(data)
-	if !strings.Contains(jsonStr, `"title":"Test Movie"`) {
-		t.Errorf("JSON missing title field")
-	}
-	if !strings.Contains(jsonStr, `"year":2024`) {
-		t.Errorf("JSON missing year field")
-	}
-	if !strings.Contains(jsonStr, `"resolution":"1080p"`) {
-		t.Errorf("JSON missing resolution field")
-	}
+	assert.Contains(t, jsonStr, `"title":"Test Movie"`)
+	assert.Contains(t, jsonStr, `"year":2024`)
+	assert.Contains(t, jsonStr, `"resolution":"1080p"`)
 }
 
 func TestScoreWithBreakdown_BasicScoring(t *testing.T) {
@@ -206,13 +161,9 @@ func TestScoreWithBreakdown_BasicScoring(t *testing.T) {
 	score, breakdown := scoreWithBreakdown(info, profile)
 
 	// Expected: 80 (resolution) + 10 (source @ pos 0) + 10 (codec @ pos 0) = 100
-	if score != 100 {
-		t.Errorf("score = %d, want 100", score)
-	}
+	assert.Equal(t, 100, score)
 
-	if len(breakdown) < 3 {
-		t.Fatalf("breakdown has %d entries, want at least 3", len(breakdown))
-	}
+	require.GreaterOrEqual(t, len(breakdown), 3, "breakdown should have at least 3 entries")
 }
 
 func TestScoreWithBreakdown_RejectList(t *testing.T) {
@@ -228,17 +179,11 @@ func TestScoreWithBreakdown_RejectList(t *testing.T) {
 
 	score, breakdown := scoreWithBreakdown(info, profile)
 
-	if score != 0 {
-		t.Errorf("score = %d, want 0 (rejected)", score)
-	}
+	assert.Equal(t, 0, score, "score should be 0 (rejected)")
 
-	if len(breakdown) != 1 {
-		t.Fatalf("breakdown has %d entries, want 1", len(breakdown))
-	}
+	require.Len(t, breakdown, 1)
 
-	if breakdown[0].Attribute != "Reject" {
-		t.Errorf("breakdown[0].Attribute = %q, want %q", breakdown[0].Attribute, "Reject")
-	}
+	assert.Equal(t, "Reject", breakdown[0].Attribute)
 }
 
 func TestScoreWithBreakdown_ResolutionNotAllowed(t *testing.T) {
@@ -252,17 +197,11 @@ func TestScoreWithBreakdown_ResolutionNotAllowed(t *testing.T) {
 
 	score, breakdown := scoreWithBreakdown(info, profile)
 
-	if score != 0 {
-		t.Errorf("score = %d, want 0 (resolution not allowed)", score)
-	}
+	assert.Equal(t, 0, score, "score should be 0 (resolution not allowed)")
 
-	if len(breakdown) != 1 {
-		t.Fatalf("breakdown has %d entries, want 1", len(breakdown))
-	}
+	require.Len(t, breakdown, 1)
 
-	if breakdown[0].Note != "not in allowed list" {
-		t.Errorf("breakdown[0].Note = %q, want %q", breakdown[0].Note, "not in allowed list")
-	}
+	assert.Equal(t, "not in allowed list", breakdown[0].Note)
 }
 
 func TestScoreWithBreakdown_HDRBonus(t *testing.T) {
@@ -279,9 +218,7 @@ func TestScoreWithBreakdown_HDRBonus(t *testing.T) {
 	score, breakdown := scoreWithBreakdown(info, profile)
 
 	// Expected: 100 (resolution) + 15 (HDR @ pos 0) = 115
-	if score != 115 {
-		t.Errorf("score = %d, want 115", score)
-	}
+	assert.Equal(t, 115, score)
 
 	// Find HDR in breakdown
 	var hdrBonus *ScoreBonus
@@ -292,13 +229,9 @@ func TestScoreWithBreakdown_HDRBonus(t *testing.T) {
 		}
 	}
 
-	if hdrBonus == nil {
-		t.Fatal("HDR not found in breakdown")
-	}
+	require.NotNil(t, hdrBonus, "HDR not found in breakdown")
 
-	if hdrBonus.Bonus != 15 {
-		t.Errorf("HDR bonus = %d, want 15", hdrBonus.Bonus)
-	}
+	assert.Equal(t, 15, hdrBonus.Bonus)
 }
 
 func TestScoreWithBreakdown_RemuxBonus(t *testing.T) {
@@ -315,9 +248,7 @@ func TestScoreWithBreakdown_RemuxBonus(t *testing.T) {
 	score, breakdown := scoreWithBreakdown(info, profile)
 
 	// Expected: 80 (resolution) + 20 (remux) = 100
-	if score != 100 {
-		t.Errorf("score = %d, want 100", score)
-	}
+	assert.Equal(t, 100, score)
 
 	// Find Remux in breakdown
 	var remuxBonus *ScoreBonus
@@ -328,13 +259,9 @@ func TestScoreWithBreakdown_RemuxBonus(t *testing.T) {
 		}
 	}
 
-	if remuxBonus == nil {
-		t.Fatal("Remux not found in breakdown")
-	}
+	require.NotNil(t, remuxBonus, "Remux not found in breakdown")
 
-	if remuxBonus.Bonus != 20 {
-		t.Errorf("Remux bonus = %d, want 20", remuxBonus.Bonus)
-	}
+	assert.Equal(t, 20, remuxBonus.Bonus)
 }
 
 func TestScoreResolution(t *testing.T) {
@@ -378,12 +305,8 @@ func TestScoreResolution(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			score, bonus := scoreResolution(tt.resolution, tt.preferences)
-			if score != tt.wantScore {
-				t.Errorf("score = %d, want %d", score, tt.wantScore)
-			}
-			if bonus.Note != tt.wantNote {
-				t.Errorf("note = %q, want %q", bonus.Note, tt.wantNote)
-			}
+			assert.Equal(t, tt.wantScore, score)
+			assert.Equal(t, tt.wantNote, bonus.Note)
 		})
 	}
 }
@@ -442,12 +365,8 @@ func TestScoreAttribute(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			bonus := scoreAttribute(tt.value, tt.preferences, tt.baseBonus, "Test")
-			if bonus.Bonus != tt.wantBonus {
-				t.Errorf("bonus = %d, want %d", bonus.Bonus, tt.wantBonus)
-			}
-			if bonus.Note != tt.wantNote {
-				t.Errorf("note = %q, want %q", bonus.Note, tt.wantNote)
-			}
+			assert.Equal(t, tt.wantBonus, bonus.Bonus)
+			assert.Equal(t, tt.wantNote, bonus.Note)
 		})
 	}
 }
@@ -473,9 +392,8 @@ func TestHdrMatches(t *testing.T) {
 	for _, tt := range tests {
 		name := tt.hdr.String() + "_" + tt.pref
 		t.Run(name, func(t *testing.T) {
-			if got := hdrMatches(tt.hdr, tt.pref); got != tt.match {
-				t.Errorf("hdrMatches(%v, %q) = %v, want %v", tt.hdr, tt.pref, got, tt.match)
-			}
+			got := hdrMatches(tt.hdr, tt.pref)
+			assert.Equal(t, tt.match, got, "hdrMatches(%v, %q)", tt.hdr, tt.pref)
 		})
 	}
 }
@@ -505,9 +423,8 @@ func TestAudioMatches(t *testing.T) {
 	for _, tt := range tests {
 		name := tt.audio.String() + "_" + tt.pref
 		t.Run(name, func(t *testing.T) {
-			if got := audioMatches(tt.audio, tt.pref); got != tt.match {
-				t.Errorf("audioMatches(%v, %q) = %v, want %v", tt.audio, tt.pref, got, tt.match)
-			}
+			got := audioMatches(tt.audio, tt.pref)
+			assert.Equal(t, tt.match, got, "audioMatches(%v, %q)", tt.audio, tt.pref)
 		})
 	}
 }
@@ -571,9 +488,8 @@ func TestMatchesRejectList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := matchesRejectList(tt.info, tt.rejectList); got != tt.want {
-				t.Errorf("matchesRejectList() = %v, want %v", got, tt.want)
-			}
+			got := matchesRejectList(tt.info, tt.rejectList)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -592,9 +508,8 @@ func TestSourceDisplayName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
-			if got := sourceDisplayName(tt.source); got != tt.want {
-				t.Errorf("sourceDisplayName(%v) = %q, want %q", tt.source, got, tt.want)
-			}
+			got := sourceDisplayName(tt.source)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -618,29 +533,20 @@ func TestHdrDisplayName(t *testing.T) {
 			name = "none"
 		}
 		t.Run(name, func(t *testing.T) {
-			if got := hdrDisplayName(tt.hdr); got != tt.want {
-				t.Errorf("hdrDisplayName(%v) = %q, want %q", tt.hdr, got, tt.want)
-			}
+			got := hdrDisplayName(tt.hdr)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestValueOrEmpty(t *testing.T) {
-	if got := valueOrEmpty(""); got != "(none)" {
-		t.Errorf("valueOrEmpty(\"\") = %q, want %q", got, "(none)")
-	}
-	if got := valueOrEmpty("test"); got != "test" {
-		t.Errorf("valueOrEmpty(\"test\") = %q, want %q", got, "test")
-	}
+	assert.Equal(t, "(none)", valueOrEmpty(""))
+	assert.Equal(t, "test", valueOrEmpty("test"))
 }
 
 func TestBoolToYesNo(t *testing.T) {
-	if got := boolToYesNo(true); got != "yes" {
-		t.Errorf("boolToYesNo(true) = %q, want %q", got, "yes")
-	}
-	if got := boolToYesNo(false); got != "no" {
-		t.Errorf("boolToYesNo(false) = %q, want %q", got, "no")
-	}
+	assert.Equal(t, "yes", boolToYesNo(true))
+	assert.Equal(t, "no", boolToYesNo(false))
 }
 
 func TestGetProfileNames(t *testing.T) {
@@ -656,9 +562,7 @@ func TestGetProfileNames(t *testing.T) {
 
 	names := getProfileNames(cfg)
 
-	if len(names) != 3 {
-		t.Errorf("got %d names, want 3", len(names))
-	}
+	assert.Len(t, names, 3)
 
 	// Check all expected names are present (order may vary due to map iteration)
 	nameSet := make(map[string]bool)
@@ -667,8 +571,6 @@ func TestGetProfileNames(t *testing.T) {
 	}
 
 	for _, expected := range []string{"hd", "uhd", "any"} {
-		if !nameSet[expected] {
-			t.Errorf("missing profile name %q", expected)
-		}
+		assert.True(t, nameSet[expected], "missing profile name %q", expected)
 	}
 }

@@ -4,18 +4,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestClientDownloads_WithItems(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/downloads" {
-			t.Errorf("unexpected path: %s", r.URL.Path)
-		}
-		if r.Method != http.MethodGet {
-			t.Errorf("unexpected method: %s", r.Method)
-		}
+		assert.Equal(t, "/api/v1/downloads", r.URL.Path, "unexpected path")
+		assert.Equal(t, http.MethodGet, r.Method, "unexpected method")
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(ListDownloadsResponse{
@@ -48,24 +46,12 @@ func TestClientDownloads_WithItems(t *testing.T) {
 
 	client := NewClient(srv.URL)
 	resp, err := client.Downloads(false)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.Total != 2 {
-		t.Errorf("total = %d, want 2", resp.Total)
-	}
-	if len(resp.Items) != 2 {
-		t.Fatalf("expected 2 items, got %d", len(resp.Items))
-	}
-	if resp.Items[0].ReleaseName != "The.Matrix.1999.1080p.BluRay.x264" {
-		t.Errorf("unexpected release name: %s", resp.Items[0].ReleaseName)
-	}
-	if resp.Items[0].Status != "downloading" {
-		t.Errorf("unexpected status: %s", resp.Items[0].Status)
-	}
-	if resp.Items[1].Status != "completed" {
-		t.Errorf("unexpected status: %s", resp.Items[1].Status)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 2, resp.Total)
+	require.Len(t, resp.Items, 2)
+	assert.Equal(t, "The.Matrix.1999.1080p.BluRay.x264", resp.Items[0].ReleaseName)
+	assert.Equal(t, "downloading", resp.Items[0].Status)
+	assert.Equal(t, "completed", resp.Items[1].Status)
 }
 
 func TestClientDownloads_EmptyQueue(t *testing.T) {
@@ -80,15 +66,9 @@ func TestClientDownloads_EmptyQueue(t *testing.T) {
 
 	client := NewClient(srv.URL)
 	resp, err := client.Downloads(false)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.Total != 0 {
-		t.Errorf("total = %d, want 0", resp.Total)
-	}
-	if len(resp.Items) != 0 {
-		t.Errorf("expected empty items, got %d", len(resp.Items))
-	}
+	require.NoError(t, err)
+	assert.Equal(t, 0, resp.Total)
+	assert.Empty(t, resp.Items)
 }
 
 func TestClientDownloads_ActiveOnlyFilter(t *testing.T) {
@@ -113,13 +93,9 @@ func TestClientDownloads_ActiveOnlyFilter(t *testing.T) {
 
 	client := NewClient(srv.URL)
 	_, err := client.Downloads(true)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if receivedPath != "/api/v1/downloads?active=true" {
-		t.Errorf("path = %q, want %q", receivedPath, "/api/v1/downloads?active=true")
-	}
+	assert.Equal(t, "/api/v1/downloads?active=true", receivedPath)
 }
 
 func TestClientDownloads_NoActiveFilter(t *testing.T) {
@@ -138,13 +114,9 @@ func TestClientDownloads_NoActiveFilter(t *testing.T) {
 
 	client := NewClient(srv.URL)
 	_, err := client.Downloads(false)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.NoError(t, err)
 
-	if receivedPath != "/api/v1/downloads" {
-		t.Errorf("path = %q, want %q", receivedPath, "/api/v1/downloads")
-	}
+	assert.Equal(t, "/api/v1/downloads", receivedPath)
 }
 
 func TestClientDownloads_ServerError(t *testing.T) {
@@ -156,15 +128,9 @@ func TestClientDownloads_ServerError(t *testing.T) {
 
 	client := NewClient(srv.URL)
 	_, err := client.Downloads(false)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "500") {
-		t.Errorf("error should contain status code 500: %v", err)
-	}
-	if !strings.Contains(err.Error(), "database error") {
-		t.Errorf("error should contain response body: %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+	assert.Contains(t, err.Error(), "database error")
 }
 
 func TestClientDownloads_WithEpisodeID(t *testing.T) {
@@ -195,19 +161,9 @@ func TestClientDownloads_WithEpisodeID(t *testing.T) {
 
 	client := NewClient(srv.URL)
 	resp, err := client.Downloads(false)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.Items[0].EpisodeID == nil {
-		t.Fatal("expected EpisodeID to be set")
-	}
-	if *resp.Items[0].EpisodeID != 42 {
-		t.Errorf("EpisodeID = %d, want 42", *resp.Items[0].EpisodeID)
-	}
-	if resp.Items[0].CompletedAt == nil {
-		t.Fatal("expected CompletedAt to be set")
-	}
-	if *resp.Items[0].CompletedAt != completedAt {
-		t.Errorf("CompletedAt = %q, want %q", *resp.Items[0].CompletedAt, completedAt)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, resp.Items[0].EpisodeID, "expected EpisodeID to be set")
+	assert.Equal(t, int64(42), *resp.Items[0].EpisodeID)
+	require.NotNil(t, resp.Items[0].CompletedAt, "expected CompletedAt to be set")
+	assert.Equal(t, completedAt, *resp.Items[0].CompletedAt)
 }
