@@ -1,5 +1,7 @@
 # CLI Visibility Implementation Plan
 
+> **Status:** ✅ COMPLETED (2026-01-19) - Merged in PR #22
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Improve CLI visibility into download pipeline with dashboard, enhanced queue, imports view, and verify command.
