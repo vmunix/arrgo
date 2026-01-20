@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
 
@@ -15,14 +16,11 @@ var testSchema string
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:?_foreign_keys=on")
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
+	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 
-	if _, err := db.Exec(testSchema); err != nil {
-		t.Fatalf("apply schema: %v", err)
-	}
+	_, err = db.Exec(testSchema)
+	require.NoError(t, err)
 	return db
 }
 
@@ -35,12 +33,8 @@ func insertTestContent(t *testing.T, db *sql.DB, title string) int64 {
 		VALUES ('movie', ?, 2000, 'wanted', 'hd', '/movies')`,
 		title,
 	)
-	if err != nil {
-		t.Fatalf("insert test content: %v", err)
-	}
+	require.NoError(t, err)
 	id, err := result.LastInsertId()
-	if err != nil {
-		t.Fatalf("get content id: %v", err)
-	}
+	require.NoError(t, err)
 	return id
 }

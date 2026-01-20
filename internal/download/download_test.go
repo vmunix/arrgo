@@ -3,6 +3,8 @@ package download
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestStatusConstants(t *testing.T) {
@@ -17,9 +19,7 @@ func TestStatusConstants(t *testing.T) {
 	}
 
 	for _, s := range statuses {
-		if s == "" {
-			t.Error("status constant is empty")
-		}
+		assert.NotEmpty(t, s, "status constant is empty")
 	}
 }
 
@@ -31,10 +31,7 @@ func TestDownloadHasLastTransitionAt(t *testing.T) {
 		LastTransitionAt: now,
 	}
 
-	if d.LastTransitionAt.IsZero() {
-		t.Error("LastTransitionAt should be set")
-	}
-	if !d.LastTransitionAt.Equal(now) {
-		t.Errorf("LastTransitionAt = %v, want %v", d.LastTransitionAt, now)
-	}
+	assert.False(t, d.LastTransitionAt.IsZero(), "LastTransitionAt should be set")
+	assert.True(t, d.LastTransitionAt.Equal(now),
+		"LastTransitionAt = %v, want %v", d.LastTransitionAt, now)
 }
