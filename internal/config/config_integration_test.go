@@ -3,6 +3,9 @@ package config
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFullWorkflow(t *testing.T) {
@@ -10,9 +13,8 @@ func TestFullWorkflow(t *testing.T) {
 
 	// 1. Write default config
 	cfgPath := filepath.Join(tmp, "arrgo", "config.toml")
-	if err := WriteDefault(cfgPath); err != nil {
-		t.Fatalf("WriteDefault: %v", err)
-	}
+	err := WriteDefault(cfgPath)
+	require.NoError(t, err, "WriteDefault failed")
 
 	// 2. Set required env vars (t.Setenv auto-restores on cleanup)
 	t.Setenv("NZBGEEK_API_KEY", "test-nzbgeek-key")
@@ -24,21 +26,13 @@ func TestFullWorkflow(t *testing.T) {
 
 	// 3. Load without validation (library paths don't exist)
 	cfg, err := LoadWithoutValidation(cfgPath)
-	if err != nil {
-		t.Fatalf("LoadWithoutValidation: %v", err)
-	}
+	require.NoError(t, err, "LoadWithoutValidation failed")
 
 	// 4. Verify env substitution worked for indexer
 	nzbgeek, ok := cfg.Indexers["nzbgeek"]
-	if !ok {
-		t.Fatalf("expected nzbgeek indexer to be configured")
-	}
-	if nzbgeek.APIKey != "test-nzbgeek-key" {
-		t.Errorf("expected nzbgeek key substituted, got %q", nzbgeek.APIKey)
-	}
+	require.True(t, ok, "expected nzbgeek indexer to be configured")
+	assert.Equal(t, "test-nzbgeek-key", nzbgeek.APIKey)
 
 	// 5. Verify defaults applied
-	if cfg.Server.Port != 8484 {
-		t.Errorf("expected default port 8484, got %d", cfg.Server.Port)
-	}
+	assert.Equal(t, 8484, cfg.Server.Port)
 }

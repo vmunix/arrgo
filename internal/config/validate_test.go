@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestValidate_MinimalValid(t *testing.T) {
@@ -20,23 +22,13 @@ func TestValidate_MinimalValid(t *testing.T) {
 		},
 	}
 	errs := cfg.Validate()
-	if len(errs) != 0 {
-		t.Errorf("expected no errors for minimal valid config, got %v", errs)
-	}
+	assert.Empty(t, errs, "expected no errors for minimal valid config")
 }
 
 func TestValidate_NoLibrary(t *testing.T) {
 	cfg := &Config{}
 	errs := cfg.Validate()
-	found := false
-	for _, e := range errs {
-		if strings.Contains(e, "at least one library") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("expected library error, got %v", errs)
-	}
+	assert.True(t, containsError(errs, "at least one library"), "expected library error, got %v", errs)
 }
 
 func TestValidate_InvalidPort(t *testing.T) {
@@ -45,15 +37,7 @@ func TestValidate_InvalidPort(t *testing.T) {
 		Libraries: LibrariesConfig{Movies: LibraryConfig{Root: "/tmp"}},
 	}
 	errs := cfg.Validate()
-	found := false
-	for _, e := range errs {
-		if strings.Contains(e, "server.port") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("expected port error, got %v", errs)
-	}
+	assert.True(t, containsError(errs, "server.port"), "expected port error, got %v", errs)
 }
 
 func TestValidate_InvalidLogLevel(t *testing.T) {
@@ -62,15 +46,7 @@ func TestValidate_InvalidLogLevel(t *testing.T) {
 		Libraries: LibrariesConfig{Movies: LibraryConfig{Root: "/tmp"}},
 	}
 	errs := cfg.Validate()
-	found := false
-	for _, e := range errs {
-		if strings.Contains(e, "log_level") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("expected log_level error, got %v", errs)
-	}
+	assert.True(t, containsError(errs, "log_level"), "expected log_level error, got %v", errs)
 }
 
 func TestValidate_IndexerMissingAPIKey(t *testing.T) {
@@ -81,15 +57,7 @@ func TestValidate_IndexerMissingAPIKey(t *testing.T) {
 		},
 	}
 	errs := cfg.Validate()
-	found := false
-	for _, e := range errs {
-		if strings.Contains(e, "nzbgeek") && strings.Contains(e, "api_key") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("expected indexer api_key error, got %v", errs)
-	}
+	assert.True(t, containsErrorBoth(errs, "nzbgeek", "api_key"), "expected indexer api_key error, got %v", errs)
 }
 
 func TestValidate_NoIndexers(t *testing.T) {
@@ -98,15 +66,7 @@ func TestValidate_NoIndexers(t *testing.T) {
 		Indexers:  IndexersConfig{},
 	}
 	errs := cfg.Validate()
-	found := false
-	for _, e := range errs {
-		if strings.Contains(e, "at least one indexer") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("expected 'at least one indexer' error, got %v", errs)
-	}
+	assert.True(t, containsError(errs, "at least one indexer"), "expected 'at least one indexer' error, got %v", errs)
 }
 
 func TestValidate_QualityDefaultNotDefined(t *testing.T) {
@@ -118,15 +78,7 @@ func TestValidate_QualityDefaultNotDefined(t *testing.T) {
 		},
 	}
 	errs := cfg.Validate()
-	found := false
-	for _, e := range errs {
-		if strings.Contains(e, "quality.default") && strings.Contains(e, "ultra") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("expected quality.default error, got %v", errs)
-	}
+	assert.True(t, containsErrorBoth(errs, "quality.default", "ultra"), "expected quality.default error, got %v", errs)
 }
 
 func TestValidate_AIProviderInvalid(t *testing.T) {
@@ -135,15 +87,7 @@ func TestValidate_AIProviderInvalid(t *testing.T) {
 		AI:        AIConfig{Enabled: true, Provider: "openai"},
 	}
 	errs := cfg.Validate()
-	found := false
-	for _, e := range errs {
-		if strings.Contains(e, "ai.provider") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("expected ai.provider error, got %v", errs)
-	}
+	assert.True(t, containsError(errs, "ai.provider"), "expected ai.provider error, got %v", errs)
 }
 
 func TestValidate_LibraryRootWarning(t *testing.T) {
@@ -153,15 +97,7 @@ func TestValidate_LibraryRootWarning(t *testing.T) {
 		},
 	}
 	errs := cfg.Validate()
-	found := false
-	for _, e := range errs {
-		if strings.Contains(e, "warning") && strings.Contains(e, "does not exist") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("expected warning for nonexistent path, got %v", errs)
-	}
+	assert.True(t, containsErrorBoth(errs, "warning", "does not exist"), "expected warning for nonexistent path, got %v", errs)
 }
 
 func TestValidate_LibraryRootExists(t *testing.T) {
@@ -172,11 +108,7 @@ func TestValidate_LibraryRootExists(t *testing.T) {
 		},
 	}
 	errs := cfg.Validate()
-	for _, e := range errs {
-		if strings.Contains(e, tmp) {
-			t.Errorf("unexpected error for existing path: %v", errs)
-		}
-	}
+	assert.False(t, containsError(errs, tmp), "unexpected error for existing path: %v", errs)
 }
 
 func TestValidate_SABnzbdMissingURL(t *testing.T) {
@@ -187,13 +119,24 @@ func TestValidate_SABnzbdMissingURL(t *testing.T) {
 		},
 	}
 	errs := cfg.Validate()
-	found := false
+	assert.True(t, containsErrorBoth(errs, "sabnzbd", "url"), "expected sabnzbd url error, got %v", errs)
+}
+
+// Helper functions to check for errors containing specific strings
+func containsError(errs []string, substr string) bool {
 	for _, e := range errs {
-		if strings.Contains(e, "sabnzbd") && strings.Contains(e, "url") {
-			found = true
+		if strings.Contains(e, substr) {
+			return true
 		}
 	}
-	if !found {
-		t.Errorf("expected sabnzbd url error, got %v", errs)
+	return false
+}
+
+func containsErrorBoth(errs []string, substr1, substr2 string) bool {
+	for _, e := range errs {
+		if strings.Contains(e, substr1) && strings.Contains(e, substr2) {
+			return true
+		}
 	}
+	return false
 }
