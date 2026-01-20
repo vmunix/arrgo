@@ -246,7 +246,11 @@ func runServer(configPath string) error {
 
 
 	// === HTTP Server ===
-	srv := &http.Server{Addr: addr, Handler: logRequests(mux, logger)}
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           logRequests(mux, logger),
+		ReadHeaderTimeout: 10 * time.Second, // Prevent Slowloris attacks
+	}
 
 	// Start server in goroutine
 	go func() {

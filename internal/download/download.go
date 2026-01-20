@@ -281,7 +281,10 @@ func (s *Store) List(f DownloadFilter) ([]*Download, error) {
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	query := "SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at FROM downloads " + whereClause + " ORDER BY id"
+	// G202: False positive - whereClause contains only "col = ?" conditions,
+	// actual values are passed via args parameter (parameterized query).
+	query := "SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at FROM downloads " + //nolint:gosec
+		whereClause + " ORDER BY id"
 
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
@@ -330,11 +333,12 @@ func (s *Store) ListStuck(thresholds map[Status]time.Duration) ([]*Download, err
 		return nil, nil
 	}
 
-	query := `
-		SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at
-		FROM downloads
-		WHERE ` + strings.Join(conditions, " OR ") + `
-		ORDER BY last_transition_at`
+	// False positive - conditions contain only "(status = ? AND last_transition_at < ?)" patterns,
+	// actual values are passed via args parameter (parameterized query).
+	whereClause := strings.Join(conditions, " OR ")
+	//nolint:gosec // G201: whereClause is built from hardcoded conditions, not user input
+	query := fmt.Sprintf(`SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at
+		FROM downloads WHERE %s ORDER BY last_transition_at`, whereClause)
 
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
