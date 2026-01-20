@@ -96,6 +96,11 @@ sonarr = true
 [importer]
 cleanup_source = true  # Delete source files after successful import and Plex verification (default: true)
 
+# TMDB metadata (enriches Overseerr responses)
+# Get free API key at https://www.themoviedb.org/settings/api
+[tmdb]
+api_key = "${TMDB_API_KEY}"
+
 # AI assistant configuration
 [ai]
 enabled = true

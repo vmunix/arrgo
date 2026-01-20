@@ -16,6 +16,7 @@ import (
 
 	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/library"
+	"github.com/vmunix/arrgo/internal/tmdb"
 )
 
 // Test constants
@@ -491,4 +492,70 @@ func TestAuthMiddleware_APIKeyNotConfigured_SkipsAuth(t *testing.T) {
 
 	// Should succeed (200 OK) when no API key configured
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// TMDB Lookup Tests
+
+func TestLookupMovie_WithTMDB(t *testing.T) {
+	// Mock TMDB server
+	tmdbServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := map[string]any{
+			"id":           12345,
+			"title":        "Test Movie",
+			"overview":     "A great movie about testing.",
+			"release_date": "2024-06-15",
+			"poster_path":  "/test.jpg",
+			"vote_average": 8.5,
+			"vote_count":   1000,
+			"runtime":      120,
+			"genres":       []map[string]any{{"id": 28, "name": "Action"}},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer tmdbServer.Close()
+
+	// Create server with TMDB client
+	db := setupTestDB(t)
+	store := library.NewStore(db)
+	dlStore := download.NewStore(db)
+	srv := New(Config{APIKey: "test-key"}, store, dlStore)
+
+	tmdbClient := tmdb.NewClient("fake-key", tmdb.WithBaseURL(tmdbServer.URL))
+	srv.SetTMDB(tmdbClient)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	// Make request
+	req := httptest.NewRequest("GET", "/api/v3/movie/lookup?term=tmdb:12345", nil)
+	req.Header.Set("X-Api-Key", "test-key")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var results []map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &results))
+	require.Len(t, results, 1)
+
+	result := results[0]
+	assert.EqualValues(t, 12345, result["tmdbId"])
+	assert.Equal(t, "Test Movie", result["title"])
+	assert.EqualValues(t, 2024, result["year"])
+	assert.Equal(t, "A great movie about testing.", result["overview"])
+	assert.EqualValues(t, 120, result["runtime"])
+
+	// Check images
+	images, ok := result["images"].([]any)
+	require.True(t, ok)
+	require.Len(t, images, 1)
+	img := images[0].(map[string]any)
+	assert.Equal(t, "poster", img["coverType"])
+	assert.Contains(t, img["url"], "image.tmdb.org")
+
+	// Check ratings
+	ratings, ok := result["ratings"].(map[string]any)
+	require.True(t, ok)
+	tmdbRating := ratings["tmdb"].(map[string]any)
+	assert.InDelta(t, 8.5, tmdbRating["value"], 0.001)
 }

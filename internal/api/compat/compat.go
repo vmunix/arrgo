@@ -11,6 +11,7 @@ import (
 	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/library"
 	"github.com/vmunix/arrgo/internal/search"
+	"github.com/vmunix/arrgo/internal/tmdb"
 )
 
 // Config holds compat API configuration.
@@ -86,6 +87,7 @@ type Server struct {
 	downloads *download.Store
 	searcher  *search.Searcher
 	manager   *download.Manager
+	tmdb      *tmdb.Client
 }
 
 // New creates a new compatibility server.
@@ -105,6 +107,11 @@ func (s *Server) SetSearcher(searcher *search.Searcher) {
 // SetManager configures the download manager (optional).
 func (s *Server) SetManager(manager *download.Manager) {
 	s.manager = manager
+}
+
+// SetTMDB configures the TMDB client (optional).
+func (s *Server) SetTMDB(client *tmdb.Client) {
+	s.tmdb = client
 }
 
 // RegisterRoutes registers compatibility API routes.
@@ -217,17 +224,46 @@ func (s *Server) lookupMovie(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Not in library - return stub without ID so Overseerr knows to add it
-	// Overseerr expects movie metadata from lookup even if not in library
-	writeJSON(w, http.StatusOK, []map[string]any{{
+	// Not in library - fetch metadata from TMDB if available
+	response := map[string]any{
 		"tmdbId":      tmdbID,
-		"title":       "", // Overseerr has this from TMDB already
+		"title":       "",
 		"year":        0,
 		"monitored":   false,
 		"hasFile":     false,
 		"isAvailable": false,
-		// No "id" field = not in library, Overseerr will POST to add
-	}})
+	}
+
+	// Enrich with TMDB metadata if client configured
+	if s.tmdb != nil {
+		movie, err := s.tmdb.GetMovie(r.Context(), tmdbID)
+		if err == nil {
+			response["title"] = movie.Title
+			response["year"] = movie.Year()
+			response["overview"] = movie.Overview
+			response["runtime"] = movie.Runtime
+			if movie.PosterPath != "" {
+				response["images"] = []map[string]any{{
+					"coverType": "poster",
+					"url":       movie.PosterURL("w500"),
+				}}
+			}
+			if movie.VoteAverage > 0 {
+				response["ratings"] = map[string]any{
+					"tmdb": map[string]any{
+						"value": movie.VoteAverage,
+						"votes": movie.VoteCount,
+					},
+				}
+			}
+			if len(movie.Genres) > 0 {
+				response["genres"] = movie.Genres
+			}
+		}
+		// On error, continue with stub - graceful degradation
+	}
+
+	writeJSON(w, http.StatusOK, []map[string]any{response})
 }
 
 func (s *Server) getMovie(w http.ResponseWriter, r *http.Request) {
