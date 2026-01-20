@@ -2,6 +2,7 @@ package download
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 )
@@ -72,6 +73,15 @@ func (m *Manager) Refresh(ctx context.Context) error {
 	for _, d := range downloads {
 		status, err := m.client.Status(ctx, d.ClientID)
 		if err != nil {
+			if errors.Is(err, ErrDownloadNotFound) {
+				// Download disappeared from client - mark as failed (allows retry)
+				m.log.Warn("download orphaned", "download_id", d.ID, "client_id", d.ClientID)
+				if transErr := m.store.Transition(d, StatusFailed); transErr != nil {
+					m.log.Error("failed to mark orphan as failed", "download_id", d.ID, "error", transErr)
+					lastErr = transErr
+				}
+				continue
+			}
 			m.log.Error("refresh error", "download_id", d.ID, "error", err)
 			lastErr = err
 			continue

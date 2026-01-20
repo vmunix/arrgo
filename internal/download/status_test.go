@@ -13,6 +13,7 @@ func TestCanTransitionTo_ValidTransitions(t *testing.T) {
 		to   Status
 	}{
 		{StatusQueued, StatusDownloading},
+		{StatusQueued, StatusCompleted}, // fast download completes before poll
 		{StatusQueued, StatusFailed},
 		{StatusDownloading, StatusCompleted},
 		{StatusDownloading, StatusFailed},
@@ -36,7 +37,6 @@ func TestCanTransitionTo_InvalidTransitions(t *testing.T) {
 		from Status
 		to   Status
 	}{
-		{StatusQueued, StatusCompleted},     // skip downloading
 		{StatusQueued, StatusImported},      // skip multiple
 		{StatusQueued, StatusCleaned},       // skip multiple
 		{StatusDownloading, StatusQueued},   // backwards

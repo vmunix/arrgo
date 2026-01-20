@@ -570,3 +570,34 @@ func TestStore_ListStuck(t *testing.T) {
 	require.Len(t, stuck, 1)
 	assert.Equal(t, d1.ID, stuck[0].ID)
 }
+
+func TestStore_Transition_FailedToQueued(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+	contentID := insertTestContent(t, db, "Retry Movie")
+
+	// Add a failed download
+	d := &Download{
+		ContentID:   contentID,
+		Client:      ClientManual,
+		ClientID:    "test-retry",
+		Status:      StatusFailed,
+		ReleaseName: "Failed.Movie",
+		Indexer:     "manual",
+	}
+	require.NoError(t, store.Add(d))
+
+	// Retry: transition from failed to queued
+	beforeRetry := time.Now()
+	err := store.Transition(d, StatusQueued)
+	require.NoError(t, err, "failed -> queued should be valid (retry)")
+
+	assert.Equal(t, StatusQueued, d.Status, "status should be queued after retry")
+	assert.True(t, d.LastTransitionAt.After(beforeRetry) || d.LastTransitionAt.Equal(beforeRetry),
+		"LastTransitionAt should be updated on retry")
+
+	// Verify in DB
+	got, err := store.Get(d.ID)
+	require.NoError(t, err)
+	assert.Equal(t, StatusQueued, got.Status)
+}

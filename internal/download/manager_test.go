@@ -480,3 +480,263 @@ func TestManager_GetActive_ExcludesTerminal(t *testing.T) {
 		assert.NotEqual(t, download.StatusFailed, a.Download.Status, "GetActive should exclude failed status")
 	}
 }
+
+// --- State Machine Boundary Tests ---
+
+func TestManager_Refresh_RejectsInvalidTransition(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	db := setupTestDB(t)
+	store := download.NewStore(db)
+	contentID := insertTestContent(t, db)
+
+	// Insert download already in "completed" state
+	d := &download.Download{
+		ContentID:   contentID,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "nzo_completed",
+		Status:      download.StatusCompleted,
+		ReleaseName: "Completed.Movie",
+	}
+	require.NoError(t, store.Add(d))
+
+	// Mock SABnzbd reports "downloading" (stale data - invalid backwards transition)
+	client := mocks.NewMockDownloader(ctrl)
+	client.EXPECT().
+		Status(gomock.Any(), "nzo_completed").
+		Return(&download.ClientStatus{
+			ID:       "nzo_completed",
+			Status:   download.StatusDownloading,
+			Progress: 50,
+		}, nil)
+
+	mgr := download.NewManager(client, store, testLogger())
+
+	err := mgr.Refresh(context.Background())
+	require.NoError(t, err, "Refresh should not error on invalid transition")
+
+	// Verify status was NOT overwritten
+	updated, err := store.Get(d.ID)
+	require.NoError(t, err)
+	assert.Equal(t, download.StatusCompleted, updated.Status, "completed status should not be overwritten by downloading")
+}
+
+func TestManager_Refresh_OrphanDetection(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	db := setupTestDB(t)
+	store := download.NewStore(db)
+	contentID := insertTestContent(t, db)
+
+	// Insert download that's "downloading" in our DB
+	d := &download.Download{
+		ContentID:   contentID,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "nzo_orphan",
+		Status:      download.StatusDownloading,
+		ReleaseName: "Orphan.Movie",
+	}
+	require.NoError(t, store.Add(d))
+
+	// Mock SABnzbd says download not found (orphaned)
+	client := mocks.NewMockDownloader(ctrl)
+	client.EXPECT().
+		Status(gomock.Any(), "nzo_orphan").
+		Return(nil, download.ErrDownloadNotFound)
+
+	mgr := download.NewManager(client, store, testLogger())
+
+	err := mgr.Refresh(context.Background())
+	require.NoError(t, err, "Refresh should handle orphans gracefully")
+
+	// Verify download was marked as failed
+	updated, err := store.Get(d.ID)
+	require.NoError(t, err)
+	assert.Equal(t, download.StatusFailed, updated.Status, "orphaned download should be marked as failed")
+}
+
+func TestManager_Refresh_PartialFailures(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	db := setupTestDB(t)
+	store := download.NewStore(db)
+	contentID := insertTestContent(t, db)
+
+	// Insert 3 downloads
+	d1 := &download.Download{
+		ContentID:   contentID,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "nzo_1",
+		Status:      download.StatusDownloading,
+		ReleaseName: "Movie.1",
+	}
+	require.NoError(t, store.Add(d1))
+
+	d2 := &download.Download{
+		ContentID:   contentID,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "nzo_2",
+		Status:      download.StatusDownloading,
+		ReleaseName: "Movie.2",
+	}
+	require.NoError(t, store.Add(d2))
+
+	d3 := &download.Download{
+		ContentID:   contentID,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "nzo_3",
+		Status:      download.StatusDownloading,
+		ReleaseName: "Movie.3",
+	}
+	require.NoError(t, store.Add(d3))
+
+	client := mocks.NewMockDownloader(ctrl)
+	// nzo_1 succeeds
+	client.EXPECT().
+		Status(gomock.Any(), "nzo_1").
+		Return(&download.ClientStatus{
+			ID:     "nzo_1",
+			Status: download.StatusCompleted,
+		}, nil)
+	// nzo_2 fails
+	client.EXPECT().
+		Status(gomock.Any(), "nzo_2").
+		Return(nil, download.ErrClientUnavailable)
+	// nzo_3 succeeds
+	client.EXPECT().
+		Status(gomock.Any(), "nzo_3").
+		Return(&download.ClientStatus{
+			ID:     "nzo_3",
+			Status: download.StatusCompleted,
+		}, nil)
+
+	mgr := download.NewManager(client, store, testLogger())
+
+	err := mgr.Refresh(context.Background())
+	require.Error(t, err, "Refresh should return error when some downloads fail")
+
+	// Verify d1 updated
+	updated1, _ := store.Get(d1.ID)
+	assert.Equal(t, download.StatusCompleted, updated1.Status, "d1 should be completed")
+
+	// Verify d2 unchanged (error)
+	updated2, _ := store.Get(d2.ID)
+	assert.Equal(t, download.StatusDownloading, updated2.Status, "d2 should remain downloading after error")
+
+	// Verify d3 updated (continued after d2 error)
+	updated3, _ := store.Get(d3.ID)
+	assert.Equal(t, download.StatusCompleted, updated3.Status, "d3 should be completed despite d2 error")
+}
+
+func TestManager_Refresh_EmptyActiveList(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	db := setupTestDB(t)
+	store := download.NewStore(db)
+
+	// No downloads in DB
+	client := mocks.NewMockDownloader(ctrl)
+	// No Status calls expected
+
+	mgr := download.NewManager(client, store, testLogger())
+
+	err := mgr.Refresh(context.Background())
+	require.NoError(t, err, "Refresh with no active downloads should succeed")
+}
+
+// --- Cancel State Tests ---
+
+func TestManager_Cancel_FromQueued(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	db := setupTestDB(t)
+	store := download.NewStore(db)
+	contentID := insertTestContent(t, db)
+
+	d := &download.Download{
+		ContentID:   contentID,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "nzo_queued",
+		Status:      download.StatusQueued,
+		ReleaseName: "Queued.Movie",
+	}
+	require.NoError(t, store.Add(d))
+
+	client := mocks.NewMockDownloader(ctrl)
+	client.EXPECT().
+		Remove(gomock.Any(), "nzo_queued", false).
+		Return(nil)
+
+	mgr := download.NewManager(client, store, testLogger())
+
+	err := mgr.Cancel(context.Background(), d.ID, false)
+	require.NoError(t, err)
+
+	// Verify deleted from DB
+	_, err = store.Get(d.ID)
+	require.ErrorIs(t, err, download.ErrNotFound)
+}
+
+func TestManager_Cancel_FromDownloading(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	db := setupTestDB(t)
+	store := download.NewStore(db)
+	contentID := insertTestContent(t, db)
+
+	d := &download.Download{
+		ContentID:   contentID,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "nzo_downloading",
+		Status:      download.StatusDownloading,
+		ReleaseName: "Downloading.Movie",
+	}
+	require.NoError(t, store.Add(d))
+
+	client := mocks.NewMockDownloader(ctrl)
+	client.EXPECT().
+		Remove(gomock.Any(), "nzo_downloading", false).
+		Return(nil)
+
+	mgr := download.NewManager(client, store, testLogger())
+
+	err := mgr.Cancel(context.Background(), d.ID, false)
+	require.NoError(t, err)
+
+	// Verify deleted from DB
+	_, err = store.Get(d.ID)
+	require.ErrorIs(t, err, download.ErrNotFound)
+}
+
+func TestManager_Cancel_FromCompleted_WithDeleteFiles(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	db := setupTestDB(t)
+	store := download.NewStore(db)
+	contentID := insertTestContent(t, db)
+
+	d := &download.Download{
+		ContentID:   contentID,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "nzo_completed",
+		Status:      download.StatusCompleted,
+		ReleaseName: "Completed.Movie",
+	}
+	require.NoError(t, store.Add(d))
+
+	client := mocks.NewMockDownloader(ctrl)
+	// Expect Remove called with deleteFiles=true
+	client.EXPECT().
+		Remove(gomock.Any(), "nzo_completed", true).
+		Return(nil)
+
+	mgr := download.NewManager(client, store, testLogger())
+
+	// Cancel with deleteFiles=true
+	err := mgr.Cancel(context.Background(), d.ID, true)
+	require.NoError(t, err)
+
+	// Verify deleted from DB
+	_, err = store.Get(d.ID)
+	require.ErrorIs(t, err, download.ErrNotFound)
+}

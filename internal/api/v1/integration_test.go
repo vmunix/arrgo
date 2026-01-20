@@ -244,8 +244,8 @@ func insertTestContent(t *testing.T, db *sql.DB, contentType, title string, year
 func insertTestDownload(t *testing.T, db *sql.DB, contentID int64, clientID, status string) int64 {
 	t.Helper()
 	result, err := db.Exec(`
-		INSERT INTO downloads (content_id, client, client_id, status, release_name, indexer, added_at)
-		VALUES (?, 'sabnzbd', ?, ?, 'Test.Release', 'TestIndexer', datetime('now'))`,
+		INSERT INTO downloads (content_id, client, client_id, status, release_name, indexer, added_at, last_transition_at)
+		VALUES (?, 'sabnzbd', ?, ?, 'Test.Release', 'TestIndexer', datetime('now'), datetime('now'))`,
 		contentID, clientID, status,
 	)
 	require.NoError(t, err, "insert download")
@@ -281,7 +281,7 @@ func TestIntegration_SearchAndGrab(t *testing.T) {
 		"type":    "movie",
 		"profile": "hd",
 	})
-	require.Equal(t, http.StatusOK, searchResp.StatusCode, "search failed: %s", readBody(t, searchResp))
+	requireStatus(t, searchResp, http.StatusOK, "search")
 
 	var searchResult searchResponse
 	decodeJSON(t, searchResp, &searchResult)
@@ -296,7 +296,7 @@ func TestIntegration_SearchAndGrab(t *testing.T) {
 		"year":            1999,
 		"quality_profile": "hd",
 	})
-	require.Equal(t, http.StatusCreated, contentResp.StatusCode, "add content failed: %s", readBody(t, contentResp))
+	requireStatus(t, contentResp, http.StatusCreated, "add content")
 
 	var content contentResponse
 	decodeJSON(t, contentResp, &content)
@@ -310,7 +310,7 @@ func TestIntegration_SearchAndGrab(t *testing.T) {
 		"title":        searchResult.Releases[0].Title,
 		"indexer":      searchResult.Releases[0].Indexer,
 	})
-	require.Equal(t, http.StatusOK, grabResp.StatusCode, "grab failed: %s", readBody(t, grabResp))
+	requireStatus(t, grabResp, http.StatusOK, "grab")
 
 	var grab grabResponse
 	decodeJSON(t, grabResp, &grab)
@@ -424,7 +424,7 @@ func TestIntegration_FullHappyPath(t *testing.T) {
 		"query": "inception 2010",
 		"type":  "movie",
 	})
-	require.Equal(t, http.StatusOK, searchResp.StatusCode, "search failed: %s", readBody(t, searchResp))
+	requireStatus(t, searchResp, http.StatusOK, "search")
 
 	var searchResult searchResponse
 	decodeJSON(t, searchResp, &searchResult)
@@ -438,7 +438,7 @@ func TestIntegration_FullHappyPath(t *testing.T) {
 		"year":            2010,
 		"quality_profile": "hd",
 	})
-	require.Equal(t, http.StatusCreated, contentResp.StatusCode, "add content failed: %s", readBody(t, contentResp))
+	requireStatus(t, contentResp, http.StatusCreated, "add content")
 
 	var content contentResponse
 	decodeJSON(t, contentResp, &content)
@@ -450,7 +450,7 @@ func TestIntegration_FullHappyPath(t *testing.T) {
 		"title":        searchResult.Releases[0].Title,
 		"indexer":      searchResult.Releases[0].Indexer,
 	})
-	require.Equal(t, http.StatusOK, grabResp.StatusCode, "grab failed: %s", readBody(t, grabResp))
+	requireStatus(t, grabResp, http.StatusOK, "grab")
 
 	// Verify download created with queued status
 	dl := queryDownload(t, env.db, content.ID)
@@ -474,7 +474,218 @@ func TestIntegration_FullHappyPath(t *testing.T) {
 
 	// Verify content still exists and can be retrieved via API
 	getResp := httpGet(t, env.api.URL+"/api/v1/content/"+fmt.Sprintf("%d", content.ID))
-	require.Equal(t, http.StatusOK, getResp.StatusCode, "get content failed: %s", readBody(t, getResp))
+	requireStatus(t, getResp, http.StatusOK, "get content")
+}
+
+// TestIntegration_FullLifecycle exercises the complete download state machine:
+// queued → downloading → completed → imported
+// This is the comprehensive "happy path" test that verifies all state transitions.
+func TestIntegration_FullLifecycle(t *testing.T) {
+	// Create temp directories for import
+	sourceDir := t.TempDir()
+	movieRoot := t.TempDir()
+	seriesRoot := t.TempDir()
+
+	// Set up in-memory database
+	db, err := sql.Open("sqlite", ":memory:?_foreign_keys=on")
+	require.NoError(t, err, "open db")
+	t.Cleanup(func() { _ = db.Close() })
+
+	_, err = db.Exec(testSchema)
+	require.NoError(t, err, "apply schema")
+
+	// Create mock controller
+	ctrl := gomock.NewController(t)
+
+	// Create mock indexer
+	mockIndexer := searchmocks.NewMockIndexerAPI(ctrl)
+
+	// Create mock SABnzbd server with dynamic status
+	var sabnzbdClientID string
+	var sabnzbdStatus *download.ClientStatus
+	sabnzbd := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mode := r.URL.Query().Get("mode")
+		w.Header().Set("Content-Type", "application/json")
+
+		switch mode {
+		case "addurl":
+			resp := map[string]any{
+				"status":  true,
+				"nzo_ids": []string{sabnzbdClientID},
+			}
+			_ = json.NewEncoder(w).Encode(resp)
+
+		case "queue":
+			slots := []map[string]any{}
+			if sabnzbdStatus != nil && (sabnzbdStatus.Status == download.StatusQueued || sabnzbdStatus.Status == download.StatusDownloading) {
+				slots = append(slots, map[string]any{
+					"nzo_id":     sabnzbdStatus.ID,
+					"filename":   sabnzbdStatus.Name,
+					"status":     "Downloading",
+					"percentage": fmt.Sprintf("%.0f", sabnzbdStatus.Progress),
+					"mb":         "1000",
+					"mbleft":     "500",
+				})
+			}
+			resp := map[string]any{"queue": map[string]any{"slots": slots}}
+			_ = json.NewEncoder(w).Encode(resp)
+
+		case "history":
+			slots := []map[string]any{}
+			if sabnzbdStatus != nil && sabnzbdStatus.Status == download.StatusCompleted {
+				slots = append(slots, map[string]any{
+					"nzo_id":  sabnzbdStatus.ID,
+					"name":    sabnzbdStatus.Name,
+					"status":  "Completed",
+					"storage": sabnzbdStatus.Path,
+				})
+			}
+			resp := map[string]any{"history": map[string]any{"slots": slots}}
+			_ = json.NewEncoder(w).Encode(resp)
+
+		default:
+			http.Error(w, "unknown mode", http.StatusBadRequest)
+		}
+	}))
+	t.Cleanup(sabnzbd.Close)
+
+	// Create components
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	profiles := map[string]config.QualityProfile{
+		"hd": {Resolution: []string{"1080p", "720p"}, Sources: []string{"bluray", "webdl"}},
+	}
+	scorer := search.NewScorer(profiles)
+	searcher := search.NewSearcher(mockIndexer, scorer, logger)
+	sabnzbdClient := download.NewSABnzbdClient(sabnzbd.URL, "test-api-key", "arrgo")
+	downloadStore := download.NewStore(db)
+	manager := download.NewManager(sabnzbdClient, downloadStore, logger)
+
+	// Create importer
+	importerCfg := importer.Config{MovieRoot: movieRoot, SeriesRoot: seriesRoot}
+	imp := importer.New(db, importerCfg, logger)
+
+	// Create API server
+	cfg := Config{
+		MovieRoot:       movieRoot,
+		SeriesRoot:      seriesRoot,
+		QualityProfiles: map[string][]string{"hd": {"1080p", "720p"}},
+	}
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: downloadStore,
+		History:   importer.NewHistoryStore(db),
+		Searcher:  searcher,
+		Manager:   manager,
+		Importer:  imp,
+	}
+	srv, err := NewWithDeps(deps, cfg)
+	require.NoError(t, err, "create server")
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+	api := httptest.NewServer(mux)
+	t.Cleanup(api.Close)
+
+	ctx := t.Context()
+
+	// === PHASE 1: Search ===
+	releases := []search.Release{
+		mockRelease("Blade.Runner.1982.1080p.BluRay.x264", 12_000_000_000, "nzbgeek"),
+	}
+	mockIndexer.EXPECT().Search(gomock.Any(), gomock.Any()).Return(releases, nil)
+
+	searchResp := httpPost(t, api.URL+"/api/v1/search", map[string]any{
+		"query": "blade runner 1982",
+		"type":  "movie",
+	})
+	requireStatus(t, searchResp, http.StatusOK, "search")
+
+	var searchResult searchResponse
+	decodeJSON(t, searchResp, &searchResult)
+	require.NotEmpty(t, searchResult.Releases)
+
+	// === PHASE 2: Add Content ===
+	contentResp := httpPost(t, api.URL+"/api/v1/content", map[string]any{
+		"type":            "movie",
+		"title":           "Blade Runner",
+		"year":            1982,
+		"quality_profile": "hd",
+	})
+	requireStatus(t, contentResp, http.StatusCreated, "add content")
+
+	var content contentResponse
+	decodeJSON(t, contentResp, &content)
+	assert.Equal(t, "wanted", content.Status, "initial content status")
+
+	// === PHASE 3: Grab ===
+	sabnzbdClientID = "SABnzbd_nzo_blade"
+	grabResp := httpPost(t, api.URL+"/api/v1/grab", map[string]any{
+		"content_id":   content.ID,
+		"download_url": searchResult.Releases[0].DownloadURL,
+		"title":        searchResult.Releases[0].Title,
+		"indexer":      searchResult.Releases[0].Indexer,
+	})
+	requireStatus(t, grabResp, http.StatusOK, "grab")
+
+	dl := queryDownload(t, db, content.ID)
+	assert.Equal(t, download.StatusQueued, dl.Status, "status after grab")
+
+	// === PHASE 4: Downloading ===
+	sabnzbdStatus = &download.ClientStatus{
+		ID:       "SABnzbd_nzo_blade",
+		Name:     "Blade.Runner.1982.1080p.BluRay.x264",
+		Status:   download.StatusDownloading,
+		Progress: 50,
+	}
+	require.NoError(t, manager.Refresh(ctx), "refresh to downloading")
+
+	dl = queryDownload(t, db, content.ID)
+	assert.Equal(t, download.StatusDownloading, dl.Status, "status after downloading")
+
+	// === PHASE 5: Completed ===
+	releaseName := "Blade.Runner.1982.1080p.BluRay.x264"
+	releaseDir := filepath.Join(sourceDir, releaseName)
+	require.NoError(t, os.MkdirAll(releaseDir, 0755))
+	videoPath := filepath.Join(releaseDir, "blade.runner.mkv")
+	require.NoError(t, os.WriteFile(videoPath, make([]byte, 1000), 0644))
+
+	sabnzbdStatus = &download.ClientStatus{
+		ID:     "SABnzbd_nzo_blade",
+		Name:   releaseName,
+		Status: download.StatusCompleted,
+		Path:   releaseDir,
+	}
+	require.NoError(t, manager.Refresh(ctx), "refresh to completed")
+
+	dl = queryDownload(t, db, content.ID)
+	assert.Equal(t, download.StatusCompleted, dl.Status, "status after completed")
+
+	// === PHASE 6: Import ===
+	_, err = imp.Import(ctx, dl.ID, releaseDir)
+	require.NoError(t, err, "import")
+
+	// Reload download to check imported status
+	dl = queryDownload(t, db, content.ID)
+	assert.Equal(t, download.StatusImported, dl.Status, "status after import")
+
+	// === PHASE 7: Verify Final State ===
+	// Content should be available
+	var contentStatus string
+	err = db.QueryRow("SELECT status FROM content WHERE id = ?", content.ID).Scan(&contentStatus)
+	require.NoError(t, err)
+	assert.Equal(t, "available", contentStatus, "content should be available after import")
+
+	// File record should exist
+	var fileCount int
+	err = db.QueryRow("SELECT COUNT(*) FROM files WHERE content_id = ?", content.ID).Scan(&fileCount)
+	require.NoError(t, err)
+	assert.Equal(t, 1, fileCount, "should have 1 file record")
+
+	// History entry should exist
+	var historyCount int
+	err = db.QueryRow("SELECT COUNT(*) FROM history WHERE content_id = ?", content.ID).Scan(&historyCount)
+	require.NoError(t, err)
+	assert.Equal(t, 1, historyCount, "should have 1 history entry")
 }
 
 func TestIntegration_ManualImport(t *testing.T) {
@@ -540,7 +751,7 @@ func TestIntegration_ManualImport(t *testing.T) {
 	}
 
 	resp := httpPost(t, ts.URL+"/api/v1/import", importReq)
-	require.Equal(t, http.StatusOK, resp.StatusCode, "import failed: %s", readBody(t, resp))
+	requireStatus(t, resp, http.StatusOK, "import")
 
 	var importResp importResponse
 	decodeJSON(t, resp, &importResp)
@@ -588,10 +799,22 @@ func TestIntegration_ManualImport(t *testing.T) {
 	assert.Equal(t, 1, historyCount)
 }
 
-// readBody is a helper to read response body for error messages
+// readBody is a helper to read response body for error messages.
+// WARNING: This consumes and closes the body - only call when you won't need it again.
 func readBody(t *testing.T, resp *http.Response) string {
 	t.Helper()
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	return string(body)
+}
+
+// requireStatus checks that the response has the expected status code.
+// If not, it reads and logs the response body before failing.
+// This avoids the bug of eagerly reading the body in assertion messages.
+func requireStatus(t *testing.T, resp *http.Response, expectedStatus int, msg string) {
+	t.Helper()
+	if resp.StatusCode != expectedStatus {
+		body := readBody(t, resp)
+		t.Fatalf("%s: expected status %d, got %d, body: %s", msg, expectedStatus, resp.StatusCode, body)
+	}
 }

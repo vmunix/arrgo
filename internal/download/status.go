@@ -16,7 +16,7 @@ type TransitionHandler func(event TransitionEvent)
 // validTransitions defines allowed state transitions.
 // Key is the "from" status, value is list of valid "to" statuses.
 var validTransitions = map[Status][]Status{
-	StatusQueued:      {StatusDownloading, StatusFailed},
+	StatusQueued:      {StatusDownloading, StatusCompleted, StatusFailed}, // completed: can skip downloading if fast
 	StatusDownloading: {StatusCompleted, StatusFailed},
 	StatusCompleted:   {StatusImported, StatusFailed},
 	StatusImported:    {StatusCleaned, StatusFailed},
