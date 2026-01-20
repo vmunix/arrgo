@@ -12,18 +12,18 @@ var (
 	yearRegex = regexp.MustCompile(`\b(19|20)\d{2}\b`)
 
 	// Daily show patterns (multiple formats)
-	dailyRegex           = regexp.MustCompile(`\b(20\d{2})\.(\d{2})\.(\d{2})\b`)                                                 // 2026.01.16
-	dailyYMDHyphenRegex  = regexp.MustCompile(`\b(20\d{2})-(\d{2})-(\d{2})\b`)                                                   // 2026-01-16
-	dailyYMDCompactRegex = regexp.MustCompile(`\b(20\d{2})(\d{2})(\d{2})\b`)                                                     // 20260116
-	dailyDMYRegex        = regexp.MustCompile(`\b(\d{2})\.(\d{2})\.(20\d{2})\b`)                                                 // 16.01.2026
+	dailyRegex           = regexp.MustCompile(`\b(20\d{2})\.(\d{2})\.(\d{2})\b`)                                                          // 2026.01.16
+	dailyYMDHyphenRegex  = regexp.MustCompile(`\b(20\d{2})-(\d{2})-(\d{2})\b`)                                                            // 2026-01-16
+	dailyYMDCompactRegex = regexp.MustCompile(`\b(20\d{2})(\d{2})(\d{2})\b`)                                                              // 20260116
+	dailyDMYRegex        = regexp.MustCompile(`\b(\d{2})\.(\d{2})\.(20\d{2})\b`)                                                          // 16.01.2026
 	dailyWordMonthRegex  = regexp.MustCompile(`(?i)\b(\d{1,2})[\s.]?(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\s.]?(20\d{2})\b`)  // 16 Jan 2026
 	dailyUSWordRegex     = regexp.MustCompile(`(?i)\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\s.]?(\d{1,2})[\s.,]+(20\d{2})\b`) // Jan 16, 2026
-	seasonEpRegex    = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,2})`)
-	altSeasonEpRegex = regexp.MustCompile(`(?i)\b(\d{1,2})x(\d{1,2})\b`)             // 1x05 format
-	dotSeasonEpRegex = regexp.MustCompile(`(?i)\bs(\d{1,2})\.(\d{1,2})(?:\.|$|\s)`) // s01.05 format
-	titleMarkerRegex = regexp.MustCompile(`(?i)\b(19|20)\d{2}\b|\b\d{3,4}p\b|\bS\d{1,2}E\d{1,2}\b|\b4K\b|\bUHD\b`)
-	hdrRegex         = regexp.MustCompile(`(?i)\bHDR10\+|\b(HDR10Plus|HDR10|HDR|DV|Dolby\.?Vision|HLG)\b`)
-	editionRegex     = regexp.MustCompile(`(?i)\b(Directors?[\s.]?Cut|Extended|IMAX|Theatrical[\s.]?Cut?|Unrated|Uncut|Remastered|Anniversary|Criterion|Special[\s.]?Edition)\b`)
+	seasonEpRegex        = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,2})`)
+	altSeasonEpRegex     = regexp.MustCompile(`(?i)\b(\d{1,2})x(\d{1,2})\b`)            // 1x05 format
+	dotSeasonEpRegex     = regexp.MustCompile(`(?i)\bs(\d{1,2})\.(\d{1,2})(?:\.|$|\s)`) // s01.05 format
+	titleMarkerRegex     = regexp.MustCompile(`(?i)\b(19|20)\d{2}\b|\b\d{3,4}p\b|\bS\d{1,2}E\d{1,2}\b|\b4K\b|\bUHD\b`)
+	hdrRegex             = regexp.MustCompile(`(?i)\bHDR10\+|\b(HDR10Plus|HDR10|HDR|DV|Dolby\.?Vision|HLG)\b`)
+	editionRegex         = regexp.MustCompile(`(?i)\b(Directors?[\s.]?Cut|Extended|IMAX|Theatrical[\s.]?Cut?|Unrated|Uncut|Remastered|Anniversary|Criterion|Special[\s.]?Edition)\b`)
 
 	// Multi-episode patterns
 	multiEpRangeRegex = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,2})-E?(\d{1,2})`) // S01E05-06 or S01E05-E06
@@ -349,12 +349,12 @@ func parseAudio(name string) AudioCodec {
 	}
 
 	// DD+ / DDP / EAC3 before DD / AC3
-	if containsAny(lower, "ddp", "dd+", "eac3", "e-ac3") || ddPlusRegex.MatchString(name) {
+	if containsAny(lower, "ddp", "dd+", "eac3", "e-ac3") || ddPlusRegex.MatchString(lower) {
 		return AudioEAC3
 	}
 
 	// DD / AC3 - improved pattern matching for dd5.1, dd.5.1, dd 5.1
-	if containsAny(lower, "dd5", "dd2", "dd7", "ac3", "dolby digital") || ddRegex.MatchString(name) {
+	if containsAny(lower, "dd5", "dd2", "dd7", "ac3", "dolby digital") || ddRegex.MatchString(lower) {
 		return AudioAC3
 	}
 

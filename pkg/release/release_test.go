@@ -467,28 +467,32 @@ func TestInfo_Episodes_Slice(t *testing.T) {
 
 func TestParse_AlternateEpisodeFormats(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       string
-		wantSeason  int
-		wantEpisode int
+		name         string
+		input        string
+		wantSeason   int
+		wantEpisode  int
+		wantEpisodes []int
 	}{
 		{
-			name:        "1x05 format",
-			input:       "Show.1x05.720p.HDTV.x264-GRP",
-			wantSeason:  1,
-			wantEpisode: 5,
+			name:         "1x05 format",
+			input:        "Show.1x05.720p.HDTV.x264-GRP",
+			wantSeason:   1,
+			wantEpisode:  5,
+			wantEpisodes: []int{5},
 		},
 		{
-			name:        "12x24 format double digit",
-			input:       "Show.12x24.Episode.Title.1080p.WEB-DL.x264-GRP",
-			wantSeason:  12,
-			wantEpisode: 24,
+			name:         "12x24 format double digit",
+			input:        "Show.12x24.Episode.Title.1080p.WEB-DL.x264-GRP",
+			wantSeason:   12,
+			wantEpisode:  24,
+			wantEpisodes: []int{24},
 		},
 		{
-			name:        "s01.05 format with dot",
-			input:       "Show.s01.05.720p.HDTV.x264-GRP",
-			wantSeason:  1,
-			wantEpisode: 5,
+			name:         "s01.05 format with dot",
+			input:        "Show.s01.05.720p.HDTV.x264-GRP",
+			wantSeason:   1,
+			wantEpisode:  5,
+			wantEpisodes: []int{5},
 		},
 	}
 
@@ -497,6 +501,7 @@ func TestParse_AlternateEpisodeFormats(t *testing.T) {
 			got := Parse(tt.input)
 			assert.Equal(t, tt.wantSeason, got.Season, "Season")
 			assert.Equal(t, tt.wantEpisode, got.Episode, "Episode")
+			assert.Equal(t, tt.wantEpisodes, got.Episodes, "Episodes")
 		})
 	}
 }
@@ -550,6 +555,13 @@ func TestParse_MultiEpisode(t *testing.T) {
 			wantSeason:   1,
 			wantEpisode:  5,
 			wantEpisodes: []int{5},
+		},
+		{
+			name:         "Invalid range end less than start",
+			input:        "Show.S01E05-02.720p.HDTV.x264-GRP",
+			wantSeason:   1,
+			wantEpisode:  5,
+			wantEpisodes: []int{5}, // expandRange returns just start when end < start
 		},
 	}
 
