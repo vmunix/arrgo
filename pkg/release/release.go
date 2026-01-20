@@ -154,7 +154,8 @@ type Info struct {
 	Title      string
 	Year       int
 	Season     int
-	Episode    int
+	Episode    int    // Primary episode (first in range), kept for backward compatibility
+	Episodes   []int  // All episodes in release (e.g., [5,6,7] for S01E05-E07)
 	DailyDate  string // Daily show date in YYYY-MM-DD format (e.g., "2026-01-16")
 	Resolution Resolution
 	Source     Source
@@ -169,6 +170,11 @@ type Info struct {
 	IsRemux bool
 	Edition string // "Directors Cut", "Extended", "IMAX", etc.
 	Service string // Streaming service: NF, AMZN, DSNP, etc.
+
+	// Season pack detection
+	IsCompleteSeason bool // Complete season release (e.g., "Season 01", "S01")
+	IsSplitSeason    bool // Split/partial season (e.g., "Season 1 Part 2")
+	SplitPart        int  // Part number for split seasons
 
 	// Normalized title for matching
 	CleanTitle string

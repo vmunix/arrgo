@@ -456,3 +456,11 @@ func TestParse_DailyShow(t *testing.T) {
 		})
 	}
 }
+
+func TestInfo_Episodes_Slice(t *testing.T) {
+	info := &Info{
+		Episodes: []int{5, 6, 7},
+	}
+	assert.Len(t, info.Episodes, 3)
+	assert.Equal(t, 5, info.Episodes[0])
+}
