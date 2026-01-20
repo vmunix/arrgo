@@ -32,6 +32,7 @@ resolution = ["720p", "480p"]
 [quality.profiles.hd]
 resolution = ["1080p", "720p"]
 sources = ["bluray", "webdl"]
+reject = ["cam", "ts"]
 
 # Premium 4K with HDR/audio preferences
 [quality.profiles.uhd]

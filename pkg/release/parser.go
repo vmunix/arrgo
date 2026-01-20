@@ -142,6 +142,15 @@ func parseSource(name string) Source {
 		return SourceWEBRip
 	case containsAny(name, "hdtv"):
 		return SourceHDTV
+	case containsAny(name, "hdcam", "camrip", "cam-rip"):
+		return SourceCAM
+	case containsAny(name, "telesync", "hdts", "tsrip", "ts-rip"):
+		return SourceTelesync
+	// Check bare "cam" and "ts" last to avoid false positives (need word boundaries)
+	case containsWordBoundary(name, " cam ", ".cam.", " cam.", ".cam "):
+		return SourceCAM
+	case containsWordBoundary(name, " ts ", ".ts."):
+		return SourceTelesync
 	default:
 		return SourceUnknown
 	}
@@ -171,6 +180,18 @@ func containsAny(s string, substrs ...string) bool {
 	s = strings.ToLower(s)
 	for _, sub := range substrs {
 		if strings.Contains(s, strings.ToLower(sub)) {
+			return true
+		}
+	}
+	return false
+}
+
+// containsWordBoundary checks if any of the patterns exist in the string.
+// Patterns can include delimiters like " cam " or ".ts." for word boundary matching.
+func containsWordBoundary(s string, patterns ...string) bool {
+	s = strings.ToLower(s)
+	for _, p := range patterns {
+		if strings.Contains(s, strings.ToLower(p)) {
 			return true
 		}
 	}
