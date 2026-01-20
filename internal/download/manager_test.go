@@ -380,7 +380,7 @@ func TestManager_GetActive(t *testing.T) {
 
 	assert.Equal(t, d.ID, active[0].Download.ID)
 	require.NotNil(t, active[0].Live, "Live status should be set")
-	assert.Equal(t, float64(50), active[0].Live.Progress)
+	assert.InDelta(t, 50, active[0].Live.Progress, 0.001)
 }
 
 func TestManager_GetActive_ClientError(t *testing.T) {

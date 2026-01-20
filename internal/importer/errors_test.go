@@ -2,16 +2,16 @@
 package importer
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestErrors(t *testing.T) {
 	// Verify errors are distinct
-	assert.False(t, errors.Is(ErrDownloadNotFound, ErrDownloadNotReady), "errors should be distinct")
-	assert.False(t, errors.Is(ErrNoVideoFile, ErrCopyFailed), "errors should be distinct")
+	require.NotErrorIs(t, ErrDownloadNotFound, ErrDownloadNotReady, "errors should be distinct")
+	require.NotErrorIs(t, ErrNoVideoFile, ErrCopyFailed, "errors should be distinct")
 
 	// Verify all errors have messages
 	errs := []error{

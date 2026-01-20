@@ -1,17 +1,17 @@
 package download
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestErrors(t *testing.T) {
 	// Verify errors are distinct
-	assert.False(t, errors.Is(ErrClientUnavailable, ErrInvalidAPIKey),
+	require.NotErrorIs(t, ErrClientUnavailable, ErrInvalidAPIKey,
 		"ErrClientUnavailable should not equal ErrInvalidAPIKey")
-	assert.False(t, errors.Is(ErrDownloadNotFound, ErrNotFound),
+	require.NotErrorIs(t, ErrDownloadNotFound, ErrNotFound,
 		"ErrDownloadNotFound should not equal ErrNotFound")
 
 	// Verify error messages are non-empty
