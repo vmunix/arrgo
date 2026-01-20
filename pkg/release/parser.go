@@ -9,8 +9,15 @@ import (
 
 // Pre-compiled regex patterns (compiled once at package init)
 var (
-	yearRegex        = regexp.MustCompile(`\b(19|20)\d{2}\b`)
-	dailyRegex       = regexp.MustCompile(`\b(20\d{2})\.(\d{2})\.(\d{2})\b`)
+	yearRegex = regexp.MustCompile(`\b(19|20)\d{2}\b`)
+
+	// Daily show patterns (multiple formats)
+	dailyRegex           = regexp.MustCompile(`\b(20\d{2})\.(\d{2})\.(\d{2})\b`)                                                 // 2026.01.16
+	dailyYMDHyphenRegex  = regexp.MustCompile(`\b(20\d{2})-(\d{2})-(\d{2})\b`)                                                   // 2026-01-16
+	dailyYMDCompactRegex = regexp.MustCompile(`\b(20\d{2})(\d{2})(\d{2})\b`)                                                     // 20260116
+	dailyDMYRegex        = regexp.MustCompile(`\b(\d{2})\.(\d{2})\.(20\d{2})\b`)                                                 // 16.01.2026
+	dailyWordMonthRegex  = regexp.MustCompile(`(?i)\b(\d{1,2})[\s.]?(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\s.]?(20\d{2})\b`)  // 16 Jan 2026
+	dailyUSWordRegex     = regexp.MustCompile(`(?i)\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\s.]?(\d{1,2})[\s.,]+(20\d{2})\b`) // Jan 16, 2026
 	seasonEpRegex    = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,2})`)
 	altSeasonEpRegex = regexp.MustCompile(`(?i)\b(\d{1,2})x(\d{1,2})\b`)             // 1x05 format
 	dotSeasonEpRegex = regexp.MustCompile(`(?i)\bs(\d{1,2})\.(\d{1,2})(?:\.|$|\s)`) // s01.05 format
@@ -421,18 +428,83 @@ func parseService(name string) string {
 	return ""
 }
 
-// parseDailyDate detects daily show date format (YYYY.MM.DD) from release name.
+// monthToNumber converts month abbreviation to zero-padded number string
+func monthToNumber(month string) string {
+	mapping := map[string]string{
+		"jan": "01", "feb": "02", "mar": "03", "apr": "04",
+		"may": "05", "jun": "06", "jul": "07", "aug": "08",
+		"sep": "09", "oct": "10", "nov": "11", "dec": "12",
+	}
+	return mapping[strings.ToLower(month)]
+}
+
+// isValidDate checks if month and day values are reasonable
+func isValidDate(month, day string) bool {
+	return month >= "01" && month <= "12" && day >= "01" && day <= "31"
+}
+
+// parseDailyDate detects daily show date formats from release name.
 // Returns date in YYYY-MM-DD format if valid, empty string otherwise.
 func parseDailyDate(name string) string {
-	matches := dailyRegex.FindStringSubmatch(name)
-	if len(matches) == 4 {
-		// Validate it's a reasonable date (month 01-12, day 01-31)
-		month := matches[2]
-		day := matches[3]
-		if month >= "01" && month <= "12" && day >= "01" && day <= "31" {
-			return matches[1] + "-" + month + "-" + day
+	// Try YYYY.MM.DD format
+	if matches := dailyRegex.FindStringSubmatch(name); len(matches) == 4 {
+		if isValidDate(matches[2], matches[3]) {
+			return matches[1] + "-" + matches[2] + "-" + matches[3]
 		}
 	}
+
+	// Try YYYY-MM-DD format
+	if matches := dailyYMDHyphenRegex.FindStringSubmatch(name); len(matches) == 4 {
+		if isValidDate(matches[2], matches[3]) {
+			return matches[1] + "-" + matches[2] + "-" + matches[3]
+		}
+	}
+
+	// Try YYYYMMDD compact format
+	if matches := dailyYMDCompactRegex.FindStringSubmatch(name); len(matches) == 4 {
+		if isValidDate(matches[2], matches[3]) {
+			return matches[1] + "-" + matches[2] + "-" + matches[3]
+		}
+	}
+
+	// Try DD.MM.YYYY European format
+	if matches := dailyDMYRegex.FindStringSubmatch(name); len(matches) == 4 {
+		day, month, year := matches[1], matches[2], matches[3]
+		// Swap if month > 12 (likely day/month swapped)
+		if month > "12" && day <= "12" {
+			day, month = month, day
+		}
+		if isValidDate(month, day) {
+			return year + "-" + month + "-" + day
+		}
+	}
+
+	// Try "16 Jan 2026" format
+	if matches := dailyWordMonthRegex.FindStringSubmatch(name); len(matches) == 4 {
+		day := matches[1]
+		if len(day) == 1 {
+			day = "0" + day
+		}
+		month := monthToNumber(matches[2])
+		year := matches[3]
+		if month != "" && isValidDate(month, day) {
+			return year + "-" + month + "-" + day
+		}
+	}
+
+	// Try "Jan 16, 2026" US format
+	if matches := dailyUSWordRegex.FindStringSubmatch(name); len(matches) == 4 {
+		month := monthToNumber(matches[1])
+		day := matches[2]
+		if len(day) == 1 {
+			day = "0" + day
+		}
+		year := matches[3]
+		if month != "" && isValidDate(month, day) {
+			return year + "-" + month + "-" + day
+		}
+	}
+
 	return ""
 }
 

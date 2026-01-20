@@ -563,6 +563,66 @@ func TestParse_MultiEpisode(t *testing.T) {
 	}
 }
 
+func TestParse_DailyShowFormats(t *testing.T) {
+	tests := []struct {
+		name          string
+		input         string
+		wantDailyDate string
+		wantYear      int
+	}{
+		{
+			name:          "YYYY.MM.DD standard",
+			input:         "Show.2026.01.16.Episode.720p.HDTV.x264-GRP",
+			wantDailyDate: "2026-01-16",
+			wantYear:      0,
+		},
+		{
+			name:          "YYYY-MM-DD with hyphens",
+			input:         "Show.2026-01-16.Episode.720p.HDTV.x264-GRP",
+			wantDailyDate: "2026-01-16",
+			wantYear:      0,
+		},
+		{
+			name:          "YYYYMMDD compact",
+			input:         "Show.20260116.Episode.720p.HDTV.x264-GRP",
+			wantDailyDate: "2026-01-16",
+			wantYear:      0,
+		},
+		{
+			name:          "DD.MM.YYYY European",
+			input:         "Show.16.01.2026.Episode.720p.HDTV.x264-GRP",
+			wantDailyDate: "2026-01-16",
+			wantYear:      0,
+		},
+		{
+			name:          "16 Jan 2026 word month",
+			input:         "Show.16.Jan.2026.Episode.720p.HDTV.x264-GRP",
+			wantDailyDate: "2026-01-16",
+			wantYear:      0,
+		},
+		{
+			name:          "Jan 16 2026 US word format",
+			input:         "Show.Jan.16.2026.Episode.720p.HDTV.x264-GRP",
+			wantDailyDate: "2026-01-16",
+			wantYear:      0,
+		},
+		{
+			name:          "Movie with year (not daily)",
+			input:         "Movie.2024.1080p.BluRay.x264-GRP",
+			wantDailyDate: "",
+			wantYear:      2024,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			assert.Equal(t, tt.wantDailyDate, got.DailyDate, "DailyDate")
+			assert.Equal(t, tt.wantYear, got.Year, "Year")
+		})
+	}
+}
+
 func TestParse_SeasonPack(t *testing.T) {
 	tests := []struct {
 		name               string
