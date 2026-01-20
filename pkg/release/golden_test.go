@@ -488,8 +488,8 @@ var goldenCases = []struct {
 		resolution: Resolution2160p,
 		source:     SourceBluRay,
 		codec:      CodecX265,
-		// NOTE: DoVi not detected, only HDR10 is matched due to regex matching "HDR10" before "DV"
-		hdr:   HDR10,
+		// DoVi detected and takes priority over HDR10 (DV releases often have HDR fallback layers)
+		hdr:   DolbyVision,
 		audio: AudioFLAC,
 		title: "The Pink Panther Strikes Again",
 		year:  1976,
@@ -589,8 +589,8 @@ var goldenCases = []struct {
 		resolution: Resolution2160p,
 		source:     SourceBluRay,
 		codec:      CodecX265,
-		// NOTE: DoVi not in regex pattern - only DV or Dolby.?Vision matches
-		hdr:   HDRGeneric,
+		// DoVi detected and takes priority over generic HDR (DV releases often have HDR fallback layers)
+		hdr:   DolbyVision,
 		audio: AudioAtmos,
 		title: "Crouching Tiger Hidden Dragon",
 		year:  2000,
@@ -1420,8 +1420,8 @@ var goldenCases = []struct {
 		resolution: Resolution2160p,
 		source:     SourceBluRay,
 		codec:      CodecX265,
-		// NOTE: DoVi not in regex pattern - only DV or Dolby.?Vision matches; HDR10 takes precedence
-		hdr:   HDR10,
+		// DoVi detected and takes priority over HDR10 (DV releases often have HDR fallback layers)
+		hdr:   DolbyVision,
 		audio: AudioDTSHD,
 		title: "Kill Bill Vol 2",
 		year:  2004,
@@ -1512,6 +1512,117 @@ var goldenCases = []struct {
 		year:       2024,
 		group:      "hallowed",
 		repack:     true,
+	},
+
+	// === TV Series Multi-Episode ===
+	{
+		name:       "Multi-episode range S01E05-06",
+		input:      "Breaking.Bad.S01E05-06.720p.BluRay.x264-DEMAND",
+		resolution: Resolution720p,
+		source:     SourceBluRay,
+		codec:      CodecX264,
+		title:      "Breaking Bad",
+		group:      "DEMAND",
+	},
+	{
+		name:       "Multi-episode sequential S01E05E06",
+		input:      "Game.of.Thrones.S01E05E06.1080p.BluRay.x264-ROVERS",
+		resolution: Resolution1080p,
+		source:     SourceBluRay,
+		codec:      CodecX264,
+		title:      "Game of Thrones",
+		group:      "ROVERS",
+	},
+	{
+		name:       "Alternate format 1x05",
+		input:      "The.Simpsons.12x05.Episode.Title.720p.HDTV.x264-LOL",
+		resolution: Resolution720p,
+		source:     SourceHDTV,
+		codec:      CodecX264,
+		title:      "The Simpsons",
+		group:      "LOL",
+	},
+
+	// === Season Packs ===
+	{
+		name:       "Full season pack",
+		input:      "Stranger.Things.Season.01.1080p.NF.WEB-DL.DDP5.1.x264-NTb",
+		resolution: Resolution1080p,
+		source:     SourceWEBDL,
+		codec:      CodecX264,
+		audio:      AudioEAC3,
+		title:      "Stranger Things",
+		group:      "NTb",
+		service:    "Netflix",
+	},
+	{
+		name:       "S01 pack no episodes",
+		input:      "House.of.the.Dragon.S01.2160p.HMAX.WEB-DL.DDP5.1.Atmos.DV.H.265-FLUX",
+		resolution: Resolution2160p,
+		source:     SourceWEBDL,
+		codec:      CodecX265,
+		hdr:        DolbyVision,
+		audio:      AudioAtmos,
+		title:      "House of the Dragon",
+		group:      "FLUX",
+		service:    "HBO Max",
+	},
+	{
+		name:       "Complete season pack",
+		input:      "The.Office.US.Complete.Season.3.720p.BluRay.x264-DEMAND",
+		resolution: Resolution720p,
+		source:     SourceBluRay,
+		codec:      CodecX264,
+		title:      "The Office US",
+		group:      "DEMAND",
+	},
+
+	// === Daily Shows ===
+	{
+		name:       "Daily show European date",
+		input:      "Late.Night.16.01.2026.720p.HDTV.x264-SORNY",
+		resolution: Resolution720p,
+		source:     SourceHDTV,
+		codec:      CodecX264,
+		title:      "Late Night",
+		group:      "SORNY",
+	},
+	{
+		name:       "Daily show compact date",
+		input:      "Tonight.Show.20260116.720p.HULU.WEB-DL.AAC2.0.H.264-TEPES",
+		resolution: Resolution720p,
+		source:     SourceWEBDL,
+		codec:      CodecX264,
+		audio:      AudioAAC,
+		title:      "Tonight Show",
+		group:      "TEPES",
+		service:    "Hulu",
+	},
+
+	// === Fixed Audio Patterns ===
+	{
+		name:       "DD.5.1 with dots (fixed)",
+		input:      "The.Matrix.1999.1080p.BluRay.DD.5.1.x264-GRP",
+		resolution: Resolution1080p,
+		source:     SourceBluRay,
+		codec:      CodecX264,
+		audio:      AudioAC3,
+		title:      "The Matrix",
+		year:       1999,
+		group:      "GRP",
+	},
+
+	// === Fixed HDR Patterns ===
+	{
+		name:       "DoVi variant (fixed)",
+		input:      "Crouching.Tiger.Hidden.Dragon.2000.2160p.UHD.BluRay.DoVi.x265-PTer",
+		resolution: Resolution2160p,
+		source:     SourceBluRay,
+		codec:      CodecX265,
+		hdr:        DolbyVision,
+		title:      "Crouching Tiger Hidden Dragon",
+		year:       2000,
+		group:      "PTer",
 	},
 }
 

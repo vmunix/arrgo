@@ -9,12 +9,35 @@ import (
 
 // Pre-compiled regex patterns (compiled once at package init)
 var (
-	yearRegex        = regexp.MustCompile(`\b(19|20)\d{2}\b`)
-	dailyRegex       = regexp.MustCompile(`\b(20\d{2})\.(\d{2})\.(\d{2})\b`)
-	seasonEpRegex    = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,2})`)
-	titleMarkerRegex = regexp.MustCompile(`(?i)\b(19|20)\d{2}\b|\b\d{3,4}p\b|\bS\d{1,2}E\d{1,2}\b|\b4K\b|\bUHD\b`)
-	hdrRegex         = regexp.MustCompile(`(?i)\bHDR10\+|\b(HDR10Plus|HDR10|HDR|DV|Dolby\.?Vision|HLG)\b`)
-	editionRegex     = regexp.MustCompile(`(?i)\b(Directors?[\s.]?Cut|Extended|IMAX|Theatrical[\s.]?Cut?|Unrated|Uncut|Remastered|Anniversary|Criterion|Special[\s.]?Edition)\b`)
+	yearRegex = regexp.MustCompile(`\b(19|20)\d{2}\b`)
+
+	// Daily show patterns (multiple formats)
+	dailyRegex           = regexp.MustCompile(`\b(20\d{2})\.(\d{2})\.(\d{2})\b`)                                                          // 2026.01.16
+	dailyYMDHyphenRegex  = regexp.MustCompile(`\b(20\d{2})-(\d{2})-(\d{2})\b`)                                                            // 2026-01-16
+	dailyYMDCompactRegex = regexp.MustCompile(`\b(20\d{2})(\d{2})(\d{2})\b`)                                                              // 20260116
+	dailyDMYRegex        = regexp.MustCompile(`\b(\d{2})\.(\d{2})\.(20\d{2})\b`)                                                          // 16.01.2026
+	dailyWordMonthRegex  = regexp.MustCompile(`(?i)\b(\d{1,2})[\s.]?(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\s.]?(20\d{2})\b`)  // 16 Jan 2026
+	dailyUSWordRegex     = regexp.MustCompile(`(?i)\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\s.]?(\d{1,2})[\s.,]+(20\d{2})\b`) // Jan 16, 2026
+	seasonEpRegex        = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,2})`)
+	altSeasonEpRegex     = regexp.MustCompile(`(?i)\b(\d{1,2})x(\d{1,2})\b`)            // 1x05 format
+	dotSeasonEpRegex     = regexp.MustCompile(`(?i)\bs(\d{1,2})\.(\d{1,2})(?:\.|$|\s)`) // s01.05 format
+	titleMarkerRegex     = regexp.MustCompile(`(?i)\b\d{1,2}[\s.]\d{1,2}[\s.](19|20)\d{2}\b|\b(19|20)\d{2}\b|\b20\d{6}\b|\b\d{3,4}p\b|\bS\d{1,2}E\d{1,2}(?:E\d{1,2}|-E?\d{1,2})*\b|\bS\d{1,2}\b|\b\d{1,2}x\d{1,2}\b|\bComplete[\s.]+Season[\s.]\d{1,2}\b|\bSeason[\s.]\d{1,2}\b|\b4K\b|\bUHD\b`)
+	hdrRegex             = regexp.MustCompile(`(?i)\bHDR10\+|\b(HDR10Plus|HDR10|HDR|DV|DoVi|DOVI|Dolby[\s.]?Vision|HLG)\b`)
+	editionRegex         = regexp.MustCompile(`(?i)\b(Directors?[\s.]?Cut|Extended|IMAX|Theatrical[\s.]?Cut?|Unrated|Uncut|Remastered|Anniversary|Criterion|Special[\s.]?Edition)\b`)
+
+	// Multi-episode patterns
+	multiEpRangeRegex = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,2})-E?(\d{1,2})`) // S01E05-06 or S01E05-E06
+	multiEpSeqRegex   = regexp.MustCompile(`(?i)S(\d{1,2})((?:E\d{1,2})+)`)        // S01E05E06E07
+	epSeqExtractRegex = regexp.MustCompile(`(?i)E(\d{1,2})`)                       // Extract episode numbers
+
+	// Season pack patterns
+	seasonPackRegex  = regexp.MustCompile(`(?i)(?:Complete[\s.]+)?Season[\s.]?(\d{1,2})(?:\s|\.|\b)`)
+	seasonOnlyRegex  = regexp.MustCompile(`(?i)\bS(\d{1,2})(?:\b|\.|$)`) // S01 without E## (checked separately)
+	splitSeasonRegex = regexp.MustCompile(`(?i)(?:Season[\s.]?(\d{1,2})|S(\d{1,2}))[\s.]+(?:Part|Vol)[\s.]?(\d{1,2})`)
+
+	// Audio detection patterns (must work with both raw and normalized names)
+	ddPlusRegex = regexp.MustCompile(`(?i)\bdd\+[\s.]?\d`)
+	ddRegex     = regexp.MustCompile(`(?i)\bdd[\s.]+\d[\s.]+\d`) // DD 5 1 or DD.5.1 or DD 5.1
 )
 
 // serviceMap maps streaming service codes to their full names.
@@ -88,13 +111,81 @@ func Parse(name string) *Info {
 		}
 	}
 
-	// Season/Episode - use pre-compiled
-	if matches := seasonEpRegex.FindStringSubmatch(normalized); len(matches) == 3 {
+	// Season/Episode - try multi-episode formats first, then single formats
+	if matches := multiEpRangeRegex.FindStringSubmatch(normalized); len(matches) == 4 {
+		// Range format: S01E05-06 or S01E05-E06
+		if season, err := strconv.Atoi(matches[1]); err == nil {
+			info.Season = season
+		}
+		start, _ := strconv.Atoi(matches[2])
+		end, _ := strconv.Atoi(matches[3])
+		info.Episode = start
+		info.Episodes = expandRange(start, end)
+	} else if matches := multiEpSeqRegex.FindStringSubmatch(normalized); len(matches) == 3 {
+		// Sequential format: S01E05E06E07
+		if season, err := strconv.Atoi(matches[1]); err == nil {
+			info.Season = season
+		}
+		info.Episodes = parseEpisodeSequence(matches[2])
+		if len(info.Episodes) > 0 {
+			info.Episode = info.Episodes[0]
+		}
+	} else if matches := seasonEpRegex.FindStringSubmatch(normalized); len(matches) == 3 {
+		// Standard S01E01 format (single episode)
 		if season, err := strconv.Atoi(matches[1]); err == nil {
 			info.Season = season
 		}
 		if episode, err := strconv.Atoi(matches[2]); err == nil {
 			info.Episode = episode
+			info.Episodes = []int{episode}
+		}
+	} else if matches := altSeasonEpRegex.FindStringSubmatch(name); len(matches) == 3 {
+		// Alternate 1x05 format (use original name to match dots)
+		if season, err := strconv.Atoi(matches[1]); err == nil {
+			info.Season = season
+		}
+		if episode, err := strconv.Atoi(matches[2]); err == nil {
+			info.Episode = episode
+			info.Episodes = []int{episode}
+		}
+	} else if matches := dotSeasonEpRegex.FindStringSubmatch(name); len(matches) == 3 {
+		// Dot-separated s01.05 format (use original name to match dots)
+		if season, err := strconv.Atoi(matches[1]); err == nil {
+			info.Season = season
+		}
+		if episode, err := strconv.Atoi(matches[2]); err == nil {
+			info.Episode = episode
+			info.Episodes = []int{episode}
+		}
+	}
+
+	// Season pack detection (only if no episode info found)
+	if info.Episode == 0 && len(info.Episodes) == 0 {
+		// Check for split season first (more specific)
+		if matches := splitSeasonRegex.FindStringSubmatch(normalized); len(matches) == 4 {
+			season := matches[1]
+			if season == "" {
+				season = matches[2]
+			}
+			if s, err := strconv.Atoi(season); err == nil {
+				info.Season = s
+			}
+			if part, err := strconv.Atoi(matches[3]); err == nil {
+				info.SplitPart = part
+			}
+			info.IsSplitSeason = true
+		} else if matches := seasonPackRegex.FindStringSubmatch(normalized); len(matches) == 2 {
+			// Complete season pack: "Season 01" or "Complete Season 1"
+			if season, err := strconv.Atoi(matches[1]); err == nil {
+				info.Season = season
+			}
+			info.IsCompleteSeason = true
+		} else if matches := seasonOnlyRegex.FindStringSubmatch(normalized); len(matches) == 2 {
+			// S01 without episode number
+			if season, err := strconv.Atoi(matches[1]); err == nil {
+				info.Season = season
+			}
+			info.IsCompleteSeason = true
 		}
 	}
 
@@ -219,7 +310,7 @@ func parseHDR(name string) HDRFormat {
 	// DolbyVision takes priority as DV releases often also have HDR metadata
 	for _, m := range matches {
 		lower := strings.ToLower(m)
-		if lower == "dv" || strings.Contains(lower, "dolby") {
+		if lower == "dv" || lower == "dovi" || strings.Contains(lower, "dolby") {
 			return DolbyVision
 		}
 	}
@@ -258,12 +349,12 @@ func parseAudio(name string) AudioCodec {
 	}
 
 	// DD+ / DDP / EAC3 before DD / AC3
-	if containsAny(lower, "ddp", "dd+", "eac3", "e-ac3") {
+	if containsAny(lower, "ddp", "dd+", "eac3", "e-ac3") || ddPlusRegex.MatchString(lower) {
 		return AudioEAC3
 	}
 
-	// DD / AC3
-	if containsAny(lower, "dd5", "dd2", "dd7", "ac3", "dolby digital") {
+	// DD / AC3 - improved pattern matching for dd5.1, dd.5.1, dd 5.1
+	if containsAny(lower, "dd5", "dd2", "dd7", "ac3", "dolby digital") || ddRegex.MatchString(lower) {
 		return AudioAC3
 	}
 
@@ -341,17 +432,108 @@ func parseService(name string) string {
 	return ""
 }
 
-// parseDailyDate detects daily show date format (YYYY.MM.DD) from release name.
+// monthToNumber converts month abbreviation to zero-padded number string
+func monthToNumber(month string) string {
+	mapping := map[string]string{
+		"jan": "01", "feb": "02", "mar": "03", "apr": "04",
+		"may": "05", "jun": "06", "jul": "07", "aug": "08",
+		"sep": "09", "oct": "10", "nov": "11", "dec": "12",
+	}
+	return mapping[strings.ToLower(month)]
+}
+
+// isValidDate checks if month and day values are reasonable
+func isValidDate(month, day string) bool {
+	return month >= "01" && month <= "12" && day >= "01" && day <= "31"
+}
+
+// parseDailyDate detects daily show date formats from release name.
 // Returns date in YYYY-MM-DD format if valid, empty string otherwise.
 func parseDailyDate(name string) string {
-	matches := dailyRegex.FindStringSubmatch(name)
-	if len(matches) == 4 {
-		// Validate it's a reasonable date (month 01-12, day 01-31)
-		month := matches[2]
-		day := matches[3]
-		if month >= "01" && month <= "12" && day >= "01" && day <= "31" {
-			return matches[1] + "-" + month + "-" + day
+	// Try YYYY.MM.DD format
+	if matches := dailyRegex.FindStringSubmatch(name); len(matches) == 4 {
+		if isValidDate(matches[2], matches[3]) {
+			return matches[1] + "-" + matches[2] + "-" + matches[3]
 		}
 	}
+
+	// Try YYYY-MM-DD format
+	if matches := dailyYMDHyphenRegex.FindStringSubmatch(name); len(matches) == 4 {
+		if isValidDate(matches[2], matches[3]) {
+			return matches[1] + "-" + matches[2] + "-" + matches[3]
+		}
+	}
+
+	// Try YYYYMMDD compact format
+	if matches := dailyYMDCompactRegex.FindStringSubmatch(name); len(matches) == 4 {
+		if isValidDate(matches[2], matches[3]) {
+			return matches[1] + "-" + matches[2] + "-" + matches[3]
+		}
+	}
+
+	// Try DD.MM.YYYY European format
+	if matches := dailyDMYRegex.FindStringSubmatch(name); len(matches) == 4 {
+		day, month, year := matches[1], matches[2], matches[3]
+		// Swap if month > 12 (likely day/month swapped)
+		if month > "12" && day <= "12" {
+			day, month = month, day
+		}
+		if isValidDate(month, day) {
+			return year + "-" + month + "-" + day
+		}
+	}
+
+	// Try "16 Jan 2026" format
+	if matches := dailyWordMonthRegex.FindStringSubmatch(name); len(matches) == 4 {
+		day := matches[1]
+		if len(day) == 1 {
+			day = "0" + day
+		}
+		month := monthToNumber(matches[2])
+		year := matches[3]
+		if month != "" && isValidDate(month, day) {
+			return year + "-" + month + "-" + day
+		}
+	}
+
+	// Try "Jan 16, 2026" US format
+	if matches := dailyUSWordRegex.FindStringSubmatch(name); len(matches) == 4 {
+		month := monthToNumber(matches[1])
+		day := matches[2]
+		if len(day) == 1 {
+			day = "0" + day
+		}
+		year := matches[3]
+		if month != "" && isValidDate(month, day) {
+			return year + "-" + month + "-" + day
+		}
+	}
+
 	return ""
+}
+
+// parseEpisodeSequence extracts episode numbers from patterns like "E05E06E07"
+func parseEpisodeSequence(s string) []int {
+	matches := epSeqExtractRegex.FindAllStringSubmatch(s, -1)
+	episodes := make([]int, 0, len(matches))
+	for _, m := range matches {
+		if ep, err := strconv.Atoi(m[1]); err == nil {
+			episodes = append(episodes, ep)
+		}
+	}
+	return episodes
+}
+
+// expandRange creates a slice from start to end inclusive.
+// If end < start, returns a single-element slice containing just start.
+// If start == end, returns a single-element slice containing that value.
+func expandRange(start, end int) []int {
+	if end < start {
+		return []int{start}
+	}
+	episodes := make([]int, 0, end-start+1)
+	for i := start; i <= end; i++ {
+		episodes = append(episodes, i)
+	}
+	return episodes
 }

@@ -31,50 +31,58 @@ type ParseResult struct {
 
 // ParseResultJSON is the JSON-friendly representation of ParseResult.
 type ParseResultJSON struct {
-	Title      string       `json:"title"`
-	Year       int          `json:"year,omitempty"`
-	Season     int          `json:"season,omitempty"`
-	Episode    int          `json:"episode,omitempty"`
-	DailyDate  string       `json:"daily_date,omitempty"`
-	Resolution string       `json:"resolution"`
-	Source     string       `json:"source"`
-	Codec      string       `json:"codec"`
-	HDR        string       `json:"hdr,omitempty"`
-	Audio      string       `json:"audio,omitempty"`
-	IsRemux    bool         `json:"remux"`
-	Edition    string       `json:"edition,omitempty"`
-	Service    string       `json:"service,omitempty"`
-	Group      string       `json:"group,omitempty"`
-	Proper     bool         `json:"proper,omitempty"`
-	Repack     bool         `json:"repack,omitempty"`
-	CleanTitle string       `json:"clean_title"`
-	Score      int          `json:"score,omitempty"`
-	Profile    string       `json:"profile,omitempty"`
-	Breakdown  []ScoreBonus `json:"breakdown,omitempty"`
+	Title            string       `json:"title"`
+	Year             int          `json:"year,omitempty"`
+	Season           int          `json:"season,omitempty"`
+	Episode          int          `json:"episode,omitempty"`
+	Episodes         []int        `json:"episodes,omitempty"`
+	IsCompleteSeason bool         `json:"complete_season,omitempty"`
+	IsSplitSeason    bool         `json:"split_season,omitempty"`
+	SplitPart        int          `json:"split_part,omitempty"`
+	DailyDate        string       `json:"daily_date,omitempty"`
+	Resolution       string       `json:"resolution"`
+	Source           string       `json:"source"`
+	Codec            string       `json:"codec"`
+	HDR              string       `json:"hdr,omitempty"`
+	Audio            string       `json:"audio,omitempty"`
+	IsRemux          bool         `json:"remux"`
+	Edition          string       `json:"edition,omitempty"`
+	Service          string       `json:"service,omitempty"`
+	Group            string       `json:"group,omitempty"`
+	Proper           bool         `json:"proper,omitempty"`
+	Repack           bool         `json:"repack,omitempty"`
+	CleanTitle       string       `json:"clean_title"`
+	Score            int          `json:"score,omitempty"`
+	Profile          string       `json:"profile,omitempty"`
+	Breakdown        []ScoreBonus `json:"breakdown,omitempty"`
 }
 
 // toJSON converts ParseResult to its JSON-friendly representation.
 func (r ParseResult) toJSON() ParseResultJSON {
 	info := r.Info
 	result := ParseResultJSON{
-		Title:      info.Title,
-		Year:       info.Year,
-		Season:     info.Season,
-		Episode:    info.Episode,
-		DailyDate:  info.DailyDate,
-		Resolution: info.Resolution.String(),
-		Source:     info.Source.String(),
-		Codec:      info.Codec.String(),
-		IsRemux:    info.IsRemux,
-		Edition:    info.Edition,
-		Service:    info.Service,
-		Group:      info.Group,
-		Proper:     info.Proper,
-		Repack:     info.Repack,
-		CleanTitle: info.CleanTitle,
-		Score:      r.Score,
-		Profile:    r.Profile,
-		Breakdown:  r.Breakdown,
+		Title:            info.Title,
+		Year:             info.Year,
+		Season:           info.Season,
+		Episode:          info.Episode,
+		Episodes:         info.Episodes,
+		IsCompleteSeason: info.IsCompleteSeason,
+		IsSplitSeason:    info.IsSplitSeason,
+		SplitPart:        info.SplitPart,
+		DailyDate:        info.DailyDate,
+		Resolution:       info.Resolution.String(),
+		Source:           info.Source.String(),
+		Codec:            info.Codec.String(),
+		IsRemux:          info.IsRemux,
+		Edition:          info.Edition,
+		Service:          info.Service,
+		Group:            info.Group,
+		Proper:           info.Proper,
+		Repack:           info.Repack,
+		CleanTitle:       info.CleanTitle,
+		Score:            r.Score,
+		Profile:          r.Profile,
+		Breakdown:        r.Breakdown,
 	}
 
 	// Set HDR only if present
@@ -561,6 +569,15 @@ func printHumanReadable(result ParseResult) {
 	if info.Season > 0 || info.Episode > 0 {
 		fmt.Printf("Season:      %d\n", info.Season)
 		fmt.Printf("Episode:     %d\n", info.Episode)
+	}
+	if len(info.Episodes) > 1 {
+		fmt.Printf("Episodes:    %v\n", info.Episodes)
+	}
+	if info.IsCompleteSeason {
+		fmt.Printf("Complete Season: yes\n")
+	}
+	if info.IsSplitSeason {
+		fmt.Printf("Split Season: Part %d\n", info.SplitPart)
 	}
 	if info.DailyDate != "" {
 		fmt.Printf("Date:        %s\n", info.DailyDate)
