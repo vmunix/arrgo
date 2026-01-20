@@ -1,5 +1,7 @@
 # Plex Status Command Design
 
+**Status:** ✅ Complete
+
 ## Goal
 
 Add `arrgo plex status` command to verify Plex connection and display library information.

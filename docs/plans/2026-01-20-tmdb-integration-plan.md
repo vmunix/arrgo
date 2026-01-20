@@ -1,5 +1,7 @@
 # TMDB Integration Implementation Plan
 
+**Status:** ✅ Complete
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Add TMDB API client to enrich Overseerr compat responses with real movie metadata.

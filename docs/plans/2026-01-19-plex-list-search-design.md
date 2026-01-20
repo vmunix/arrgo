@@ -1,5 +1,7 @@
 # Plex List and Search Commands Design
 
+**Status:** ✅ Complete
+
 ## Goal
 
 Add commands to query Plex library contents and compare against arrgo's tracking database to identify mismatches (stuck imports, untracked content).

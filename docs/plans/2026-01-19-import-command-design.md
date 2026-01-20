@@ -1,5 +1,7 @@
 # Import Command Design
 
+**Status:** ✅ Complete
+
 ## Overview
 
 Add `arrgo import` command to trigger file imports into the library with Plex notification.

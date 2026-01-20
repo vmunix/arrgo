@@ -1,5 +1,7 @@
 # TMDB Integration Design
 
+**Status:** ✅ Complete
+
 ## Overview
 
 Minimal TMDB API integration to enrich Overseerr compatibility responses with real metadata.
