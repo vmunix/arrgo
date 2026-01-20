@@ -2,7 +2,6 @@
 package library
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -42,7 +41,7 @@ func TestTx_Rollback_Comprehensive(t *testing.T) {
 
 	// Should NOT be visible outside transaction
 	_, err = store.GetContent(id)
-	assert.True(t, errors.Is(err, ErrNotFound), "expected ErrNotFound after rollback, got %v", err)
+	require.ErrorIs(t, err, ErrNotFound, "expected ErrNotFound after rollback")
 }
 
 func TestTx_MultipleOperations(t *testing.T) {
@@ -87,11 +86,11 @@ func TestTx_CascadeDelete(t *testing.T) {
 
 	// Episode should be gone
 	_, err := store.GetEpisode(ep.ID)
-	assert.True(t, errors.Is(err, ErrNotFound), "expected episode ErrNotFound after cascade, got %v", err)
+	require.ErrorIs(t, err, ErrNotFound, "expected episode ErrNotFound after cascade")
 
 	// File should be gone
 	_, err = store.GetFile(f.ID)
-	assert.True(t, errors.Is(err, ErrNotFound), "expected file ErrNotFound after cascade, got %v", err)
+	require.ErrorIs(t, err, ErrNotFound, "expected file ErrNotFound after cascade")
 }
 
 func TestTx_CascadeDelete_InTransaction(t *testing.T) {
@@ -116,11 +115,11 @@ func TestTx_CascadeDelete_InTransaction(t *testing.T) {
 
 	// Episode should be gone after commit
 	_, err = store.GetEpisode(ep.ID)
-	assert.True(t, errors.Is(err, ErrNotFound), "expected episode ErrNotFound after cascade delete, got %v", err)
+	require.ErrorIs(t, err, ErrNotFound, "expected episode ErrNotFound after cascade delete")
 
 	// File should be gone after commit
 	_, err = store.GetFile(f.ID)
-	assert.True(t, errors.Is(err, ErrNotFound), "expected file ErrNotFound after cascade delete, got %v", err)
+	require.ErrorIs(t, err, ErrNotFound, "expected file ErrNotFound after cascade delete")
 }
 
 func TestTx_CascadeDelete_Rollback(t *testing.T) {
@@ -146,11 +145,11 @@ func TestTx_CascadeDelete_Rollback(t *testing.T) {
 
 	// Content should still exist
 	_, err = store.GetContent(series.ID)
-	assert.NoError(t, err, "expected content to exist after rollback")
+	require.NoError(t, err, "expected content to exist after rollback")
 
 	// Episode should still exist
 	_, err = store.GetEpisode(ep.ID)
-	assert.NoError(t, err, "expected episode to exist after rollback")
+	require.NoError(t, err, "expected episode to exist after rollback")
 
 	// File should still exist
 	_, err = store.GetFile(f.ID)
@@ -174,11 +173,11 @@ func TestTx_EpisodeDelete_CascadeFiles(t *testing.T) {
 
 	// Episode should be gone
 	_, err := store.GetEpisode(ep.ID)
-	assert.True(t, errors.Is(err, ErrNotFound), "expected episode ErrNotFound after delete, got %v", err)
+	require.ErrorIs(t, err, ErrNotFound, "expected episode ErrNotFound after delete")
 
 	// File should be gone (cascade from episode)
 	_, err = store.GetFile(f.ID)
-	assert.True(t, errors.Is(err, ErrNotFound), "expected file ErrNotFound after episode cascade delete, got %v", err)
+	require.ErrorIs(t, err, ErrNotFound, "expected file ErrNotFound after episode cascade delete")
 
 	// Series should still exist
 	_, err = store.GetContent(series.ID)
@@ -254,5 +253,5 @@ func TestTx_MovieWithFile_CascadeDelete(t *testing.T) {
 
 	// File should be gone
 	_, err := store.GetFile(f.ID)
-	assert.True(t, errors.Is(err, ErrNotFound), "expected file ErrNotFound after cascade delete, got %v", err)
+	require.ErrorIs(t, err, ErrNotFound, "expected file ErrNotFound after cascade delete")
 }

@@ -66,7 +66,7 @@ func TestDiscover_CurrentDir(t *testing.T) {
 
 	path, err := Discover()
 	require.NoError(t, err)
-	assert.True(t, filepath.Base(path) == "config.toml", "expected config.toml, got %s", path)
+	assert.Equal(t, "config.toml", filepath.Base(path), "expected config.toml")
 }
 
 func TestDiscover_NotFound(t *testing.T) {

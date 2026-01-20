@@ -102,7 +102,7 @@ func TestSABnzbdClient_Status(t *testing.T) {
 	assert.Equal(t, "nzo_abc123", status.ID)
 	assert.Equal(t, "Test.Movie.2024.1080p", status.Name)
 	assert.Equal(t, StatusDownloading, status.Status)
-	assert.Equal(t, float64(45), status.Progress)
+	assert.InDelta(t, 45, status.Progress, 0.001)
 }
 
 func TestSABnzbdClient_Status_Completed(t *testing.T) {

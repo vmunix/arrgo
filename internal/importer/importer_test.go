@@ -335,6 +335,6 @@ func TestImporter_Import_Episode_EpisodeNotFound(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(downloadPath, "episode.mkv"), make([]byte, 100), 0644), "create video")
 
 	_, err = imp.Import(context.Background(), downloadID, downloadPath)
-	assert.Error(t, err, "expected error for non-existent episode")
-	assert.True(t, strings.Contains(err.Error(), "get episode"), "expected 'get episode' error, got %v", err)
+	require.Error(t, err, "expected error for non-existent episode")
+	assert.Contains(t, err.Error(), "get episode", "expected 'get episode' error")
 }

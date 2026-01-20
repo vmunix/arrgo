@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	_ "embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -269,7 +268,7 @@ func TestDeleteContent(t *testing.T) {
 
 	// Verify deleted
 	_, err := srv.deps.Library.GetContent(1)
-	assert.True(t, errors.Is(err, library.ErrNotFound), "expected ErrNotFound, got %v", err)
+	assert.ErrorIs(t, err, library.ErrNotFound, "expected ErrNotFound")
 }
 
 func TestListEpisodes(t *testing.T) {

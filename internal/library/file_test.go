@@ -1,7 +1,6 @@
 package library
 
 import (
-	"errors"
 	"testing"
 	"time"
 
@@ -75,7 +74,7 @@ func TestStore_AddFile_DuplicatePath(t *testing.T) {
 	}
 
 	err := store.AddFile(f2)
-	assert.True(t, errors.Is(err, ErrDuplicate), "AddFile duplicate should return ErrDuplicate, got %v", err)
+	assert.ErrorIs(t, err, ErrDuplicate, "AddFile duplicate should return ErrDuplicate")
 }
 
 func TestStore_GetFile(t *testing.T) {
@@ -110,7 +109,7 @@ func TestStore_GetFile_NotFound(t *testing.T) {
 	store := NewStore(db)
 
 	_, err := store.GetFile(9999)
-	assert.True(t, errors.Is(err, ErrNotFound), "GetFile(9999) should return ErrNotFound, got %v", err)
+	assert.ErrorIs(t, err, ErrNotFound, "GetFile(9999) should return ErrNotFound")
 }
 
 func TestStore_ListFiles_FilterByContentID(t *testing.T) {
@@ -222,7 +221,7 @@ func TestStore_UpdateFile_NotFound(t *testing.T) {
 	}
 
 	err := store.UpdateFile(f)
-	assert.True(t, errors.Is(err, ErrNotFound), "UpdateFile should return ErrNotFound, got %v", err)
+	assert.ErrorIs(t, err, ErrNotFound, "UpdateFile should return ErrNotFound")
 }
 
 func TestStore_DeleteFile(t *testing.T) {
@@ -244,7 +243,7 @@ func TestStore_DeleteFile(t *testing.T) {
 
 	// Verify deleted
 	_, err := store.GetFile(f.ID)
-	assert.True(t, errors.Is(err, ErrNotFound), "GetFile after delete should return ErrNotFound, got %v", err)
+	assert.ErrorIs(t, err, ErrNotFound, "GetFile after delete should return ErrNotFound")
 }
 
 func TestStore_DeleteFile_Idempotent(t *testing.T) {
@@ -397,5 +396,5 @@ func TestTx_Rollback_File(t *testing.T) {
 
 	// Should NOT be visible after rollback
 	_, err = store.GetFile(id)
-	assert.True(t, errors.Is(err, ErrNotFound), "GetFile after rollback should return ErrNotFound, got %v", err)
+	assert.ErrorIs(t, err, ErrNotFound, "GetFile after rollback should return ErrNotFound")
 }

@@ -1,7 +1,6 @@
 package library
 
 import (
-	"errors"
 	"testing"
 	"time"
 
@@ -71,7 +70,7 @@ func TestStore_AddEpisode_Duplicate(t *testing.T) {
 	}
 
 	err := store.AddEpisode(e2)
-	assert.True(t, errors.Is(err, ErrDuplicate), "AddEpisode duplicate should return ErrDuplicate, got %v", err)
+	assert.ErrorIs(t, err, ErrDuplicate, "AddEpisode duplicate should return ErrDuplicate")
 }
 
 func TestStore_GetEpisode(t *testing.T) {
@@ -109,7 +108,7 @@ func TestStore_GetEpisode_NotFound(t *testing.T) {
 	store := NewStore(db)
 
 	_, err := store.GetEpisode(9999)
-	assert.True(t, errors.Is(err, ErrNotFound), "GetEpisode(9999) should return ErrNotFound, got %v", err)
+	assert.ErrorIs(t, err, ErrNotFound, "GetEpisode(9999) should return ErrNotFound")
 }
 
 func TestStore_ListEpisodes_FilterByContentID(t *testing.T) {
@@ -245,7 +244,7 @@ func TestStore_UpdateEpisode_NotFound(t *testing.T) {
 	}
 
 	err := store.UpdateEpisode(e)
-	assert.True(t, errors.Is(err, ErrNotFound), "UpdateEpisode should return ErrNotFound, got %v", err)
+	assert.ErrorIs(t, err, ErrNotFound, "UpdateEpisode should return ErrNotFound")
 }
 
 func TestStore_DeleteEpisode(t *testing.T) {
@@ -267,7 +266,7 @@ func TestStore_DeleteEpisode(t *testing.T) {
 
 	// Verify deleted
 	_, err := store.GetEpisode(e.ID)
-	assert.True(t, errors.Is(err, ErrNotFound), "GetEpisode after delete should return ErrNotFound, got %v", err)
+	assert.ErrorIs(t, err, ErrNotFound, "GetEpisode after delete should return ErrNotFound")
 }
 
 func TestStore_DeleteEpisode_Idempotent(t *testing.T) {
@@ -337,5 +336,5 @@ func TestTx_Rollback_Episode(t *testing.T) {
 
 	// Should NOT be visible after rollback
 	_, err = store.GetEpisode(id)
-	assert.True(t, errors.Is(err, ErrNotFound), "GetEpisode after rollback should return ErrNotFound, got %v", err)
+	assert.ErrorIs(t, err, ErrNotFound, "GetEpisode after rollback should return ErrNotFound")
 }

@@ -310,7 +310,7 @@ func TestScorer_Score_RejectList(t *testing.T) {
 			if tt.reject {
 				assert.Equal(t, 0, got, "Score() should be 0 (rejected)")
 			} else {
-				assert.Greater(t, got, 0, "Score() should be > 0 (not rejected)")
+				assert.Positive(t, got, "Score() should be > 0 (not rejected)")
 			}
 		})
 	}

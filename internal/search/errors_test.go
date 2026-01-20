@@ -2,16 +2,16 @@
 package search
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestErrors(t *testing.T) {
 	// Verify errors are distinct
-	assert.False(t, errors.Is(ErrProwlarrUnavailable, ErrInvalidAPIKey), "ErrProwlarrUnavailable should not equal ErrInvalidAPIKey")
-	assert.False(t, errors.Is(ErrInvalidAPIKey, ErrNoResults), "ErrInvalidAPIKey should not equal ErrNoResults")
+	require.NotErrorIs(t, ErrProwlarrUnavailable, ErrInvalidAPIKey, "ErrProwlarrUnavailable should not equal ErrInvalidAPIKey")
+	require.NotErrorIs(t, ErrInvalidAPIKey, ErrNoResults, "ErrInvalidAPIKey should not equal ErrNoResults")
 
 	// Verify error messages
 	assert.NotEmpty(t, ErrProwlarrUnavailable.Error(), "ErrProwlarrUnavailable should have a message")

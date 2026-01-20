@@ -1,7 +1,6 @@
 package library
 
 import (
-	"errors"
 	"testing"
 	"time"
 
@@ -90,7 +89,7 @@ func TestStore_GetContent_NotFound(t *testing.T) {
 	store := NewStore(db)
 
 	_, err := store.GetContent(9999)
-	assert.True(t, errors.Is(err, ErrNotFound), "GetContent(9999) should return ErrNotFound, got %v", err)
+	assert.ErrorIs(t, err, ErrNotFound, "GetContent(9999) should return ErrNotFound")
 }
 
 func TestStore_ListContent_All(t *testing.T) {
@@ -263,7 +262,7 @@ func TestStore_UpdateContent_NotFound(t *testing.T) {
 	}
 
 	err := store.UpdateContent(c)
-	assert.True(t, errors.Is(err, ErrNotFound), "UpdateContent should return ErrNotFound, got %v", err)
+	assert.ErrorIs(t, err, ErrNotFound, "UpdateContent should return ErrNotFound")
 }
 
 func TestStore_DeleteContent(t *testing.T) {
@@ -286,7 +285,7 @@ func TestStore_DeleteContent(t *testing.T) {
 
 	// Verify deleted
 	_, err := store.GetContent(c.ID)
-	assert.True(t, errors.Is(err, ErrNotFound), "GetContent after delete should return ErrNotFound, got %v", err)
+	assert.ErrorIs(t, err, ErrNotFound, "GetContent after delete should return ErrNotFound")
 }
 
 func TestStore_DeleteContent_Idempotent(t *testing.T) {
@@ -358,7 +357,7 @@ func TestTx_Rollback(t *testing.T) {
 
 	// Should NOT be visible after rollback
 	_, err = store.GetContent(id)
-	assert.True(t, errors.Is(err, ErrNotFound), "GetContent after rollback should return ErrNotFound, got %v", err)
+	assert.ErrorIs(t, err, ErrNotFound, "GetContent after rollback should return ErrNotFound")
 }
 
 func TestTx_ListContent(t *testing.T) {
@@ -439,7 +438,7 @@ func TestTx_DeleteContent(t *testing.T) {
 	require.NoError(t, tx.Commit(), "Commit should succeed")
 
 	_, err = store.GetContent(c.ID)
-	assert.True(t, errors.Is(err, ErrNotFound), "GetContent after delete should return ErrNotFound, got %v", err)
+	assert.ErrorIs(t, err, ErrNotFound, "GetContent after delete should return ErrNotFound")
 }
 
 func TestStore_GetByTitleYear(t *testing.T) {
