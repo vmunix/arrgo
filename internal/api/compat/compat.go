@@ -176,6 +176,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v3/movie/lookup", s.authMiddleware(s.lookupMovie))
 	mux.HandleFunc("GET /api/v3/movie/{id}", s.authMiddleware(s.getMovie))
 	mux.HandleFunc("POST /api/v3/movie", s.authMiddleware(s.addMovie))
+	mux.HandleFunc("PUT /api/v3/movie", s.authMiddleware(s.updateMovie))
 	mux.HandleFunc("GET /api/v3/rootfolder", s.authMiddleware(s.listRootFolders))
 	mux.HandleFunc("GET /api/v3/qualityprofile", s.authMiddleware(s.listQualityProfiles))
 	mux.HandleFunc("GET /api/v3/qualityProfile", s.authMiddleware(s.listQualityProfiles)) // Radarr uses camelCase
@@ -189,6 +190,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v3/series/lookup", s.authMiddleware(s.lookupSeries))
 	mux.HandleFunc("GET /api/v3/series/{id}", s.authMiddleware(s.getSeries))
 	mux.HandleFunc("POST /api/v3/series", s.authMiddleware(s.addSeries))
+	mux.HandleFunc("PUT /api/v3/series", s.authMiddleware(s.updateSeries))
 	mux.HandleFunc("GET /api/v3/languageprofile", s.authMiddleware(s.listLanguageProfiles))
 }
 
@@ -419,6 +421,36 @@ func (s *Server) addMovie(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, s.contentToRadarrMovie(content))
+}
+
+func (s *Server) updateMovie(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID        int64 `json:"id"`
+		Monitored bool  `json:"monitored"`
+		Tags      []int `json:"tags"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+		return
+	}
+
+	content, err := s.library.GetContent(req.ID)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Movie not found"})
+		return
+	}
+
+	// Update monitoring status
+	if req.Monitored {
+		content.Status = library.StatusWanted
+	}
+
+	if err := s.library.UpdateContent(content); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, s.contentToRadarrMovie(content))
 }
 
 func (s *Server) listRootFolders(w http.ResponseWriter, r *http.Request) {
@@ -713,6 +745,37 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusCreated, s.contentToSonarrSeries(content))
+}
+
+func (s *Server) updateSeries(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ID        int64          `json:"id"`
+		Monitored bool           `json:"monitored"`
+		Seasons   []sonarrSeason `json:"seasons"`
+		Tags      []int          `json:"tags"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
+		return
+	}
+
+	content, err := s.library.GetContent(req.ID)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Series not found"})
+		return
+	}
+
+	// Update monitoring status
+	if req.Monitored {
+		content.Status = library.StatusWanted
+	}
+
+	if err := s.library.UpdateContent(content); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, s.contentToSonarrSeries(content))
 }
 
 // Tag handlers (Overseerr uses these for per-user tagging)
