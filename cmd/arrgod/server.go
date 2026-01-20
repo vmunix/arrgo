@@ -24,6 +24,7 @@ import (
 	"github.com/vmunix/arrgo/internal/library"
 	"github.com/vmunix/arrgo/internal/migrations"
 	"github.com/vmunix/arrgo/internal/search"
+	"github.com/vmunix/arrgo/internal/tmdb"
 	"github.com/vmunix/arrgo/pkg/newznab"
 )
 
@@ -230,6 +231,14 @@ func runServer(configPath string) error {
 		apiCompat := compat.New(compatCfg, libraryStore, downloadStore)
 		apiCompat.SetSearcher(searcher)
 		apiCompat.SetManager(downloadManager)
+
+		// Wire TMDB client if configured
+		if cfg.TMDB != nil && cfg.TMDB.APIKey != "" {
+			tmdbClient := tmdb.NewClient(cfg.TMDB.APIKey)
+			apiCompat.SetTMDB(tmdbClient)
+			logger.Info("TMDB client configured")
+		}
+
 		apiCompat.RegisterRoutes(mux)
 	}
 
