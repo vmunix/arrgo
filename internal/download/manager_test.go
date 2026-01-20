@@ -1,473 +1,483 @@
-package download
+package download_test
 
 import (
 	"context"
-	"errors"
+	"database/sql"
+	_ "embed"
 	"io"
 	"log/slog"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/vmunix/arrgo/internal/download"
+	"github.com/vmunix/arrgo/internal/download/mocks"
+	"go.uber.org/mock/gomock"
+	_ "modernc.org/sqlite"
 )
+
+//go:embed testdata/schema.sql
+var testSchema string
 
 // testLogger returns a discard logger for tests.
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-type mockDownloader struct {
-	addResult    string
-	addErr       error
-	statusResult *ClientStatus
-	statusErr    error
-	listResult   []*ClientStatus
-	listErr      error
-	removeErr    error
-	removeCalled bool
+func setupTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:?_foreign_keys=on")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	_, err = db.Exec(testSchema)
+	require.NoError(t, err)
+	return db
 }
 
-func (m *mockDownloader) Add(ctx context.Context, url, category string) (string, error) {
-	return m.addResult, m.addErr
-}
-
-func (m *mockDownloader) Status(ctx context.Context, clientID string) (*ClientStatus, error) {
-	return m.statusResult, m.statusErr
-}
-
-func (m *mockDownloader) List(ctx context.Context) ([]*ClientStatus, error) {
-	return m.listResult, m.listErr
-}
-
-func (m *mockDownloader) Remove(ctx context.Context, clientID string, deleteFiles bool) error {
-	m.removeCalled = true
-	return m.removeErr
+// insertTestContent inserts a test content row and returns its ID.
+func insertTestContent(t *testing.T, db *sql.DB, title string) int64 {
+	t.Helper()
+	result, err := db.Exec(`
+		INSERT INTO content (type, title, year, status, quality_profile, root_path)
+		VALUES ('movie', ?, 2000, 'wanted', 'hd', '/movies')`,
+		title,
+	)
+	require.NoError(t, err)
+	id, err := result.LastInsertId()
+	require.NoError(t, err)
+	return id
 }
 
 func TestManager_Grab(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
 	db := setupTestDB(t)
-	store := NewStore(db)
+	store := download.NewStore(db)
 	contentID := insertTestContent(t, db, "Test Movie")
 
-	client := &mockDownloader{addResult: "nzo_abc123"}
-	mgr := NewManager(client, store, testLogger())
+	client := mocks.NewMockDownloader(ctrl)
+	client.EXPECT().
+		Add(gomock.Any(), "http://example.com/test.nzb", "").
+		Return("nzo_abc123", nil)
+
+	mgr := download.NewManager(client, store, testLogger())
 
 	d, err := mgr.Grab(context.Background(), contentID, nil, "http://example.com/test.nzb", "Test.Movie.2024.1080p", "TestIndexer")
-	if err != nil {
-		t.Fatalf("Grab: %v", err)
-	}
 
-	if d.ClientID != "nzo_abc123" {
-		t.Errorf("ClientID = %q, want nzo_abc123", d.ClientID)
-	}
-	if d.Status != StatusQueued {
-		t.Errorf("Status = %q, want queued", d.Status)
-	}
-	if d.ID == 0 {
-		t.Error("download should be saved to DB")
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "nzo_abc123", d.ClientID)
+	assert.Equal(t, download.StatusQueued, d.Status)
+	assert.NotZero(t, d.ID, "download should be saved to DB")
 }
 
 func TestManager_Grab_WithEpisodeID(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
 	db := setupTestDB(t)
-	store := NewStore(db)
+	store := download.NewStore(db)
 
 	// Create series
 	result, err := db.Exec(`INSERT INTO content (type, title, year, status, quality_profile, root_path)
 		VALUES ('series', 'Test Show', 2024, 'wanted', 'hd', '/tv')`)
-	if err != nil {
-		t.Fatalf("insert content: %v", err)
-	}
+	require.NoError(t, err)
 	contentID, _ := result.LastInsertId()
 
 	// Create episode
 	epResult, err := db.Exec(`INSERT INTO episodes (content_id, season, episode, title, status)
 		VALUES (?, 1, 1, 'Pilot', 'wanted')`, contentID)
-	if err != nil {
-		t.Fatalf("insert episode: %v", err)
-	}
+	require.NoError(t, err)
 	episodeID, _ := epResult.LastInsertId()
 
-	client := &mockDownloader{addResult: "nzo_ep1"}
-	mgr := NewManager(client, store, testLogger())
+	client := mocks.NewMockDownloader(ctrl)
+	client.EXPECT().
+		Add(gomock.Any(), "http://example.com/ep.nzb", "").
+		Return("nzo_ep1", nil)
+
+	mgr := download.NewManager(client, store, testLogger())
 
 	d, err := mgr.Grab(context.Background(), contentID, &episodeID, "http://example.com/ep.nzb", "Test.Show.S01E01", "Indexer")
-	if err != nil {
-		t.Fatalf("Grab: %v", err)
-	}
 
-	if d.EpisodeID == nil || *d.EpisodeID != episodeID {
-		t.Errorf("EpisodeID = %v, want %d", d.EpisodeID, episodeID)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, d.EpisodeID)
+	assert.Equal(t, episodeID, *d.EpisodeID)
 }
 
 func TestManager_Grab_ClientError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
 	db := setupTestDB(t)
-	store := NewStore(db)
+	store := download.NewStore(db)
 	contentID := insertTestContent(t, db, "Test Movie")
 
-	client := &mockDownloader{addErr: ErrClientUnavailable}
-	mgr := NewManager(client, store, testLogger())
+	client := mocks.NewMockDownloader(ctrl)
+	client.EXPECT().
+		Add(gomock.Any(), "http://example.com/test.nzb", "").
+		Return("", download.ErrClientUnavailable)
+
+	mgr := download.NewManager(client, store, testLogger())
 
 	_, err := mgr.Grab(context.Background(), contentID, nil, "http://example.com/test.nzb", "Test.Movie", "Indexer")
-	if !errors.Is(err, ErrClientUnavailable) {
-		t.Errorf("expected ErrClientUnavailable, got %v", err)
-	}
+
+	require.ErrorIs(t, err, download.ErrClientUnavailable)
 
 	// Should not have saved to DB
-	downloads, _ := store.List(DownloadFilter{})
-	if len(downloads) != 0 {
-		t.Error("download should not be in DB after client error")
-	}
+	downloads, _ := store.List(download.DownloadFilter{})
+	assert.Empty(t, downloads, "download should not be in DB after client error")
 }
 
 func TestManager_Grab_Idempotent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
 	db := setupTestDB(t)
-	store := NewStore(db)
+	store := download.NewStore(db)
 	contentID := insertTestContent(t, db, "Test Movie")
 
-	client := &mockDownloader{addResult: "nzo_abc123"}
-	mgr := NewManager(client, store, testLogger())
+	client := mocks.NewMockDownloader(ctrl)
+	// First grab returns nzo_abc123
+	client.EXPECT().
+		Add(gomock.Any(), "http://example.com/test.nzb", "").
+		Return("nzo_abc123", nil)
+	// Second grab calls Add again (returns different ID), but store returns existing record
+	client.EXPECT().
+		Add(gomock.Any(), "http://example.com/test.nzb", "").
+		Return("nzo_different", nil)
+
+	mgr := download.NewManager(client, store, testLogger())
 
 	d1, err := mgr.Grab(context.Background(), contentID, nil, "http://example.com/test.nzb", "Test.Movie.2024", "Indexer")
-	if err != nil {
-		t.Fatalf("Grab first: %v", err)
-	}
+	require.NoError(t, err)
 
-	// Second grab with same content + release should be idempotent
-	client.addResult = "nzo_different"
+	// Second grab with same content + release should be idempotent (returns same DB record)
 	d2, err := mgr.Grab(context.Background(), contentID, nil, "http://example.com/test.nzb", "Test.Movie.2024", "Indexer")
-	if err != nil {
-		t.Fatalf("Grab second: %v", err)
-	}
+	require.NoError(t, err)
 
-	if d1.ID != d2.ID {
-		t.Errorf("expected same download ID %d, got %d", d1.ID, d2.ID)
-	}
+	assert.Equal(t, d1.ID, d2.ID, "expected same download ID")
 }
 
 func TestManager_Refresh(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
 	db := setupTestDB(t)
-	store := NewStore(db)
+	store := download.NewStore(db)
 	contentID := insertTestContent(t, db, "Test Movie")
 
 	// Add a download
-	d := &Download{
+	d := &download.Download{
 		ContentID:   contentID,
-		Client:      ClientSABnzbd,
+		Client:      download.ClientSABnzbd,
 		ClientID:    "nzo_abc123",
-		Status:      StatusDownloading,
+		Status:      download.StatusDownloading,
 		ReleaseName: "Test.Movie",
 	}
-	_ = store.Add(d)
+	require.NoError(t, store.Add(d))
 
-	// Mock client returns completed status
-	client := &mockDownloader{
-		statusResult: &ClientStatus{
+	client := mocks.NewMockDownloader(ctrl)
+	client.EXPECT().
+		Status(gomock.Any(), "nzo_abc123").
+		Return(&download.ClientStatus{
 			ID:       "nzo_abc123",
-			Status:   StatusCompleted,
+			Status:   download.StatusCompleted,
 			Progress: 100,
 			Path:     "/complete/Test.Movie",
-		},
-	}
-	mgr := NewManager(client, store, testLogger())
+		}, nil)
 
-	if err := mgr.Refresh(context.Background()); err != nil {
-		t.Fatalf("Refresh: %v", err)
-	}
+	mgr := download.NewManager(client, store, testLogger())
+
+	err := mgr.Refresh(context.Background())
+	require.NoError(t, err)
 
 	// Should have updated status in DB
-	updated, _ := store.Get(d.ID)
-	if updated.Status != StatusCompleted {
-		t.Errorf("Status = %q, want completed", updated.Status)
-	}
-	if updated.CompletedAt == nil {
-		t.Error("CompletedAt should be set")
-	}
+	updated, err := store.Get(d.ID)
+	require.NoError(t, err)
+	assert.Equal(t, download.StatusCompleted, updated.Status)
+	assert.NotNil(t, updated.CompletedAt, "CompletedAt should be set")
 }
 
 func TestManager_Refresh_NoChange(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
 	db := setupTestDB(t)
-	store := NewStore(db)
+	store := download.NewStore(db)
 	contentID := insertTestContent(t, db, "Test Movie")
 
-	d := &Download{
+	d := &download.Download{
 		ContentID:   contentID,
-		Client:      ClientSABnzbd,
+		Client:      download.ClientSABnzbd,
 		ClientID:    "nzo_abc123",
-		Status:      StatusDownloading,
+		Status:      download.StatusDownloading,
 		ReleaseName: "Test.Movie",
 	}
-	_ = store.Add(d)
+	require.NoError(t, store.Add(d))
 
-	// Mock client returns same status
-	client := &mockDownloader{
-		statusResult: &ClientStatus{
+	client := mocks.NewMockDownloader(ctrl)
+	client.EXPECT().
+		Status(gomock.Any(), "nzo_abc123").
+		Return(&download.ClientStatus{
 			ID:       "nzo_abc123",
-			Status:   StatusDownloading,
+			Status:   download.StatusDownloading,
 			Progress: 50,
-		},
-	}
-	mgr := NewManager(client, store, testLogger())
+		}, nil)
 
-	if err := mgr.Refresh(context.Background()); err != nil {
-		t.Fatalf("Refresh: %v", err)
-	}
+	mgr := download.NewManager(client, store, testLogger())
+
+	err := mgr.Refresh(context.Background())
+	require.NoError(t, err)
 
 	// Status should remain unchanged
-	updated, _ := store.Get(d.ID)
-	if updated.Status != StatusDownloading {
-		t.Errorf("Status = %q, want downloading", updated.Status)
-	}
-	if updated.CompletedAt != nil {
-		t.Error("CompletedAt should not be set")
-	}
+	updated, err := store.Get(d.ID)
+	require.NoError(t, err)
+	assert.Equal(t, download.StatusDownloading, updated.Status)
+	assert.Nil(t, updated.CompletedAt, "CompletedAt should not be set")
 }
 
 func TestManager_Refresh_Failed(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
 	db := setupTestDB(t)
-	store := NewStore(db)
+	store := download.NewStore(db)
 	contentID := insertTestContent(t, db, "Test Movie")
 
-	d := &Download{
+	d := &download.Download{
 		ContentID:   contentID,
-		Client:      ClientSABnzbd,
+		Client:      download.ClientSABnzbd,
 		ClientID:    "nzo_abc123",
-		Status:      StatusDownloading,
+		Status:      download.StatusDownloading,
 		ReleaseName: "Test.Movie",
 	}
-	_ = store.Add(d)
+	require.NoError(t, store.Add(d))
 
-	// Mock client returns failed status
-	client := &mockDownloader{
-		statusResult: &ClientStatus{
+	client := mocks.NewMockDownloader(ctrl)
+	client.EXPECT().
+		Status(gomock.Any(), "nzo_abc123").
+		Return(&download.ClientStatus{
 			ID:     "nzo_abc123",
-			Status: StatusFailed,
-		},
-	}
-	mgr := NewManager(client, store, testLogger())
+			Status: download.StatusFailed,
+		}, nil)
 
-	if err := mgr.Refresh(context.Background()); err != nil {
-		t.Fatalf("Refresh: %v", err)
-	}
+	mgr := download.NewManager(client, store, testLogger())
 
-	updated, _ := store.Get(d.ID)
-	if updated.Status != StatusFailed {
-		t.Errorf("Status = %q, want failed", updated.Status)
-	}
-	if updated.CompletedAt == nil {
-		t.Error("CompletedAt should be set for failed downloads")
-	}
+	err := mgr.Refresh(context.Background())
+	require.NoError(t, err)
+
+	updated, err := store.Get(d.ID)
+	require.NoError(t, err)
+	assert.Equal(t, download.StatusFailed, updated.Status)
+	assert.NotNil(t, updated.CompletedAt, "CompletedAt should be set for failed downloads")
 }
 
 func TestManager_Cancel(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
 	db := setupTestDB(t)
-	store := NewStore(db)
+	store := download.NewStore(db)
 	contentID := insertTestContent(t, db, "Test Movie")
 
-	d := &Download{
+	d := &download.Download{
 		ContentID:   contentID,
-		Client:      ClientSABnzbd,
+		Client:      download.ClientSABnzbd,
 		ClientID:    "nzo_abc123",
-		Status:      StatusDownloading,
+		Status:      download.StatusDownloading,
 		ReleaseName: "Test.Movie",
 	}
-	_ = store.Add(d)
+	require.NoError(t, store.Add(d))
 
-	client := &mockDownloader{}
-	mgr := NewManager(client, store, testLogger())
+	client := mocks.NewMockDownloader(ctrl)
+	client.EXPECT().
+		Remove(gomock.Any(), "nzo_abc123", false).
+		Return(nil)
 
-	if err := mgr.Cancel(context.Background(), d.ID, false); err != nil {
-		t.Fatalf("Cancel: %v", err)
-	}
+	mgr := download.NewManager(client, store, testLogger())
 
-	if !client.removeCalled {
-		t.Error("client.Remove should have been called")
-	}
+	err := mgr.Cancel(context.Background(), d.ID, false)
+	require.NoError(t, err)
 
 	// Should be deleted from DB
-	_, err := store.Get(d.ID)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("expected ErrNotFound after cancel, got %v", err)
-	}
+	_, err = store.Get(d.ID)
+	require.ErrorIs(t, err, download.ErrNotFound)
 }
 
 func TestManager_Cancel_NotFound(t *testing.T) {
-	db := setupTestDB(t)
-	store := NewStore(db)
+	ctrl := gomock.NewController(t)
 
-	client := &mockDownloader{}
-	mgr := NewManager(client, store, testLogger())
+	db := setupTestDB(t)
+	store := download.NewStore(db)
+
+	client := mocks.NewMockDownloader(ctrl)
+	// No expectations - Remove should not be called
+
+	mgr := download.NewManager(client, store, testLogger())
 
 	err := mgr.Cancel(context.Background(), 9999, false)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("expected ErrNotFound, got %v", err)
-	}
+	require.ErrorIs(t, err, download.ErrNotFound)
 }
 
 func TestManager_Cancel_ClientError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
 	db := setupTestDB(t)
-	store := NewStore(db)
+	store := download.NewStore(db)
 	contentID := insertTestContent(t, db, "Test Movie")
 
-	d := &Download{
+	d := &download.Download{
 		ContentID:   contentID,
-		Client:      ClientSABnzbd,
+		Client:      download.ClientSABnzbd,
 		ClientID:    "nzo_abc123",
-		Status:      StatusDownloading,
+		Status:      download.StatusDownloading,
 		ReleaseName: "Test.Movie",
 	}
-	_ = store.Add(d)
+	require.NoError(t, store.Add(d))
 
 	// Client error should not prevent DB deletion
-	client := &mockDownloader{removeErr: ErrClientUnavailable}
-	mgr := NewManager(client, store, testLogger())
+	client := mocks.NewMockDownloader(ctrl)
+	client.EXPECT().
+		Remove(gomock.Any(), "nzo_abc123", false).
+		Return(download.ErrClientUnavailable)
 
-	if err := mgr.Cancel(context.Background(), d.ID, false); err != nil {
-		t.Fatalf("Cancel should succeed despite client error: %v", err)
-	}
+	mgr := download.NewManager(client, store, testLogger())
+
+	err := mgr.Cancel(context.Background(), d.ID, false)
+	require.NoError(t, err, "Cancel should succeed despite client error")
 
 	// Should still be deleted from DB
-	_, err := store.Get(d.ID)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("expected ErrNotFound after cancel, got %v", err)
-	}
+	_, err = store.Get(d.ID)
+	require.ErrorIs(t, err, download.ErrNotFound)
 }
 
 func TestManager_GetActive(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
 	db := setupTestDB(t)
-	store := NewStore(db)
+	store := download.NewStore(db)
 	contentID := insertTestContent(t, db, "Test Movie")
 
-	d := &Download{
+	d := &download.Download{
 		ContentID:   contentID,
-		Client:      ClientSABnzbd,
+		Client:      download.ClientSABnzbd,
 		ClientID:    "nzo_abc123",
-		Status:      StatusDownloading,
+		Status:      download.StatusDownloading,
 		ReleaseName: "Test.Movie",
 	}
-	_ = store.Add(d)
+	require.NoError(t, store.Add(d))
 
-	client := &mockDownloader{
-		statusResult: &ClientStatus{
+	client := mocks.NewMockDownloader(ctrl)
+	client.EXPECT().
+		Status(gomock.Any(), "nzo_abc123").
+		Return(&download.ClientStatus{
 			ID:       "nzo_abc123",
-			Status:   StatusDownloading,
+			Status:   download.StatusDownloading,
 			Progress: 50,
 			Speed:    10000000,
 			ETA:      5 * time.Minute,
-		},
-	}
-	mgr := NewManager(client, store, testLogger())
+		}, nil)
+
+	mgr := download.NewManager(client, store, testLogger())
 
 	active, err := mgr.GetActive(context.Background())
-	if err != nil {
-		t.Fatalf("GetActive: %v", err)
-	}
+	require.NoError(t, err)
+	require.Len(t, active, 1, "expected 1 active download")
 
-	if len(active) != 1 {
-		t.Fatalf("expected 1 active download, got %d", len(active))
-	}
-	if active[0].Download.ID != d.ID {
-		t.Errorf("Download.ID = %d, want %d", active[0].Download.ID, d.ID)
-	}
-	if active[0].Live == nil {
-		t.Fatal("Live status should be set")
-	}
-	if active[0].Live.Progress != 50 {
-		t.Errorf("Progress = %f, want 50", active[0].Live.Progress)
-	}
+	assert.Equal(t, d.ID, active[0].Download.ID)
+	require.NotNil(t, active[0].Live, "Live status should be set")
+	assert.Equal(t, float64(50), active[0].Live.Progress)
 }
 
 func TestManager_GetActive_ClientError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
 	db := setupTestDB(t)
-	store := NewStore(db)
+	store := download.NewStore(db)
 	contentID := insertTestContent(t, db, "Test Movie")
 
-	d := &Download{
+	d := &download.Download{
 		ContentID:   contentID,
-		Client:      ClientSABnzbd,
+		Client:      download.ClientSABnzbd,
 		ClientID:    "nzo_abc123",
-		Status:      StatusDownloading,
+		Status:      download.StatusDownloading,
 		ReleaseName: "Test.Movie",
 	}
-	_ = store.Add(d)
+	require.NoError(t, store.Add(d))
 
 	// Client error should still return download without live status
-	client := &mockDownloader{statusErr: ErrClientUnavailable}
-	mgr := NewManager(client, store, testLogger())
+	client := mocks.NewMockDownloader(ctrl)
+	client.EXPECT().
+		Status(gomock.Any(), "nzo_abc123").
+		Return(nil, download.ErrClientUnavailable)
+
+	mgr := download.NewManager(client, store, testLogger())
 
 	active, err := mgr.GetActive(context.Background())
-	if err != nil {
-		t.Fatalf("GetActive: %v", err)
-	}
+	require.NoError(t, err)
+	require.Len(t, active, 1, "expected 1 active download")
 
-	if len(active) != 1 {
-		t.Fatalf("expected 1 active download, got %d", len(active))
-	}
-	if active[0].Download.ID != d.ID {
-		t.Errorf("Download.ID = %d, want %d", active[0].Download.ID, d.ID)
-	}
-	if active[0].Live != nil {
-		t.Error("Live status should be nil when client errors")
-	}
+	assert.Equal(t, d.ID, active[0].Download.ID)
+	assert.Nil(t, active[0].Live, "Live status should be nil when client errors")
 }
 
 func TestManager_GetActive_ExcludesTerminal(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
 	db := setupTestDB(t)
-	store := NewStore(db)
+	store := download.NewStore(db)
 	contentID := insertTestContent(t, db, "Test Movie")
 
 	// Add active download
-	d1 := &Download{
+	d1 := &download.Download{
 		ContentID:   contentID,
-		Client:      ClientSABnzbd,
+		Client:      download.ClientSABnzbd,
 		ClientID:    "nzo_1",
-		Status:      StatusDownloading,
+		Status:      download.StatusDownloading,
 		ReleaseName: "Active.Movie",
 	}
-	_ = store.Add(d1)
+	require.NoError(t, store.Add(d1))
 
 	// Add imported download (should be included - not terminal)
-	d2 := &Download{
+	d2 := &download.Download{
 		ContentID:   contentID,
-		Client:      ClientSABnzbd,
+		Client:      download.ClientSABnzbd,
 		ClientID:    "nzo_2",
-		Status:      StatusImported,
+		Status:      download.StatusImported,
 		ReleaseName: "Imported.Movie",
 	}
-	_ = store.Add(d2)
+	require.NoError(t, store.Add(d2))
 
 	// Add cleaned download (should be excluded - terminal)
-	d3 := &Download{
+	d3 := &download.Download{
 		ContentID:   contentID,
-		Client:      ClientSABnzbd,
+		Client:      download.ClientSABnzbd,
 		ClientID:    "nzo_3",
-		Status:      StatusCleaned,
+		Status:      download.StatusCleaned,
 		ReleaseName: "Cleaned.Movie",
 	}
-	_ = store.Add(d3)
+	require.NoError(t, store.Add(d3))
 
-	client := &mockDownloader{
-		statusResult: &ClientStatus{
+	client := mocks.NewMockDownloader(ctrl)
+	// Expect Status calls for non-terminal downloads only
+	client.EXPECT().
+		Status(gomock.Any(), "nzo_1").
+		Return(&download.ClientStatus{
 			ID:       "nzo_1",
-			Status:   StatusDownloading,
+			Status:   download.StatusDownloading,
 			Progress: 50,
-		},
-	}
-	mgr := NewManager(client, store, testLogger())
+		}, nil)
+	client.EXPECT().
+		Status(gomock.Any(), "nzo_2").
+		Return(&download.ClientStatus{
+			ID:       "nzo_2",
+			Status:   download.StatusImported,
+			Progress: 100,
+		}, nil)
+
+	mgr := download.NewManager(client, store, testLogger())
 
 	active, err := mgr.GetActive(context.Background())
-	if err != nil {
-		t.Fatalf("GetActive: %v", err)
-	}
-
-	// Should include downloading and imported, exclude cleaned
-	if len(active) != 2 {
-		t.Fatalf("expected 2 active downloads (excluding terminal states), got %d", len(active))
-	}
+	require.NoError(t, err)
+	require.Len(t, active, 2, "expected 2 active downloads (excluding terminal states)")
 
 	// Verify no terminal status in results
 	for _, a := range active {
-		if a.Download.Status == StatusCleaned || a.Download.Status == StatusFailed {
-			t.Errorf("GetActive should exclude terminal status, found: %v", a.Download.Status)
-		}
+		assert.NotEqual(t, download.StatusCleaned, a.Download.Status, "GetActive should exclude cleaned status")
+		assert.NotEqual(t, download.StatusFailed, a.Download.Status, "GetActive should exclude failed status")
 	}
 }
