@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/vmunix/arrgo/internal/library"
 )
 
@@ -41,18 +43,10 @@ func TestNew(t *testing.T) {
 	}
 
 	srv := New(db, cfg)
-	if srv == nil {
-		t.Fatal("New returned nil")
-	}
-	if srv.deps.Library == nil {
-		t.Error("library store not initialized")
-	}
-	if srv.deps.Downloads == nil {
-		t.Error("download store not initialized")
-	}
-	if srv.deps.History == nil {
-		t.Error("history store not initialized")
-	}
+	require.NotNil(t, srv, "New returned nil")
+	assert.NotNil(t, srv.deps.Library, "library store not initialized")
+	assert.NotNil(t, srv.deps.Downloads, "download store not initialized")
+	assert.NotNil(t, srv.deps.History, "history store not initialized")
 }
 
 func TestListContent_Empty(t *testing.T) {
@@ -64,20 +58,12 @@ func TestListContent_Empty(t *testing.T) {
 
 	srv.listContent(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var resp listContentResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if len(resp.Items) != 0 {
-		t.Errorf("items = %d, want 0", len(resp.Items))
-	}
-	if resp.Total != 0 {
-		t.Errorf("total = %d, want 0", resp.Total)
-	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Empty(t, resp.Items)
+	assert.Zero(t, resp.Total)
 }
 
 func TestListContent_WithItems(t *testing.T) {
