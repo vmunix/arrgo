@@ -4,6 +4,9 @@ package library
 import (
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTx_Commit(t *testing.T) {
@@ -11,27 +14,17 @@ func TestTx_Commit(t *testing.T) {
 	store := NewStore(db)
 
 	tx, err := store.Begin()
-	if err != nil {
-		t.Fatalf("Begin failed: %v", err)
-	}
+	require.NoError(t, err, "Begin should succeed")
 
 	c := &Content{Type: ContentTypeMovie, Title: "TX Movie", Year: 2024, Status: StatusWanted, QualityProfile: "hd", RootPath: "/movies"}
-	if err := tx.AddContent(c); err != nil {
-		t.Fatalf("AddContent in tx failed: %v", err)
-	}
+	require.NoError(t, tx.AddContent(c), "AddContent in tx should succeed")
 
-	if err := tx.Commit(); err != nil {
-		t.Fatalf("Commit failed: %v", err)
-	}
+	require.NoError(t, tx.Commit(), "Commit should succeed")
 
 	// Should be visible outside transaction
 	got, err := store.GetContent(c.ID)
-	if err != nil {
-		t.Fatalf("GetContent after commit failed: %v", err)
-	}
-	if got.Title != "TX Movie" {
-		t.Errorf("expected title 'TX Movie', got %q", got.Title)
-	}
+	require.NoError(t, err, "GetContent after commit should succeed")
+	assert.Equal(t, "TX Movie", got.Title)
 }
 
 func TestTx_Rollback_Comprehensive(t *testing.T) {
@@ -39,25 +32,17 @@ func TestTx_Rollback_Comprehensive(t *testing.T) {
 	store := NewStore(db)
 
 	tx, err := store.Begin()
-	if err != nil {
-		t.Fatalf("Begin failed: %v", err)
-	}
+	require.NoError(t, err, "Begin should succeed")
 
 	c := &Content{Type: ContentTypeMovie, Title: "TX Movie", Year: 2024, Status: StatusWanted, QualityProfile: "hd", RootPath: "/movies"}
-	if err := tx.AddContent(c); err != nil {
-		t.Fatalf("AddContent in tx failed: %v", err)
-	}
+	require.NoError(t, tx.AddContent(c), "AddContent in tx should succeed")
 	id := c.ID
 
-	if err := tx.Rollback(); err != nil {
-		t.Fatalf("Rollback failed: %v", err)
-	}
+	require.NoError(t, tx.Rollback(), "Rollback should succeed")
 
 	// Should NOT be visible outside transaction
 	_, err = store.GetContent(id)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("expected ErrNotFound after rollback, got %v", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "expected ErrNotFound after rollback, got %v", err)
 }
 
 func TestTx_MultipleOperations(t *testing.T) {
@@ -65,38 +50,24 @@ func TestTx_MultipleOperations(t *testing.T) {
 	store := NewStore(db)
 
 	tx, err := store.Begin()
-	if err != nil {
-		t.Fatalf("Begin failed: %v", err)
-	}
+	require.NoError(t, err, "Begin should succeed")
 
 	// Add series with episodes in one transaction
 	series := &Content{Type: ContentTypeSeries, Title: "TX Series", Year: 2024, Status: StatusWanted, QualityProfile: "hd", RootPath: "/tv"}
-	if err := tx.AddContent(series); err != nil {
-		t.Fatalf("AddContent failed: %v", err)
-	}
+	require.NoError(t, tx.AddContent(series), "AddContent should succeed")
 
 	for i := 1; i <= 3; i++ {
 		ep := &Episode{ContentID: series.ID, Season: 1, Episode: i, Title: "Episode", Status: StatusWanted}
-		if err := tx.AddEpisode(ep); err != nil {
-			t.Fatalf("AddEpisode failed: %v", err)
-		}
+		require.NoError(t, tx.AddEpisode(ep), "AddEpisode should succeed")
 	}
 
-	if err := tx.Commit(); err != nil {
-		t.Fatalf("Commit failed: %v", err)
-	}
+	require.NoError(t, tx.Commit(), "Commit should succeed")
 
 	// Verify all episodes exist
 	eps, total, err := store.ListEpisodes(EpisodeFilter{ContentID: &series.ID})
-	if err != nil {
-		t.Fatalf("ListEpisodes failed: %v", err)
-	}
-	if total != 3 {
-		t.Errorf("expected 3 episodes, got %d", total)
-	}
-	if len(eps) != 3 {
-		t.Errorf("expected 3 results, got %d", len(eps))
-	}
+	require.NoError(t, err, "ListEpisodes should succeed")
+	assert.Equal(t, 3, total, "expected 3 episodes")
+	assert.Len(t, eps, 3, "expected 3 results")
 }
 
 func TestTx_CascadeDelete(t *testing.T) {
@@ -105,34 +76,22 @@ func TestTx_CascadeDelete(t *testing.T) {
 
 	// Create series with episode and file
 	series := &Content{Type: ContentTypeSeries, Title: "Cascade Series", Year: 2024, Status: StatusWanted, QualityProfile: "hd", RootPath: "/tv"}
-	if err := store.AddContent(series); err != nil {
-		t.Fatalf("setup: %v", err)
-	}
+	require.NoError(t, store.AddContent(series), "setup AddContent should succeed")
 	ep := &Episode{ContentID: series.ID, Season: 1, Episode: 1, Title: "Pilot", Status: StatusWanted}
-	if err := store.AddEpisode(ep); err != nil {
-		t.Fatalf("setup: %v", err)
-	}
+	require.NoError(t, store.AddEpisode(ep), "setup AddEpisode should succeed")
 	f := &File{ContentID: series.ID, EpisodeID: &ep.ID, Path: "/tv/series/s01e01.mkv", SizeBytes: 1000, Quality: "1080p", Source: "webdl"}
-	if err := store.AddFile(f); err != nil {
-		t.Fatalf("setup: %v", err)
-	}
+	require.NoError(t, store.AddFile(f), "setup AddFile should succeed")
 
 	// Delete content - should cascade
-	if err := store.DeleteContent(series.ID); err != nil {
-		t.Fatalf("DeleteContent failed: %v", err)
-	}
+	require.NoError(t, store.DeleteContent(series.ID), "DeleteContent should succeed")
 
 	// Episode should be gone
 	_, err := store.GetEpisode(ep.ID)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("expected episode ErrNotFound after cascade, got %v", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "expected episode ErrNotFound after cascade, got %v", err)
 
 	// File should be gone
 	_, err = store.GetFile(f.ID)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("expected file ErrNotFound after cascade, got %v", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "expected file ErrNotFound after cascade, got %v", err)
 }
 
 func TestTx_CascadeDelete_InTransaction(t *testing.T) {
@@ -141,43 +100,27 @@ func TestTx_CascadeDelete_InTransaction(t *testing.T) {
 
 	// Create series with episode and file outside transaction
 	series := &Content{Type: ContentTypeSeries, Title: "Cascade TX Series", Year: 2024, Status: StatusWanted, QualityProfile: "hd", RootPath: "/tv"}
-	if err := store.AddContent(series); err != nil {
-		t.Fatalf("setup AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(series), "setup AddContent should succeed")
 	ep := &Episode{ContentID: series.ID, Season: 1, Episode: 1, Title: "Pilot", Status: StatusWanted}
-	if err := store.AddEpisode(ep); err != nil {
-		t.Fatalf("setup AddEpisode: %v", err)
-	}
+	require.NoError(t, store.AddEpisode(ep), "setup AddEpisode should succeed")
 	f := &File{ContentID: series.ID, EpisodeID: &ep.ID, Path: "/tv/cascade/s01e01.mkv", SizeBytes: 1000, Quality: "1080p", Source: "webdl"}
-	if err := store.AddFile(f); err != nil {
-		t.Fatalf("setup AddFile: %v", err)
-	}
+	require.NoError(t, store.AddFile(f), "setup AddFile should succeed")
 
 	// Delete content in a transaction
 	tx, err := store.Begin()
-	if err != nil {
-		t.Fatalf("Begin failed: %v", err)
-	}
+	require.NoError(t, err, "Begin should succeed")
 
-	if err := tx.DeleteContent(series.ID); err != nil {
-		t.Fatalf("tx.DeleteContent failed: %v", err)
-	}
+	require.NoError(t, tx.DeleteContent(series.ID), "tx.DeleteContent should succeed")
 
-	if err := tx.Commit(); err != nil {
-		t.Fatalf("Commit failed: %v", err)
-	}
+	require.NoError(t, tx.Commit(), "Commit should succeed")
 
 	// Episode should be gone after commit
 	_, err = store.GetEpisode(ep.ID)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("expected episode ErrNotFound after cascade delete, got %v", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "expected episode ErrNotFound after cascade delete, got %v", err)
 
 	// File should be gone after commit
 	_, err = store.GetFile(f.ID)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("expected file ErrNotFound after cascade delete, got %v", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "expected file ErrNotFound after cascade delete, got %v", err)
 }
 
 func TestTx_CascadeDelete_Rollback(t *testing.T) {
@@ -186,50 +129,32 @@ func TestTx_CascadeDelete_Rollback(t *testing.T) {
 
 	// Create series with episode and file
 	series := &Content{Type: ContentTypeSeries, Title: "Rollback Cascade Series", Year: 2024, Status: StatusWanted, QualityProfile: "hd", RootPath: "/tv"}
-	if err := store.AddContent(series); err != nil {
-		t.Fatalf("setup AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(series), "setup AddContent should succeed")
 	ep := &Episode{ContentID: series.ID, Season: 1, Episode: 1, Title: "Pilot", Status: StatusWanted}
-	if err := store.AddEpisode(ep); err != nil {
-		t.Fatalf("setup AddEpisode: %v", err)
-	}
+	require.NoError(t, store.AddEpisode(ep), "setup AddEpisode should succeed")
 	f := &File{ContentID: series.ID, EpisodeID: &ep.ID, Path: "/tv/rollback/s01e01.mkv", SizeBytes: 1000, Quality: "1080p", Source: "webdl"}
-	if err := store.AddFile(f); err != nil {
-		t.Fatalf("setup AddFile: %v", err)
-	}
+	require.NoError(t, store.AddFile(f), "setup AddFile should succeed")
 
 	// Delete content in a transaction, then rollback
 	tx, err := store.Begin()
-	if err != nil {
-		t.Fatalf("Begin failed: %v", err)
-	}
+	require.NoError(t, err, "Begin should succeed")
 
-	if err := tx.DeleteContent(series.ID); err != nil {
-		t.Fatalf("tx.DeleteContent failed: %v", err)
-	}
+	require.NoError(t, tx.DeleteContent(series.ID), "tx.DeleteContent should succeed")
 
 	// Rollback the delete
-	if err := tx.Rollback(); err != nil {
-		t.Fatalf("Rollback failed: %v", err)
-	}
+	require.NoError(t, tx.Rollback(), "Rollback should succeed")
 
 	// Content should still exist
 	_, err = store.GetContent(series.ID)
-	if err != nil {
-		t.Errorf("expected content to exist after rollback, got %v", err)
-	}
+	assert.NoError(t, err, "expected content to exist after rollback")
 
 	// Episode should still exist
 	_, err = store.GetEpisode(ep.ID)
-	if err != nil {
-		t.Errorf("expected episode to exist after rollback, got %v", err)
-	}
+	assert.NoError(t, err, "expected episode to exist after rollback")
 
 	// File should still exist
 	_, err = store.GetFile(f.ID)
-	if err != nil {
-		t.Errorf("expected file to exist after rollback, got %v", err)
-	}
+	assert.NoError(t, err, "expected file to exist after rollback")
 }
 
 func TestTx_EpisodeDelete_CascadeFiles(t *testing.T) {
@@ -238,40 +163,26 @@ func TestTx_EpisodeDelete_CascadeFiles(t *testing.T) {
 
 	// Create series with episode and file
 	series := &Content{Type: ContentTypeSeries, Title: "Episode Cascade Series", Year: 2024, Status: StatusWanted, QualityProfile: "hd", RootPath: "/tv"}
-	if err := store.AddContent(series); err != nil {
-		t.Fatalf("setup AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(series), "setup AddContent should succeed")
 	ep := &Episode{ContentID: series.ID, Season: 1, Episode: 1, Title: "Pilot", Status: StatusWanted}
-	if err := store.AddEpisode(ep); err != nil {
-		t.Fatalf("setup AddEpisode: %v", err)
-	}
+	require.NoError(t, store.AddEpisode(ep), "setup AddEpisode should succeed")
 	f := &File{ContentID: series.ID, EpisodeID: &ep.ID, Path: "/tv/episode-cascade/s01e01.mkv", SizeBytes: 1000, Quality: "1080p", Source: "webdl"}
-	if err := store.AddFile(f); err != nil {
-		t.Fatalf("setup AddFile: %v", err)
-	}
+	require.NoError(t, store.AddFile(f), "setup AddFile should succeed")
 
 	// Delete episode - file should cascade
-	if err := store.DeleteEpisode(ep.ID); err != nil {
-		t.Fatalf("DeleteEpisode failed: %v", err)
-	}
+	require.NoError(t, store.DeleteEpisode(ep.ID), "DeleteEpisode should succeed")
 
 	// Episode should be gone
 	_, err := store.GetEpisode(ep.ID)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("expected episode ErrNotFound after delete, got %v", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "expected episode ErrNotFound after delete, got %v", err)
 
 	// File should be gone (cascade from episode)
 	_, err = store.GetFile(f.ID)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("expected file ErrNotFound after episode cascade delete, got %v", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "expected file ErrNotFound after episode cascade delete, got %v", err)
 
 	// Series should still exist
 	_, err = store.GetContent(series.ID)
-	if err != nil {
-		t.Errorf("expected series to still exist, got %v", err)
-	}
+	assert.NoError(t, err, "expected series to still exist")
 }
 
 func TestTx_MultipleEpisodesAndFiles(t *testing.T) {
@@ -280,20 +191,14 @@ func TestTx_MultipleEpisodesAndFiles(t *testing.T) {
 
 	// Create series with multiple episodes and files in a transaction
 	tx, err := store.Begin()
-	if err != nil {
-		t.Fatalf("Begin failed: %v", err)
-	}
+	require.NoError(t, err, "Begin should succeed")
 
 	series := &Content{Type: ContentTypeSeries, Title: "Multi Episode Series", Year: 2024, Status: StatusWanted, QualityProfile: "hd", RootPath: "/tv"}
-	if err := tx.AddContent(series); err != nil {
-		t.Fatalf("tx.AddContent failed: %v", err)
-	}
+	require.NoError(t, tx.AddContent(series), "tx.AddContent should succeed")
 
 	for i := 1; i <= 3; i++ {
 		ep := &Episode{ContentID: series.ID, Season: 1, Episode: i, Title: "Episode", Status: StatusWanted}
-		if err := tx.AddEpisode(ep); err != nil {
-			t.Fatalf("tx.AddEpisode failed: %v", err)
-		}
+		require.NoError(t, tx.AddEpisode(ep), "tx.AddEpisode should succeed")
 
 		// Add a file for each episode
 		f := &File{
@@ -304,58 +209,34 @@ func TestTx_MultipleEpisodesAndFiles(t *testing.T) {
 			Quality:   "1080p",
 			Source:    "webdl",
 		}
-		if err := tx.AddFile(f); err != nil {
-			t.Fatalf("tx.AddFile failed: %v", err)
-		}
+		require.NoError(t, tx.AddFile(f), "tx.AddFile should succeed")
 	}
 
-	if err := tx.Commit(); err != nil {
-		t.Fatalf("Commit failed: %v", err)
-	}
+	require.NoError(t, tx.Commit(), "Commit should succeed")
 
 	// Verify all episodes exist
 	_, total, err := store.ListEpisodes(EpisodeFilter{ContentID: &series.ID})
-	if err != nil {
-		t.Fatalf("ListEpisodes failed: %v", err)
-	}
-	if total != 3 {
-		t.Errorf("expected 3 episodes, got %d", total)
-	}
+	require.NoError(t, err, "ListEpisodes should succeed")
+	assert.Equal(t, 3, total, "expected 3 episodes")
 
 	// Verify all files exist
 	files, total, err := store.ListFiles(FileFilter{ContentID: &series.ID})
-	if err != nil {
-		t.Fatalf("ListFiles failed: %v", err)
-	}
-	if total != 3 {
-		t.Errorf("expected 3 files, got %d", total)
-	}
-	if len(files) != 3 {
-		t.Errorf("expected 3 file results, got %d", len(files))
-	}
+	require.NoError(t, err, "ListFiles should succeed")
+	assert.Equal(t, 3, total, "expected 3 files")
+	assert.Len(t, files, 3, "expected 3 file results")
 
 	// Delete series - all should cascade
-	if err := store.DeleteContent(series.ID); err != nil {
-		t.Fatalf("DeleteContent failed: %v", err)
-	}
+	require.NoError(t, store.DeleteContent(series.ID), "DeleteContent should succeed")
 
 	// Verify all episodes are gone
 	_, total, err = store.ListEpisodes(EpisodeFilter{ContentID: &series.ID})
-	if err != nil {
-		t.Fatalf("ListEpisodes after delete failed: %v", err)
-	}
-	if total != 0 {
-		t.Errorf("expected 0 episodes after cascade delete, got %d", total)
-	}
+	require.NoError(t, err, "ListEpisodes after delete should succeed")
+	assert.Equal(t, 0, total, "expected 0 episodes after cascade delete")
 
 	// Verify all files are gone
 	_, total, err = store.ListFiles(FileFilter{ContentID: &series.ID})
-	if err != nil {
-		t.Fatalf("ListFiles after delete failed: %v", err)
-	}
-	if total != 0 {
-		t.Errorf("expected 0 files after cascade delete, got %d", total)
-	}
+	require.NoError(t, err, "ListFiles after delete should succeed")
+	assert.Equal(t, 0, total, "expected 0 files after cascade delete")
 }
 
 func TestTx_MovieWithFile_CascadeDelete(t *testing.T) {
@@ -364,22 +245,14 @@ func TestTx_MovieWithFile_CascadeDelete(t *testing.T) {
 
 	// Create movie with file
 	movie := &Content{Type: ContentTypeMovie, Title: "Cascade Movie", Year: 2024, Status: StatusWanted, QualityProfile: "hd", RootPath: "/movies"}
-	if err := store.AddContent(movie); err != nil {
-		t.Fatalf("setup AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(movie), "setup AddContent should succeed")
 	f := &File{ContentID: movie.ID, Path: "/movies/cascade-movie.mkv", SizeBytes: 5000, Quality: "1080p", Source: "usenet"}
-	if err := store.AddFile(f); err != nil {
-		t.Fatalf("setup AddFile: %v", err)
-	}
+	require.NoError(t, store.AddFile(f), "setup AddFile should succeed")
 
 	// Delete movie - file should cascade
-	if err := store.DeleteContent(movie.ID); err != nil {
-		t.Fatalf("DeleteContent failed: %v", err)
-	}
+	require.NoError(t, store.DeleteContent(movie.ID), "DeleteContent should succeed")
 
 	// File should be gone
 	_, err := store.GetFile(f.ID)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("expected file ErrNotFound after cascade delete, got %v", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "expected file ErrNotFound after cascade delete, got %v", err)
 }

@@ -4,6 +4,9 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestStore_AddContent(t *testing.T) {
@@ -21,23 +24,17 @@ func TestStore_AddContent(t *testing.T) {
 	}
 
 	before := time.Now()
-	if err := store.AddContent(c); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(c), "AddContent should succeed")
 	after := time.Now()
 
 	// ID should be set
-	if c.ID == 0 {
-		t.Error("ID should be set after AddContent")
-	}
+	assert.NotZero(t, c.ID, "ID should be set after AddContent")
 
 	// AddedAt and UpdatedAt should be set
-	if c.AddedAt.Before(before) || c.AddedAt.After(after) {
-		t.Errorf("AddedAt %v not in expected range [%v, %v]", c.AddedAt, before, after)
-	}
-	if c.UpdatedAt.Before(before) || c.UpdatedAt.After(after) {
-		t.Errorf("UpdatedAt %v not in expected range [%v, %v]", c.UpdatedAt, before, after)
-	}
+	assert.False(t, c.AddedAt.Before(before) || c.AddedAt.After(after),
+		"AddedAt %v not in expected range [%v, %v]", c.AddedAt, before, after)
+	assert.False(t, c.UpdatedAt.Before(before) || c.UpdatedAt.After(after),
+		"UpdatedAt %v not in expected range [%v, %v]", c.UpdatedAt, before, after)
 }
 
 func TestStore_AddContent_Series(t *testing.T) {
@@ -54,13 +51,8 @@ func TestStore_AddContent_Series(t *testing.T) {
 		RootPath:       "/tv",
 	}
 
-	if err := store.AddContent(c); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
-
-	if c.ID == 0 {
-		t.Error("ID should be set after AddContent")
-	}
+	require.NoError(t, store.AddContent(c), "AddContent should succeed")
+	assert.NotZero(t, c.ID, "ID should be set after AddContent")
 }
 
 func TestStore_GetContent(t *testing.T) {
@@ -76,40 +68,21 @@ func TestStore_GetContent(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := store.AddContent(original); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(original), "AddContent should succeed")
 
 	retrieved, err := store.GetContent(original.ID)
-	if err != nil {
-		t.Fatalf("GetContent: %v", err)
-	}
+	require.NoError(t, err, "GetContent should succeed")
 
 	// Verify all fields
-	if retrieved.ID != original.ID {
-		t.Errorf("ID = %d, want %d", retrieved.ID, original.ID)
-	}
-	if retrieved.Type != original.Type {
-		t.Errorf("Type = %q, want %q", retrieved.Type, original.Type)
-	}
-	if retrieved.TMDBID == nil || *retrieved.TMDBID != *original.TMDBID {
-		t.Errorf("TMDBID = %v, want %v", retrieved.TMDBID, original.TMDBID)
-	}
-	if retrieved.Title != original.Title {
-		t.Errorf("Title = %q, want %q", retrieved.Title, original.Title)
-	}
-	if retrieved.Year != original.Year {
-		t.Errorf("Year = %d, want %d", retrieved.Year, original.Year)
-	}
-	if retrieved.Status != original.Status {
-		t.Errorf("Status = %q, want %q", retrieved.Status, original.Status)
-	}
-	if retrieved.QualityProfile != original.QualityProfile {
-		t.Errorf("QualityProfile = %q, want %q", retrieved.QualityProfile, original.QualityProfile)
-	}
-	if retrieved.RootPath != original.RootPath {
-		t.Errorf("RootPath = %q, want %q", retrieved.RootPath, original.RootPath)
-	}
+	assert.Equal(t, original.ID, retrieved.ID)
+	assert.Equal(t, original.Type, retrieved.Type)
+	require.NotNil(t, retrieved.TMDBID)
+	assert.Equal(t, *original.TMDBID, *retrieved.TMDBID)
+	assert.Equal(t, original.Title, retrieved.Title)
+	assert.Equal(t, original.Year, retrieved.Year)
+	assert.Equal(t, original.Status, retrieved.Status)
+	assert.Equal(t, original.QualityProfile, retrieved.QualityProfile)
+	assert.Equal(t, original.RootPath, retrieved.RootPath)
 }
 
 func TestStore_GetContent_NotFound(t *testing.T) {
@@ -117,9 +90,7 @@ func TestStore_GetContent_NotFound(t *testing.T) {
 	store := NewStore(db)
 
 	_, err := store.GetContent(9999)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("GetContent(9999) error = %v, want ErrNotFound", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "GetContent(9999) should return ErrNotFound, got %v", err)
 }
 
 func TestStore_ListContent_All(t *testing.T) {
@@ -134,26 +105,16 @@ func TestStore_ListContent_All(t *testing.T) {
 	series := &Content{Type: ContentTypeSeries, TVDBID: ptr(int64(81189)), Title: "Breaking Bad", Year: 2008, Status: StatusWanted, QualityProfile: "hd", RootPath: "/tv"}
 
 	for _, c := range movies {
-		if err := store.AddContent(c); err != nil {
-			t.Fatalf("AddContent: %v", err)
-		}
+		require.NoError(t, store.AddContent(c), "AddContent should succeed")
 	}
-	if err := store.AddContent(series); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(series), "AddContent should succeed")
 
 	// List all
 	results, total, err := store.ListContent(ContentFilter{})
-	if err != nil {
-		t.Fatalf("ListContent: %v", err)
-	}
+	require.NoError(t, err, "ListContent should succeed")
 
-	if total != 3 {
-		t.Errorf("total = %d, want 3", total)
-	}
-	if len(results) != 3 {
-		t.Errorf("len(results) = %d, want 3", len(results))
-	}
+	assert.Equal(t, 3, total)
+	assert.Len(t, results, 3)
 }
 
 func TestStore_ListContent_FilterByType(t *testing.T) {
@@ -164,29 +125,17 @@ func TestStore_ListContent_FilterByType(t *testing.T) {
 	movie := &Content{Type: ContentTypeMovie, TMDBID: ptr(int64(550)), Title: "Fight Club", Year: 1999, Status: StatusWanted, QualityProfile: "hd", RootPath: "/movies"}
 	series := &Content{Type: ContentTypeSeries, TVDBID: ptr(int64(81189)), Title: "Breaking Bad", Year: 2008, Status: StatusWanted, QualityProfile: "hd", RootPath: "/tv"}
 
-	if err := store.AddContent(movie); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
-	if err := store.AddContent(series); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(movie), "AddContent should succeed")
+	require.NoError(t, store.AddContent(series), "AddContent should succeed")
 
 	// Filter by type
 	movieType := ContentTypeMovie
 	results, total, err := store.ListContent(ContentFilter{Type: &movieType})
-	if err != nil {
-		t.Fatalf("ListContent: %v", err)
-	}
+	require.NoError(t, err, "ListContent should succeed")
 
-	if total != 1 {
-		t.Errorf("total = %d, want 1", total)
-	}
-	if len(results) != 1 {
-		t.Errorf("len(results) = %d, want 1", len(results))
-	}
-	if results[0].Title != "Fight Club" {
-		t.Errorf("Title = %q, want Fight Club", results[0].Title)
-	}
+	assert.Equal(t, 1, total)
+	assert.Len(t, results, 1)
+	assert.Equal(t, "Fight Club", results[0].Title)
 }
 
 func TestStore_ListContent_FilterByStatus(t *testing.T) {
@@ -196,28 +145,16 @@ func TestStore_ListContent_FilterByStatus(t *testing.T) {
 	wanted := &Content{Type: ContentTypeMovie, TMDBID: ptr(int64(550)), Title: "Fight Club", Year: 1999, Status: StatusWanted, QualityProfile: "hd", RootPath: "/movies"}
 	available := &Content{Type: ContentTypeMovie, TMDBID: ptr(int64(680)), Title: "Pulp Fiction", Year: 1994, Status: StatusAvailable, QualityProfile: "hd", RootPath: "/movies"}
 
-	if err := store.AddContent(wanted); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
-	if err := store.AddContent(available); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(wanted), "AddContent should succeed")
+	require.NoError(t, store.AddContent(available), "AddContent should succeed")
 
 	status := StatusAvailable
 	results, total, err := store.ListContent(ContentFilter{Status: &status})
-	if err != nil {
-		t.Fatalf("ListContent: %v", err)
-	}
+	require.NoError(t, err, "ListContent should succeed")
 
-	if total != 1 {
-		t.Errorf("total = %d, want 1", total)
-	}
-	if len(results) != 1 {
-		t.Errorf("len(results) = %d, want 1", len(results))
-	}
-	if results[0].Title != "Pulp Fiction" {
-		t.Errorf("Title = %q, want Pulp Fiction", results[0].Title)
-	}
+	assert.Equal(t, 1, total)
+	assert.Len(t, results, 1)
+	assert.Equal(t, "Pulp Fiction", results[0].Title)
 }
 
 func TestStore_ListContent_FilterByTMDBID(t *testing.T) {
@@ -227,24 +164,15 @@ func TestStore_ListContent_FilterByTMDBID(t *testing.T) {
 	c1 := &Content{Type: ContentTypeMovie, TMDBID: ptr(int64(550)), Title: "Fight Club", Year: 1999, Status: StatusWanted, QualityProfile: "hd", RootPath: "/movies"}
 	c2 := &Content{Type: ContentTypeMovie, TMDBID: ptr(int64(680)), Title: "Pulp Fiction", Year: 1994, Status: StatusWanted, QualityProfile: "hd", RootPath: "/movies"}
 
-	if err := store.AddContent(c1); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
-	if err := store.AddContent(c2); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(c1), "AddContent should succeed")
+	require.NoError(t, store.AddContent(c2), "AddContent should succeed")
 
 	results, total, err := store.ListContent(ContentFilter{TMDBID: ptr(int64(550))})
-	if err != nil {
-		t.Fatalf("ListContent: %v", err)
-	}
+	require.NoError(t, err, "ListContent should succeed")
 
-	if total != 1 {
-		t.Errorf("total = %d, want 1", total)
-	}
-	if len(results) != 1 || results[0].Title != "Fight Club" {
-		t.Errorf("results = %v, want [Fight Club]", results)
-	}
+	assert.Equal(t, 1, total)
+	require.Len(t, results, 1)
+	assert.Equal(t, "Fight Club", results[0].Title)
 }
 
 func TestStore_ListContent_Pagination(t *testing.T) {
@@ -262,41 +190,25 @@ func TestStore_ListContent_Pagination(t *testing.T) {
 			QualityProfile: "hd",
 			RootPath:       "/movies",
 		}
-		if err := store.AddContent(c); err != nil {
-			t.Fatalf("AddContent: %v", err)
-		}
+		require.NoError(t, store.AddContent(c), "AddContent should succeed")
 	}
 
 	// Get page 1 (first 2)
 	results, total, err := store.ListContent(ContentFilter{Limit: 2, Offset: 0})
-	if err != nil {
-		t.Fatalf("ListContent: %v", err)
-	}
+	require.NoError(t, err, "ListContent should succeed")
 
-	if total != 5 {
-		t.Errorf("total = %d, want 5", total)
-	}
-	if len(results) != 2 {
-		t.Errorf("len(results) = %d, want 2", len(results))
-	}
+	assert.Equal(t, 5, total)
+	assert.Len(t, results, 2)
 
 	// Get page 2 (next 2)
 	results2, total2, err := store.ListContent(ContentFilter{Limit: 2, Offset: 2})
-	if err != nil {
-		t.Fatalf("ListContent: %v", err)
-	}
+	require.NoError(t, err, "ListContent should succeed")
 
-	if total2 != 5 {
-		t.Errorf("total = %d, want 5", total2)
-	}
-	if len(results2) != 2 {
-		t.Errorf("len(results) = %d, want 2", len(results2))
-	}
+	assert.Equal(t, 5, total2)
+	assert.Len(t, results2, 2)
 
 	// Results should be different
-	if results[0].ID == results2[0].ID {
-		t.Error("pagination should return different items")
-	}
+	assert.NotEqual(t, results[0].ID, results2[0].ID, "pagination should return different items")
 }
 
 func TestStore_UpdateContent(t *testing.T) {
@@ -312,9 +224,7 @@ func TestStore_UpdateContent(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := store.AddContent(c); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(c), "AddContent should succeed")
 
 	originalUpdatedAt := c.UpdatedAt
 
@@ -325,27 +235,17 @@ func TestStore_UpdateContent(t *testing.T) {
 	c.Status = StatusAvailable
 	c.QualityProfile = "4k"
 
-	if err := store.UpdateContent(c); err != nil {
-		t.Fatalf("UpdateContent: %v", err)
-	}
+	require.NoError(t, store.UpdateContent(c), "UpdateContent should succeed")
 
 	// UpdatedAt should be changed
-	if !c.UpdatedAt.After(originalUpdatedAt) {
-		t.Error("UpdatedAt should be updated")
-	}
+	assert.True(t, c.UpdatedAt.After(originalUpdatedAt), "UpdatedAt should be updated")
 
 	// Verify in database
 	retrieved, err := store.GetContent(c.ID)
-	if err != nil {
-		t.Fatalf("GetContent: %v", err)
-	}
+	require.NoError(t, err, "GetContent should succeed")
 
-	if retrieved.Status != StatusAvailable {
-		t.Errorf("Status = %q, want available", retrieved.Status)
-	}
-	if retrieved.QualityProfile != "4k" {
-		t.Errorf("QualityProfile = %q, want 4k", retrieved.QualityProfile)
-	}
+	assert.Equal(t, StatusAvailable, retrieved.Status)
+	assert.Equal(t, "4k", retrieved.QualityProfile)
 }
 
 func TestStore_UpdateContent_NotFound(t *testing.T) {
@@ -363,9 +263,7 @@ func TestStore_UpdateContent_NotFound(t *testing.T) {
 	}
 
 	err := store.UpdateContent(c)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("UpdateContent error = %v, want ErrNotFound", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "UpdateContent should return ErrNotFound, got %v", err)
 }
 
 func TestStore_DeleteContent(t *testing.T) {
@@ -381,20 +279,14 @@ func TestStore_DeleteContent(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := store.AddContent(c); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(c), "AddContent should succeed")
 
 	// Delete
-	if err := store.DeleteContent(c.ID); err != nil {
-		t.Fatalf("DeleteContent: %v", err)
-	}
+	require.NoError(t, store.DeleteContent(c.ID), "DeleteContent should succeed")
 
 	// Verify deleted
 	_, err := store.GetContent(c.ID)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("GetContent after delete: error = %v, want ErrNotFound", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "GetContent after delete should return ErrNotFound, got %v", err)
 }
 
 func TestStore_DeleteContent_Idempotent(t *testing.T) {
@@ -402,9 +294,7 @@ func TestStore_DeleteContent_Idempotent(t *testing.T) {
 	store := NewStore(db)
 
 	// Delete non-existent should not error
-	if err := store.DeleteContent(9999); err != nil {
-		t.Errorf("DeleteContent(9999) = %v, want nil (idempotent)", err)
-	}
+	assert.NoError(t, store.DeleteContent(9999), "DeleteContent(9999) should be idempotent")
 }
 
 func TestTx_AddContent(t *testing.T) {
@@ -412,9 +302,7 @@ func TestTx_AddContent(t *testing.T) {
 	store := NewStore(db)
 
 	tx, err := store.Begin()
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
+	require.NoError(t, err, "Begin should succeed")
 	defer func() { _ = tx.Rollback() }()
 
 	c := &Content{
@@ -427,36 +315,21 @@ func TestTx_AddContent(t *testing.T) {
 		RootPath:       "/movies",
 	}
 
-	if err := tx.AddContent(c); err != nil {
-		t.Fatalf("tx.AddContent: %v", err)
-	}
-
-	if c.ID == 0 {
-		t.Error("ID should be set")
-	}
+	require.NoError(t, tx.AddContent(c), "tx.AddContent should succeed")
+	assert.NotZero(t, c.ID, "ID should be set")
 
 	// Should be visible within transaction
 	retrieved, err := tx.GetContent(c.ID)
-	if err != nil {
-		t.Fatalf("tx.GetContent: %v", err)
-	}
-	if retrieved.Title != c.Title {
-		t.Errorf("Title = %q, want %q", retrieved.Title, c.Title)
-	}
+	require.NoError(t, err, "tx.GetContent should succeed")
+	assert.Equal(t, c.Title, retrieved.Title)
 
 	// Commit
-	if err := tx.Commit(); err != nil {
-		t.Fatalf("Commit: %v", err)
-	}
+	require.NoError(t, tx.Commit(), "Commit should succeed")
 
 	// Should be visible after commit
 	retrieved, err = store.GetContent(c.ID)
-	if err != nil {
-		t.Fatalf("store.GetContent after commit: %v", err)
-	}
-	if retrieved.Title != c.Title {
-		t.Errorf("Title = %q, want %q", retrieved.Title, c.Title)
-	}
+	require.NoError(t, err, "store.GetContent after commit should succeed")
+	assert.Equal(t, c.Title, retrieved.Title)
 }
 
 func TestTx_Rollback(t *testing.T) {
@@ -464,9 +337,7 @@ func TestTx_Rollback(t *testing.T) {
 	store := NewStore(db)
 
 	tx, err := store.Begin()
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
+	require.NoError(t, err, "Begin should succeed")
 
 	c := &Content{
 		Type:           ContentTypeMovie,
@@ -478,22 +349,16 @@ func TestTx_Rollback(t *testing.T) {
 		RootPath:       "/movies",
 	}
 
-	if err := tx.AddContent(c); err != nil {
-		t.Fatalf("tx.AddContent: %v", err)
-	}
+	require.NoError(t, tx.AddContent(c), "tx.AddContent should succeed")
 
 	id := c.ID
 
 	// Rollback
-	if err := tx.Rollback(); err != nil {
-		t.Fatalf("Rollback: %v", err)
-	}
+	require.NoError(t, tx.Rollback(), "Rollback should succeed")
 
 	// Should NOT be visible after rollback
 	_, err = store.GetContent(id)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("GetContent after rollback: error = %v, want ErrNotFound", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "GetContent after rollback should return ErrNotFound, got %v", err)
 }
 
 func TestTx_ListContent(t *testing.T) {
@@ -502,34 +367,22 @@ func TestTx_ListContent(t *testing.T) {
 
 	// Add initial content
 	c1 := &Content{Type: ContentTypeMovie, TMDBID: ptr(int64(550)), Title: "Fight Club", Year: 1999, Status: StatusWanted, QualityProfile: "hd", RootPath: "/movies"}
-	if err := store.AddContent(c1); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(c1), "AddContent should succeed")
 
 	tx, err := store.Begin()
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
+	require.NoError(t, err, "Begin should succeed")
 	defer func() { _ = tx.Rollback() }()
 
 	// Add more in transaction
 	c2 := &Content{Type: ContentTypeMovie, TMDBID: ptr(int64(680)), Title: "Pulp Fiction", Year: 1994, Status: StatusWanted, QualityProfile: "hd", RootPath: "/movies"}
-	if err := tx.AddContent(c2); err != nil {
-		t.Fatalf("tx.AddContent: %v", err)
-	}
+	require.NoError(t, tx.AddContent(c2), "tx.AddContent should succeed")
 
 	// List within transaction should see both
 	results, total, err := tx.ListContent(ContentFilter{})
-	if err != nil {
-		t.Fatalf("tx.ListContent: %v", err)
-	}
+	require.NoError(t, err, "tx.ListContent should succeed")
 
-	if total != 2 {
-		t.Errorf("total = %d, want 2", total)
-	}
-	if len(results) != 2 {
-		t.Errorf("len(results) = %d, want 2", len(results))
-	}
+	assert.Equal(t, 2, total)
+	assert.Len(t, results, 2)
 }
 
 func TestTx_UpdateContent(t *testing.T) {
@@ -545,33 +398,21 @@ func TestTx_UpdateContent(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := store.AddContent(c); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(c), "AddContent should succeed")
 
 	tx, err := store.Begin()
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
+	require.NoError(t, err, "Begin should succeed")
 	defer func() { _ = tx.Rollback() }()
 
 	c.Status = StatusAvailable
-	if err := tx.UpdateContent(c); err != nil {
-		t.Fatalf("tx.UpdateContent: %v", err)
-	}
+	require.NoError(t, tx.UpdateContent(c), "tx.UpdateContent should succeed")
 
-	if err := tx.Commit(); err != nil {
-		t.Fatalf("Commit: %v", err)
-	}
+	require.NoError(t, tx.Commit(), "Commit should succeed")
 
 	retrieved, err := store.GetContent(c.ID)
-	if err != nil {
-		t.Fatalf("GetContent: %v", err)
-	}
+	require.NoError(t, err, "GetContent should succeed")
 
-	if retrieved.Status != StatusAvailable {
-		t.Errorf("Status = %q, want available", retrieved.Status)
-	}
+	assert.Equal(t, StatusAvailable, retrieved.Status)
 }
 
 func TestTx_DeleteContent(t *testing.T) {
@@ -587,28 +428,18 @@ func TestTx_DeleteContent(t *testing.T) {
 		QualityProfile: "hd",
 		RootPath:       "/movies",
 	}
-	if err := store.AddContent(c); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(c), "AddContent should succeed")
 
 	tx, err := store.Begin()
-	if err != nil {
-		t.Fatalf("Begin: %v", err)
-	}
+	require.NoError(t, err, "Begin should succeed")
 	defer func() { _ = tx.Rollback() }()
 
-	if err := tx.DeleteContent(c.ID); err != nil {
-		t.Fatalf("tx.DeleteContent: %v", err)
-	}
+	require.NoError(t, tx.DeleteContent(c.ID), "tx.DeleteContent should succeed")
 
-	if err := tx.Commit(); err != nil {
-		t.Fatalf("Commit: %v", err)
-	}
+	require.NoError(t, tx.Commit(), "Commit should succeed")
 
 	_, err = store.GetContent(c.ID)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("GetContent after delete: error = %v, want ErrNotFound", err)
-	}
+	assert.True(t, errors.Is(err, ErrNotFound), "GetContent after delete should return ErrNotFound, got %v", err)
 }
 
 func TestStore_GetByTitleYear(t *testing.T) {
@@ -617,28 +448,16 @@ func TestStore_GetByTitleYear(t *testing.T) {
 
 	// Add a movie
 	movie := &Content{Type: ContentTypeMovie, Title: "Back to the Future", Year: 1985, Status: StatusWanted, QualityProfile: "hd", RootPath: "/movies"}
-	if err := store.AddContent(movie); err != nil {
-		t.Fatalf("AddContent: %v", err)
-	}
+	require.NoError(t, store.AddContent(movie), "AddContent should succeed")
 
 	// Find it
 	found, err := store.GetByTitleYear("Back to the Future", 1985)
-	if err != nil {
-		t.Fatalf("GetByTitleYear: %v", err)
-	}
-	if found == nil {
-		t.Fatal("expected to find content")
-	}
-	if found.ID != movie.ID {
-		t.Errorf("ID = %d, want %d", found.ID, movie.ID)
-	}
+	require.NoError(t, err, "GetByTitleYear should succeed")
+	require.NotNil(t, found, "expected to find content")
+	assert.Equal(t, movie.ID, found.ID)
 
 	// Not found
 	notFound, err := store.GetByTitleYear("Nonexistent", 2000)
-	if err != nil {
-		t.Fatalf("GetByTitleYear: %v", err)
-	}
-	if notFound != nil {
-		t.Error("expected nil for nonexistent content")
-	}
+	require.NoError(t, err, "GetByTitleYear should succeed")
+	assert.Nil(t, notFound, "expected nil for nonexistent content")
 }
