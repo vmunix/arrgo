@@ -3,6 +3,7 @@ package search
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/vmunix/arrgo/internal/config"
 	"github.com/vmunix/arrgo/pkg/release"
 )
@@ -29,9 +30,7 @@ func TestScorer_Score_BaseResolution(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			info := release.Info{Resolution: tt.resolution}
 			got := scorer.Score(info, "any")
-			if got != tt.wantScore {
-				t.Errorf("Score() = %v, want %v", got, tt.wantScore)
-			}
+			assert.Equal(t, tt.wantScore, got, "Score()")
 		})
 	}
 }
@@ -58,9 +57,7 @@ func TestScorer_Score_ResolutionMustMatch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			info := release.Info{Resolution: tt.resolution}
 			got := scorer.Score(info, "hd-only")
-			if got != tt.wantScore {
-				t.Errorf("Score() = %v, want %v", got, tt.wantScore)
-			}
+			assert.Equal(t, tt.wantScore, got, "Score()")
 		})
 	}
 }
@@ -100,9 +97,7 @@ func TestScorer_Score_SourceBonus(t *testing.T) {
 			}
 			got := scorer.Score(info, "hd")
 			want := baseScore + tt.wantBonus
-			if got != want {
-				t.Errorf("Score() = %v, want %v (base=%d + bonus=%d)", got, want, baseScore, tt.wantBonus)
-			}
+			assert.Equal(t, want, got, "Score() (base=%d + bonus=%d)", baseScore, tt.wantBonus)
 		})
 	}
 }
@@ -139,9 +134,7 @@ func TestScorer_Score_CodecBonus(t *testing.T) {
 			}
 			got := scorer.Score(info, "hd")
 			want := baseScore + tt.wantBonus
-			if got != want {
-				t.Errorf("Score() = %v, want %v (base=%d + bonus=%d)", got, want, baseScore, tt.wantBonus)
-			}
+			assert.Equal(t, want, got, "Score() (base=%d + bonus=%d)", baseScore, tt.wantBonus)
 		})
 	}
 }
@@ -181,9 +174,7 @@ func TestScorer_Score_HDRBonus(t *testing.T) {
 			}
 			got := scorer.Score(info, "uhd")
 			want := baseScore + tt.wantBonus
-			if got != want {
-				t.Errorf("Score() = %v, want %v (base=%d + bonus=%d)", got, want, baseScore, tt.wantBonus)
-			}
+			assert.Equal(t, want, got, "Score() (base=%d + bonus=%d)", baseScore, tt.wantBonus)
 		})
 	}
 }
@@ -223,9 +214,7 @@ func TestScorer_Score_AudioBonus(t *testing.T) {
 			}
 			got := scorer.Score(info, "hd")
 			want := baseScore + tt.wantBonus
-			if got != want {
-				t.Errorf("Score() = %v, want %v (base=%d + bonus=%d)", got, want, baseScore, tt.wantBonus)
-			}
+			assert.Equal(t, want, got, "Score() (base=%d + bonus=%d)", baseScore, tt.wantBonus)
 		})
 	}
 }
@@ -252,9 +241,7 @@ func TestScorer_Score_RemuxBonus(t *testing.T) {
 		}
 		got := scorer.Score(info, "remux-preferred")
 		want := baseScore + 20 // remux bonus
-		if got != want {
-			t.Errorf("Score() = %v, want %v", got, want)
-		}
+		assert.Equal(t, want, got, "Score()")
 	})
 
 	t.Run("non-remux with prefer_remux=true gets no bonus", func(t *testing.T) {
@@ -263,9 +250,7 @@ func TestScorer_Score_RemuxBonus(t *testing.T) {
 			IsRemux:    false,
 		}
 		got := scorer.Score(info, "remux-preferred")
-		if got != baseScore {
-			t.Errorf("Score() = %v, want %v", got, baseScore)
-		}
+		assert.Equal(t, baseScore, got, "Score()")
 	})
 
 	t.Run("remux with prefer_remux=false gets no bonus", func(t *testing.T) {
@@ -274,9 +259,7 @@ func TestScorer_Score_RemuxBonus(t *testing.T) {
 			IsRemux:    true,
 		}
 		got := scorer.Score(info, "no-remux-pref")
-		if got != baseScore {
-			t.Errorf("Score() = %v, want %v", got, baseScore)
-		}
+		assert.Equal(t, baseScore, got, "Score()")
 	})
 }
 
@@ -324,11 +307,10 @@ func TestScorer_Score_RejectList(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := scorer.Score(tt.info, "hd")
-			if tt.reject && got != 0 {
-				t.Errorf("Score() = %v, want 0 (rejected)", got)
-			}
-			if !tt.reject && got == 0 {
-				t.Errorf("Score() = 0, want > 0 (not rejected)")
+			if tt.reject {
+				assert.Equal(t, 0, got, "Score() should be 0 (rejected)")
+			} else {
+				assert.Greater(t, got, 0, "Score() should be > 0 (not rejected)")
 			}
 		})
 	}
@@ -369,9 +351,7 @@ func TestScorer_Score_CombinedBonuses(t *testing.T) {
 	// Total: 170
 	want := 100 + 10 + 10 + 15 + 15 + 20
 
-	if got != want {
-		t.Errorf("Score() = %v, want %v", got, want)
-	}
+	assert.Equal(t, want, got, "Score()")
 }
 
 func TestScorer_Score_PositionAdjustment(t *testing.T) {
@@ -411,9 +391,7 @@ func TestScorer_Score_PositionAdjustment(t *testing.T) {
 			}
 			got := scorer.Score(info, "test")
 			want := baseScore + tt.wantBonus
-			if got != want {
-				t.Errorf("Score() = %v, want %v (bonus=%d at position %d)", got, want, tt.wantBonus, tt.position)
-			}
+			assert.Equal(t, want, got, "Score() (bonus=%d at position %d)", tt.wantBonus, tt.position)
 		})
 	}
 }
@@ -427,9 +405,7 @@ func TestScorer_Score_UnknownProfile(t *testing.T) {
 	info := release.Info{Resolution: release.Resolution1080p}
 	got := scorer.Score(info, "nonexistent")
 
-	if got != 0 {
-		t.Errorf("Score() = %v, want 0 for unknown profile", got)
-	}
+	assert.Equal(t, 0, got, "Score() for unknown profile")
 }
 
 func TestScorer_Score_EmptyResolutionMeansAny(t *testing.T) {
@@ -461,9 +437,7 @@ func TestScorer_Score_EmptyResolutionMeansAny(t *testing.T) {
 			}
 			got := scorer.Score(info, "any")
 			want := tt.wantBase + 10 // bluray bonus
-			if got != want {
-				t.Errorf("Score() = %v, want %v", got, want)
-			}
+			assert.Equal(t, want, got, "Score()")
 		})
 	}
 }
@@ -486,9 +460,7 @@ func TestScorer_Score_EmptySourceMeansNoBonus(t *testing.T) {
 	got := scorer.Score(info, "hd")
 	want := 80 // Just base score, no source bonus
 
-	if got != want {
-		t.Errorf("Score() = %v, want %v (no source bonus)", got, want)
-	}
+	assert.Equal(t, want, got, "Score() (no source bonus)")
 }
 
 func TestScorer_Score_MultipleProfiles(t *testing.T) {
@@ -508,12 +480,8 @@ func TestScorer_Score_MultipleProfiles(t *testing.T) {
 	uhdScore := scorer.Score(info, "uhd")
 	hdScore := scorer.Score(info, "hd")
 
-	if uhdScore != 0 {
-		t.Errorf("1080p in uhd profile should be 0, got %d", uhdScore)
-	}
-	if hdScore != 80 {
-		t.Errorf("1080p in hd profile should be 80, got %d", hdScore)
-	}
+	assert.Equal(t, 0, uhdScore, "1080p in uhd profile")
+	assert.Equal(t, 80, hdScore, "1080p in hd profile")
 }
 
 func TestHdrMatches(t *testing.T) {
@@ -540,9 +508,7 @@ func TestHdrMatches(t *testing.T) {
 		name := tt.hdr.String() + " matches " + tt.pref
 		t.Run(name, func(t *testing.T) {
 			got := hdrMatches(tt.hdr, tt.pref)
-			if got != tt.match {
-				t.Errorf("hdrMatches(%v, %q) = %v, want %v", tt.hdr, tt.pref, got, tt.match)
-			}
+			assert.Equal(t, tt.match, got, "hdrMatches(%v, %q)", tt.hdr, tt.pref)
 		})
 	}
 }
@@ -575,9 +541,7 @@ func TestAudioMatches(t *testing.T) {
 		name := tt.audio.String() + " matches " + tt.pref
 		t.Run(name, func(t *testing.T) {
 			got := audioMatches(tt.audio, tt.pref)
-			if got != tt.match {
-				t.Errorf("audioMatches(%v, %q) = %v, want %v", tt.audio, tt.pref, got, tt.match)
-			}
+			assert.Equal(t, tt.match, got, "audioMatches(%v, %q)", tt.audio, tt.pref)
 		})
 	}
 }
@@ -660,9 +624,7 @@ func TestMatchesRejectList(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := matchesRejectList(tt.info, tt.rejectList)
-			if got != tt.want {
-				t.Errorf("matchesRejectList() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got, "matchesRejectList()")
 		})
 	}
 }
@@ -750,9 +712,7 @@ func TestCalculatePositionBonus(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := calculatePositionBonus(tt.value, tt.preferences, tt.baseBonus)
-			if got != tt.want {
-				t.Errorf("calculatePositionBonus() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got, "calculatePositionBonus()")
 		})
 	}
 }
