@@ -21,8 +21,8 @@ var (
 	seasonEpRegex        = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,2})`)
 	altSeasonEpRegex     = regexp.MustCompile(`(?i)\b(\d{1,2})x(\d{1,2})\b`)            // 1x05 format
 	dotSeasonEpRegex     = regexp.MustCompile(`(?i)\bs(\d{1,2})\.(\d{1,2})(?:\.|$|\s)`) // s01.05 format
-	titleMarkerRegex     = regexp.MustCompile(`(?i)\b(19|20)\d{2}\b|\b\d{3,4}p\b|\bS\d{1,2}E\d{1,2}\b|\b4K\b|\bUHD\b`)
-	hdrRegex             = regexp.MustCompile(`(?i)\bHDR10\+|\b(HDR10Plus|HDR10|HDR|DV|Dolby\.?Vision|HLG)\b`)
+	titleMarkerRegex     = regexp.MustCompile(`(?i)\b\d{1,2}[\s.]\d{1,2}[\s.](19|20)\d{2}\b|\b(19|20)\d{2}\b|\b20\d{6}\b|\b\d{3,4}p\b|\bS\d{1,2}E\d{1,2}(?:E\d{1,2}|-E?\d{1,2})*\b|\bS\d{1,2}\b|\b\d{1,2}x\d{1,2}\b|\bComplete[\s.]+Season[\s.]\d{1,2}\b|\bSeason[\s.]\d{1,2}\b|\b4K\b|\bUHD\b`)
+	hdrRegex             = regexp.MustCompile(`(?i)\bHDR10\+|\b(HDR10Plus|HDR10|HDR|DV|DoVi|DOVI|Dolby[\s.]?Vision|HLG)\b`)
 	editionRegex         = regexp.MustCompile(`(?i)\b(Directors?[\s.]?Cut|Extended|IMAX|Theatrical[\s.]?Cut?|Unrated|Uncut|Remastered|Anniversary|Criterion|Special[\s.]?Edition)\b`)
 
 	// Multi-episode patterns
@@ -310,7 +310,7 @@ func parseHDR(name string) HDRFormat {
 	// DolbyVision takes priority as DV releases often also have HDR metadata
 	for _, m := range matches {
 		lower := strings.ToLower(m)
-		if lower == "dv" || strings.Contains(lower, "dolby") {
+		if lower == "dv" || lower == "dovi" || strings.Contains(lower, "dolby") {
 			return DolbyVision
 		}
 	}

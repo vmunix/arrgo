@@ -4148,7 +4148,7 @@
       "Group": "PTer",
       "Proper": false,
       "Repack": false,
-      "HDR": 2,
+      "HDR": 4,
       "Audio": 8,
       "IsRemux": false,
       "Edition": "",
@@ -4772,7 +4772,7 @@
       "Group": "PTer",
       "Proper": false,
       "Repack": false,
-      "HDR": 1,
+      "HDR": 4,
       "Audio": 8,
       "IsRemux": false,
       "Edition": "",
@@ -4902,7 +4902,7 @@
       "Group": "PTer",
       "Proper": false,
       "Repack": false,
-      "HDR": 1,
+      "HDR": 4,
       "Audio": 7,
       "IsRemux": false,
       "Edition": "",
@@ -6258,7 +6258,7 @@
       "Audio": 2,
       "IsRemux": false,
       "Edition": "",
-      "Service": "Paramount+",
+      "Service": "Apple TV+",
       "IsCompleteSeason": false,
       "IsSplitSeason": false,
       "SplitPart": 0,
@@ -6306,7 +6306,7 @@
       "Group": "UBWEB",
       "Proper": false,
       "Repack": false,
-      "HDR": 0,
+      "HDR": 4,
       "Audio": 4,
       "IsRemux": false,
       "Edition": "",
@@ -9036,7 +9036,7 @@
       "Group": "FULLBRUTALiTY",
       "Proper": false,
       "Repack": false,
-      "HDR": 2,
+      "HDR": 4,
       "Audio": 5,
       "IsRemux": false,
       "Edition": "",
@@ -10518,7 +10518,7 @@
       "Group": "REBORN",
       "Proper": false,
       "Repack": false,
-      "HDR": 2,
+      "HDR": 4,
       "Audio": 3,
       "IsRemux": false,
       "Edition": "",
@@ -11948,7 +11948,7 @@
       "Group": "UBWEB",
       "Proper": false,
       "Repack": false,
-      "HDR": 0,
+      "HDR": 4,
       "Audio": 1,
       "IsRemux": false,
       "Edition": "",
@@ -24808,7 +24808,7 @@
   {
     "input": "Anne.with.an.E.S02.2018.Complete.1080p.Netflix.WEB-DL.AVC.DDP.5.1-DBTV",
     "info": {
-      "Title": "Anne with an E S02",
+      "Title": "Anne with an E",
       "Year": 2018,
       "Season": 2,
       "Episode": 0,
@@ -24828,13 +24828,13 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "anne with an e s02"
+      "CleanTitle": "anne with an e"
     }
   },
   {
     "input": "Anne.with.an.E.S01.2017.Complete.1080p.Netflix.WEB-DL.AVC.DDP.5.1-DBTV",
     "info": {
-      "Title": "Anne with an E S01",
+      "Title": "Anne with an E",
       "Year": 2017,
       "Season": 1,
       "Episode": 0,
@@ -24854,7 +24854,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "anne with an e s01"
+      "CleanTitle": "anne with an e"
     }
   },
   {
@@ -25614,7 +25614,7 @@
   {
     "input": "12.Monkeys.S02.1080p.AMZN.WEB-DL.DDP5.1.H.264-FLUX",
     "info": {
-      "Title": "12 Monkeys S02",
+      "Title": "12 Monkeys",
       "Year": 0,
       "Season": 2,
       "Episode": 0,
@@ -25634,7 +25634,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "12 monkeys s02"
+      "CleanTitle": "12 monkeys"
     }
   },
   {
@@ -25682,7 +25682,7 @@
       "Group": "playWEB",
       "Proper": false,
       "Repack": false,
-      "HDR": 0,
+      "HDR": 4,
       "Audio": 7,
       "IsRemux": false,
       "Edition": "",
@@ -25738,7 +25738,7 @@
       "Group": "playWEB",
       "Proper": false,
       "Repack": false,
-      "HDR": 1,
+      "HDR": 4,
       "Audio": 7,
       "IsRemux": false,
       "Edition": "",
@@ -26588,7 +26588,7 @@
   {
     "input": "Made.in.Korea.S01.2160p.DSNP.WEB-DL.DUAL.DDP5.1.DV.HDR.H.265-FLUX",
     "info": {
-      "Title": "Made in Korea S01",
+      "Title": "Made in Korea",
       "Year": 0,
       "Season": 1,
       "Episode": 0,
@@ -26608,7 +26608,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "made in korea s01"
+      "CleanTitle": "made in korea"
     }
   },
   {
@@ -26782,7 +26782,7 @@
   {
     "input": "Doogie.Howser.M.D.S04.1080p.DSNP.WEB-DL.AAC2.0.H.264-SiGLA",
     "info": {
-      "Title": "Doogie Howser M D S04",
+      "Title": "Doogie Howser M D",
       "Year": 0,
       "Season": 4,
       "Episode": 0,
@@ -26802,7 +26802,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "doogie howser m d s04"
+      "CleanTitle": "doogie howser m d"
     }
   },
   {
@@ -26862,7 +26862,7 @@
   {
     "input": "Why.Didnt.I.Tell.You.a.Million.Times.S01.2023.Complete.1080p.Netflix.WEB-DL.AVC.AAC.2.0-DBTV",
     "info": {
-      "Title": "Why Didnt I Tell You a Million Times S01",
+      "Title": "Why Didnt I Tell You a Million Times",
       "Year": 2023,
       "Season": 1,
       "Episode": 0,
@@ -26882,13 +26882,13 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "why didnt i tell you a million times s01"
+      "CleanTitle": "why didnt i tell you a million times"
     }
   },
   {
     "input": "Captains.of.the.World.S01.2023.Complete.1080p.Netflix.WEB-DL.AVC.DDP.5.1-DBTV",
     "info": {
-      "Title": "Captains of the World S01",
+      "Title": "Captains of the World",
       "Year": 2023,
       "Season": 1,
       "Episode": 0,
@@ -26908,13 +26908,13 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "captains of the world s01"
+      "CleanTitle": "captains of the world"
     }
   },
   {
     "input": "Paparazzi.King.S01.2026.Complete.1080p.Netflix.WEB-DL.AVC.DDP.5.1-DBTV",
     "info": {
-      "Title": "Paparazzi King S01",
+      "Title": "Paparazzi King",
       "Year": 2026,
       "Season": 1,
       "Episode": 0,
@@ -26934,7 +26934,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "paparazzi king s01"
+      "CleanTitle": "paparazzi king"
     }
   },
   {
@@ -26996,7 +26996,7 @@
   {
     "input": "Jazz.For.Two.S01.2024.1080p.Viu.WEB-DL.AAC.H.264-HDSWEB",
     "info": {
-      "Title": "Jazz For Two S01",
+      "Title": "Jazz For Two",
       "Year": 2024,
       "Season": 1,
       "Episode": 0,
@@ -27016,7 +27016,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "jazz for two s01"
+      "CleanTitle": "jazz for two"
     }
   },
   {
@@ -27162,7 +27162,7 @@
   {
     "input": "Mysteries.of.the.Faith.S01.2023.Complete.1080p.Netflix.WEB-DL.AVC.DDP.5.1-DBTV",
     "info": {
-      "Title": "Mysteries of the Faith S01",
+      "Title": "Mysteries of the Faith",
       "Year": 2023,
       "Season": 1,
       "Episode": 0,
@@ -27182,7 +27182,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "mysteries of the faith s01"
+      "CleanTitle": "mysteries of the faith"
     }
   },
   {
@@ -28270,7 +28270,7 @@
       "Audio": 1,
       "IsRemux": false,
       "Edition": "",
-      "Service": "Disney+",
+      "Service": "iT",
       "IsCompleteSeason": false,
       "IsSplitSeason": false,
       "SplitPart": 0,
@@ -28336,7 +28336,7 @@
   {
     "input": "Secret.by.My.Name.S01.2026.2160p.WEB-DL.DDP2.0.H.265-HDSWEB",
     "info": {
-      "Title": "Secret by My Name S01",
+      "Title": "Secret by My Name",
       "Year": 2026,
       "Season": 1,
       "Episode": 0,
@@ -28356,7 +28356,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "secret by my name s01"
+      "CleanTitle": "secret by my name"
     }
   },
   {
@@ -28518,7 +28518,7 @@
       "Audio": 1,
       "IsRemux": false,
       "Edition": "",
-      "Service": "Disney+",
+      "Service": "iT",
       "IsCompleteSeason": false,
       "IsSplitSeason": false,
       "SplitPart": 0,
@@ -29954,7 +29954,7 @@
   {
     "input": "To.Love.To.Lose.S01.2026.Complete.1080p.Netflix.WEB-DL.AVC.DDP.5.1-DBTV",
     "info": {
-      "Title": "To Love To Lose S01",
+      "Title": "To Love To Lose",
       "Year": 2026,
       "Season": 1,
       "Episode": 0,
@@ -29974,7 +29974,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "to love to lose s01"
+      "CleanTitle": "to love to lose"
     }
   },
   {
@@ -30092,7 +30092,7 @@
   {
     "input": "Agatha.Christies.Seven.Dials.S01.1080p.NF.WEB-DL.DDP5.1.Atmos.H.264-FLUX",
     "info": {
-      "Title": "Agatha Christies Seven Dials S01",
+      "Title": "Agatha Christies Seven Dials",
       "Year": 0,
       "Season": 1,
       "Episode": 0,
@@ -30112,13 +30112,13 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "agatha christies seven dials s01"
+      "CleanTitle": "agatha christies seven dials"
     }
   },
   {
     "input": "Doogie.Howser.M.D.S03.1080p.DSNP.WEB-DL.AAC2.0.H.264-SiGLA",
     "info": {
-      "Title": "Doogie Howser M D S03",
+      "Title": "Doogie Howser M D",
       "Year": 0,
       "Season": 3,
       "Episode": 0,
@@ -30138,7 +30138,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "doogie howser m d s03"
+      "CleanTitle": "doogie howser m d"
     }
   },
   {
@@ -30392,7 +30392,7 @@
   {
     "input": "Made.in.Korea.S01.720p.DSNP.WEB-DL.DUAL.DDP5.1.H.264-FLUX",
     "info": {
-      "Title": "Made in Korea S01",
+      "Title": "Made in Korea",
       "Year": 0,
       "Season": 1,
       "Episode": 0,
@@ -30412,7 +30412,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "made in korea s01"
+      "CleanTitle": "made in korea"
     }
   },
   {
@@ -30554,7 +30554,7 @@
   {
     "input": "Bling.Empire.New.York.S01.2023.Complete.1080p.Netflix.WEB-DL.AVC.DDP.5.1-DBTV",
     "info": {
-      "Title": "Bling Empire New York S01",
+      "Title": "Bling Empire New York",
       "Year": 2023,
       "Season": 1,
       "Episode": 0,
@@ -30574,7 +30574,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "bling empire new york s01"
+      "CleanTitle": "bling empire new york"
     }
   },
   {
@@ -30720,7 +30720,7 @@
   {
     "input": "Dance.Brothers.S01.2023.Complete.1080p.Netflix.WEB-DL.AVC.DDP.5.1-DBTV",
     "info": {
-      "Title": "Dance Brothers S01",
+      "Title": "Dance Brothers",
       "Year": 2023,
       "Season": 1,
       "Episode": 0,
@@ -30740,7 +30740,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "dance brothers s01"
+      "CleanTitle": "dance brothers"
     }
   },
   {
@@ -31664,7 +31664,7 @@
   {
     "input": "18.01.2025 WEBDL Yurievij Score.Fuck.Dolls.4 The.SCORE.Group 720p",
     "info": {
-      "Title": "18 01",
+      "Title": "",
       "Year": 0,
       "Season": 0,
       "Episode": 0,
@@ -31684,7 +31684,7 @@
       "IsCompleteSeason": false,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "18 01"
+      "CleanTitle": ""
     }
   },
   {
@@ -32276,7 +32276,7 @@
   {
     "input": "The.Vince.Staples.Show.S01.2024.2160p.NF.WEB-DL.DDP5.1.DV.H.265-HHWEB",
     "info": {
-      "Title": "The Vince Staples Show S01",
+      "Title": "The Vince Staples Show",
       "Year": 2024,
       "Season": 1,
       "Episode": 0,
@@ -32296,7 +32296,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "vince staples show s01"
+      "CleanTitle": "vince staples show"
     }
   },
   {
@@ -32498,7 +32498,7 @@
   {
     "input": "Year.Hare.Affair.S07.2025.1080p.WEB-DL.HEVC.AAC.2.0-StarfallWeb",
     "info": {
-      "Title": "Year Hare Affair S07",
+      "Title": "Year Hare Affair",
       "Year": 2025,
       "Season": 7,
       "Episode": 0,
@@ -32518,7 +32518,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "year hare affair s07"
+      "CleanTitle": "year hare affair"
     }
   },
   {
@@ -33782,7 +33782,7 @@
   {
     "input": "Doogie.Howser.M.D.S02.1080p.DSNP.WEB-DL.AAC2.0.H.264-SiGLA",
     "info": {
-      "Title": "Doogie Howser M D S02",
+      "Title": "Doogie Howser M D",
       "Year": 0,
       "Season": 2,
       "Episode": 0,
@@ -33802,7 +33802,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "doogie howser m d s02"
+      "CleanTitle": "doogie howser m d"
     }
   },
   {
@@ -33862,7 +33862,7 @@
   {
     "input": "Katana.Maidens.Toji.no.Miko.S01.1080p.BluRay.Dual-Audio.Opus2.0.x265-Headpatter",
     "info": {
-      "Title": "Katana Maidens Toji no Miko S01",
+      "Title": "Katana Maidens Toji no Miko",
       "Year": 0,
       "Season": 1,
       "Episode": 0,
@@ -33882,7 +33882,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "katana maidens toji no miko s01"
+      "CleanTitle": "katana maidens toji no miko"
     }
   },
   {
@@ -34306,7 +34306,7 @@
   {
     "input": "The.Vince.Staples.Show.S01.2024.2160p.NF.WEB-DL.DDP5.1.H.265-HHWEB",
     "info": {
-      "Title": "The Vince Staples Show S01",
+      "Title": "The Vince Staples Show",
       "Year": 2024,
       "Season": 1,
       "Episode": 0,
@@ -34326,13 +34326,13 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "vince staples show s01"
+      "CleanTitle": "vince staples show"
     }
   },
   {
     "input": "The.Vince.Staples.Show.S01.2024.2160p.NF.WEB-DL.DDP5.1.HDR.H.265-HHWEB",
     "info": {
-      "Title": "The Vince Staples Show S01",
+      "Title": "The Vince Staples Show",
       "Year": 2024,
       "Season": 1,
       "Episode": 0,
@@ -34352,7 +34352,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "vince staples show s01"
+      "CleanTitle": "vince staples show"
     }
   },
   {
@@ -35616,7 +35616,7 @@
   {
     "input": "Doogie.Howser.M.D.S01.1080p.DSNP.WEB-DL.AAC2.0.H.264-SiGLA",
     "info": {
-      "Title": "Doogie Howser M D S01",
+      "Title": "Doogie Howser M D",
       "Year": 0,
       "Season": 1,
       "Episode": 0,
@@ -35636,7 +35636,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "doogie howser m d s01"
+      "CleanTitle": "doogie howser m d"
     }
   },
   {
@@ -35888,7 +35888,7 @@
   {
     "input": "Go.Dog.Go.S03.2022.Complete.1080p.Netflix.WEB-DL.AVC.DDP.5.1-DBTV",
     "info": {
-      "Title": "Go Dog Go S03",
+      "Title": "Go Dog Go",
       "Year": 2022,
       "Season": 3,
       "Episode": 0,
@@ -35908,7 +35908,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "go dog go s03"
+      "CleanTitle": "go dog go"
     }
   },
   {
@@ -37072,7 +37072,7 @@
       "Audio": 1,
       "IsRemux": false,
       "Edition": "",
-      "Service": "Disney+",
+      "Service": "iT",
       "IsCompleteSeason": false,
       "IsSplitSeason": false,
       "SplitPart": 0,
@@ -37152,7 +37152,7 @@
       "Group": "playWEB",
       "Proper": false,
       "Repack": false,
-      "HDR": 1,
+      "HDR": 4,
       "Audio": 7,
       "IsRemux": false,
       "Edition": "",
@@ -37306,7 +37306,7 @@
   {
     "input": "Zillow.Gone.Wild.S02.1080p.WEB-DL.AAC2.0.H.264-FREQUENCY",
     "info": {
-      "Title": "Zillow Gone Wild S02",
+      "Title": "Zillow Gone Wild",
       "Year": 0,
       "Season": 2,
       "Episode": 0,
@@ -37326,7 +37326,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "zillow gone wild s02"
+      "CleanTitle": "zillow gone wild"
     }
   },
   {
@@ -38392,7 +38392,7 @@
   {
     "input": "PONIES.S01.2160p.PCOK.WEB-DL.DDP5.1.DV.HDR.H.265-Kitsune",
     "info": {
-      "Title": "PONIES S01",
+      "Title": "PONIES",
       "Year": 0,
       "Season": 1,
       "Episode": 0,
@@ -38412,7 +38412,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "ponies s01"
+      "CleanTitle": "ponies"
     }
   },
   {
@@ -38862,7 +38862,7 @@
   {
     "input": "Farjan.S01.DV.2160p.WEB-DL.DD5.1.H.265-PiG30N",
     "info": {
-      "Title": "Farjan S01 DV",
+      "Title": "Farjan",
       "Year": 0,
       "Season": 1,
       "Episode": 0,
@@ -38882,7 +38882,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "farjan s01 dv"
+      "CleanTitle": "farjan"
     }
   },
   {
@@ -39628,7 +39628,7 @@
       "Group": "playWEB",
       "Proper": false,
       "Repack": false,
-      "HDR": 1,
+      "HDR": 4,
       "Audio": 7,
       "IsRemux": false,
       "Edition": "",
@@ -41062,7 +41062,7 @@
   {
     "input": "Landman.S02.web.10bit.HEVC-d3g",
     "info": {
-      "Title": "",
+      "Title": "Landman",
       "Year": 0,
       "Season": 2,
       "Episode": 0,
@@ -41082,7 +41082,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": ""
+      "CleanTitle": "landman"
     }
   },
   {
@@ -42528,7 +42528,7 @@
       "Audio": 3,
       "IsRemux": false,
       "Edition": "",
-      "Service": "Disney+",
+      "Service": "iT",
       "IsCompleteSeason": false,
       "IsSplitSeason": false,
       "SplitPart": 0,
@@ -43770,7 +43770,7 @@
   {
     "input": "Project.Runway.Canada.S03.720p.AMZN.WEB-DL.DDP5.1.H.264-Kitsune",
     "info": {
-      "Title": "Project Runway Canada S03",
+      "Title": "Project Runway Canada",
       "Year": 0,
       "Season": 3,
       "Episode": 0,
@@ -43790,7 +43790,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "project runway canada s03"
+      "CleanTitle": "project runway canada"
     }
   },
   {
@@ -45992,7 +45992,7 @@
       "Audio": 2,
       "IsRemux": false,
       "Edition": "",
-      "Service": "Disney+",
+      "Service": "iT",
       "IsCompleteSeason": false,
       "IsSplitSeason": false,
       "SplitPart": 0,
@@ -46244,7 +46244,7 @@
       "Audio": 3,
       "IsRemux": false,
       "Edition": "",
-      "Service": "iT",
+      "Service": "Amazon",
       "IsCompleteSeason": false,
       "IsSplitSeason": false,
       "SplitPart": 0,
@@ -46450,7 +46450,7 @@
   {
     "input": "Under.the.Dome.S02.1080p.EUR.Blu-ray.AVC.DTS-HD.MA.5.1",
     "info": {
-      "Title": "Under the Dome S02",
+      "Title": "Under the Dome",
       "Year": 0,
       "Season": 2,
       "Episode": 0,
@@ -46470,7 +46470,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "under the dome s02"
+      "CleanTitle": "under the dome"
     }
   },
   {
@@ -48772,7 +48772,7 @@
   {
     "input": "Derek.S02.1080p.AMZN.WEB-DL.DD+2.0.x264-Cinefeel",
     "info": {
-      "Title": "Derek S02",
+      "Title": "Derek",
       "Year": 0,
       "Season": 2,
       "Episode": 0,
@@ -48792,7 +48792,7 @@
       "IsCompleteSeason": true,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "derek s02"
+      "CleanTitle": "derek"
     }
   },
   {

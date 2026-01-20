@@ -907,3 +907,75 @@ func TestIsValidDate(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_TitleWithNewFormats(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantTitle string
+	}{
+		{
+			name:      "Title with 1x05 format",
+			input:     "Some.Show.1x05.Episode.Title.720p.HDTV.x264-GRP",
+			wantTitle: "Some Show",
+		},
+		{
+			name:      "Title with Season pack",
+			input:     "Some.Show.Season.01.1080p.BluRay.x264-GRP",
+			wantTitle: "Some Show",
+		},
+		{
+			name:      "Title with S01 pack",
+			input:     "Some.Show.S01.1080p.BluRay.x264-GRP",
+			wantTitle: "Some Show",
+		},
+		{
+			name:      "Title with daily date",
+			input:     "Daily.Show.2026.01.16.Episode.720p.HDTV.x264-GRP",
+			wantTitle: "Daily Show",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			assert.Equal(t, tt.wantTitle, got.Title, "Title")
+		})
+	}
+}
+
+func TestParse_DoViHDR(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   string
+		wantHDR HDRFormat
+	}{
+		{
+			name:    "DoVi variant",
+			input:   "Movie.2024.2160p.UHD.BluRay.DoVi.HDR10.x265-GRP",
+			wantHDR: DolbyVision,
+		},
+		{
+			name:    "DOVI uppercase",
+			input:   "Movie.2024.2160p.UHD.BluRay.DOVI.x265-GRP",
+			wantHDR: DolbyVision,
+		},
+		{
+			name:    "DV standard",
+			input:   "Movie.2024.2160p.WEB-DL.DV.H265-GRP",
+			wantHDR: DolbyVision,
+		},
+		{
+			name:    "Dolby.Vision with dot",
+			input:   "Movie.2024.2160p.WEB-DL.Dolby.Vision.H265-GRP",
+			wantHDR: DolbyVision,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			assert.Equal(t, tt.wantHDR, got.HDR, "HDR")
+		})
+	}
+}
