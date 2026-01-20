@@ -1,5 +1,7 @@
 # CLI Visibility Design
 
+> **Status:** ✅ COMPLETED (2026-01-19) - Merged in PR #22
+
 > **For Claude:** Use superpowers:writing-plans to create implementation plan from this design.
 
 **Goal:** Give users clear visibility into the download pipeline state, with actionable diagnostics when things don't match reality.

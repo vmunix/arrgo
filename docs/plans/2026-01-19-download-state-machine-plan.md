@@ -1,5 +1,7 @@
 # Download State Machine & Source Cleanup Implementation Plan
 
+> **Status:** ✅ COMPLETED (2026-01-19) - Merged to main
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Add a state machine to track download lifecycle with event emission, enable source cleanup after Plex verification, and provide stuck detection infrastructure.

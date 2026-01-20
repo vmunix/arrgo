@@ -1,5 +1,7 @@
 # Download State Machine & Source Cleanup Design
 
+> **Status:** ✅ COMPLETED (2026-01-19) - Merged to main
+
 ## Overview
 
 Add a lightweight state machine to track download lifecycle, enable source cleanup after successful import, and provide infrastructure for stuck detection.
