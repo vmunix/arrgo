@@ -3,6 +3,8 @@ package download
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestCanTransitionTo_ValidTransitions(t *testing.T) {
@@ -23,9 +25,8 @@ func TestCanTransitionTo_ValidTransitions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(string(tt.from)+"->"+string(tt.to), func(t *testing.T) {
-			if !tt.from.CanTransitionTo(tt.to) {
-				t.Errorf("%s should be able to transition to %s", tt.from, tt.to)
-			}
+			assert.True(t, tt.from.CanTransitionTo(tt.to),
+				"%s should be able to transition to %s", tt.from, tt.to)
 		})
 	}
 }
@@ -50,9 +51,8 @@ func TestCanTransitionTo_InvalidTransitions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(string(tt.from)+"->"+string(tt.to), func(t *testing.T) {
-			if tt.from.CanTransitionTo(tt.to) {
-				t.Errorf("%s should NOT be able to transition to %s", tt.from, tt.to)
-			}
+			assert.False(t, tt.from.CanTransitionTo(tt.to),
+				"%s should NOT be able to transition to %s", tt.from, tt.to)
 		})
 	}
 }
@@ -62,15 +62,11 @@ func TestIsTerminal(t *testing.T) {
 	nonTerminal := []Status{StatusQueued, StatusDownloading, StatusCompleted, StatusImported}
 
 	for _, s := range terminal {
-		if !s.IsTerminal() {
-			t.Errorf("%s should be terminal", s)
-		}
+		assert.True(t, s.IsTerminal(), "%s should be terminal", s)
 	}
 
 	for _, s := range nonTerminal {
-		if s.IsTerminal() {
-			t.Errorf("%s should NOT be terminal", s)
-		}
+		assert.False(t, s.IsTerminal(), "%s should NOT be terminal", s)
 	}
 }
 
@@ -82,13 +78,7 @@ func TestTransitionEvent(t *testing.T) {
 		At:         time.Now(),
 	}
 
-	if event.DownloadID != 42 {
-		t.Error("DownloadID not set")
-	}
-	if event.From != StatusQueued {
-		t.Error("From not set")
-	}
-	if event.To != StatusDownloading {
-		t.Error("To not set")
-	}
+	assert.Equal(t, int64(42), event.DownloadID, "DownloadID not set")
+	assert.Equal(t, StatusQueued, event.From, "From not set")
+	assert.Equal(t, StatusDownloading, event.To, "To not set")
 }
