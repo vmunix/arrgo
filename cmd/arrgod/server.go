@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 
 	"github.com/vmunix/arrgo/internal/api/compat"
 	v1 "github.com/vmunix/arrgo/internal/api/v1"
@@ -85,7 +85,7 @@ func runServer(configPath string) error {
 	}
 
 	// Open database
-	db, err := sql.Open("sqlite3", cfg.Database.Path)
+	db, err := sql.Open("sqlite", cfg.Database.Path)
 	if err != nil {
 		return fmt.Errorf("open db: %w", err)
 	}
