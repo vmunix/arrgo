@@ -18,14 +18,14 @@ import (
 
 // Importer processes completed downloads.
 type Importer struct {
-	downloads  *download.Store
-	library    *library.Store
-	history    *HistoryStore
-	renamer    *Renamer
-	plex       *PlexClient // nil if not configured
-	movieRoot  string
-	seriesRoot string
-	log        *slog.Logger
+	downloads   *download.Store
+	library     *library.Store
+	history     *HistoryStore
+	renamer     *Renamer
+	mediaServer MediaServer // nil if not configured
+	movieRoot   string
+	seriesRoot  string
+	log         *slog.Logger
 }
 
 // Config for the importer.
@@ -42,24 +42,24 @@ type Config struct {
 
 // New creates a new importer.
 func New(db *sql.DB, cfg Config, log *slog.Logger) *Importer {
-	var plex *PlexClient
+	var mediaServer MediaServer
 	if cfg.PlexURL != "" && cfg.PlexToken != "" {
 		if cfg.PlexLocalPath != "" && cfg.PlexRemotePath != "" {
-			plex = NewPlexClientWithPathMapping(cfg.PlexURL, cfg.PlexToken, cfg.PlexLocalPath, cfg.PlexRemotePath)
+			mediaServer = NewPlexClientWithPathMapping(cfg.PlexURL, cfg.PlexToken, cfg.PlexLocalPath, cfg.PlexRemotePath)
 		} else {
-			plex = NewPlexClient(cfg.PlexURL, cfg.PlexToken)
+			mediaServer = NewPlexClient(cfg.PlexURL, cfg.PlexToken)
 		}
 	}
 
 	return &Importer{
-		downloads:  download.NewStore(db),
-		library:    library.NewStore(db),
-		history:    NewHistoryStore(db),
-		renamer:    NewRenamer(cfg.MovieTemplate, cfg.SeriesTemplate),
-		plex:       plex,
-		movieRoot:  cfg.MovieRoot,
-		seriesRoot: cfg.SeriesRoot,
-		log:        log,
+		downloads:   download.NewStore(db),
+		library:     library.NewStore(db),
+		history:     NewHistoryStore(db),
+		renamer:     NewRenamer(cfg.MovieTemplate, cfg.SeriesTemplate),
+		mediaServer: mediaServer,
+		movieRoot:   cfg.MovieRoot,
+		seriesRoot:  cfg.SeriesRoot,
+		log:         log,
 	}
 }
 
@@ -75,9 +75,32 @@ type ImportResult struct {
 }
 
 // Import processes a completed download.
+// It orchestrates three phases: prepare, execute, and notify.
 func (i *Importer) Import(ctx context.Context, downloadID int64, downloadPath string) (*ImportResult, error) {
 	i.log.Info("import started", "download_id", downloadID, "path", downloadPath)
 
+	// Phase 1: Prepare - validate download, find video, build paths
+	job, err := i.prepareImport(downloadID, downloadPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Phase 2: Execute - copy file, update database, record history
+	result, err := i.executeImport(job)
+	if err != nil {
+		return nil, err
+	}
+
+	// Phase 3: Notify - trigger media server scan (best effort)
+	i.notifyMediaServer(ctx, job, result)
+
+	i.log.Info("import complete", "download_id", downloadID, "dest", job.DestPath, "quality", job.Quality)
+	return result, nil
+}
+
+// prepareImport validates the download and prepares an import job.
+// It verifies the download is ready, finds the video file, and builds paths.
+func (i *Importer) prepareImport(downloadID int64, downloadPath string) (*ImportJob, error) {
 	// Get download record
 	dl, err := i.downloads.Get(downloadID)
 	if err != nil {
@@ -139,12 +162,26 @@ func (i *Importer) Import(ctx context.Context, downloadID int64, downloadPath st
 		return nil, err
 	}
 
+	return &ImportJob{
+		Download:   dl,
+		Content:    content,
+		Episode:    episode,
+		SourcePath: srcPath,
+		DestPath:   destPath,
+		Quality:    quality,
+		RootPath:   root,
+	}, nil
+}
+
+// executeImport copies the file and updates the database.
+// It handles the file copy, database transaction, and history recording.
+func (i *Importer) executeImport(job *ImportJob) (*ImportResult, error) {
 	// Copy file
-	size, err := CopyFile(srcPath, destPath)
+	size, err := CopyFile(job.SourcePath, job.DestPath)
 	if err != nil {
 		return nil, err
 	}
-	i.log.Debug("file copied", "src", srcPath, "dest", destPath, "size_bytes", size)
+	i.log.Debug("file copied", "src", job.SourcePath, "dest", job.DestPath, "size_bytes", size)
 
 	// Update database in transaction
 	tx, err := i.library.Begin()
@@ -155,27 +192,27 @@ func (i *Importer) Import(ctx context.Context, downloadID int64, downloadPath st
 
 	// Insert file record
 	file := &library.File{
-		ContentID: content.ID,
-		EpisodeID: dl.EpisodeID,
-		Path:      destPath,
+		ContentID: job.Content.ID,
+		EpisodeID: job.Download.EpisodeID,
+		Path:      job.DestPath,
 		SizeBytes: size,
-		Quality:   quality,
-		Source:    dl.Indexer,
+		Quality:   job.Quality,
+		Source:    job.Download.Indexer,
 	}
 	if err := tx.AddFile(file); err != nil {
 		return nil, fmt.Errorf("add file: %w", err)
 	}
 
 	// Update status: content for movies, episode for series
-	if episode != nil {
-		episode.Status = library.StatusAvailable
-		if err := tx.UpdateEpisode(episode); err != nil {
+	if job.Episode != nil {
+		job.Episode.Status = library.StatusAvailable
+		if err := tx.UpdateEpisode(job.Episode); err != nil {
 			return nil, fmt.Errorf("update episode: %w", err)
 		}
 	} else {
-		content.Status = library.StatusAvailable
-		content.UpdatedAt = time.Now()
-		if err := tx.UpdateContent(content); err != nil {
+		job.Content.Status = library.StatusAvailable
+		job.Content.UpdatedAt = time.Now()
+		if err := tx.UpdateContent(job.Content); err != nil {
 			return nil, fmt.Errorf("update content: %w", err)
 		}
 	}
@@ -185,60 +222,57 @@ func (i *Importer) Import(ctx context.Context, downloadID int64, downloadPath st
 	}
 
 	// Update download status (separate from library transaction)
-	dl.Status = download.StatusImported
+	job.Download.Status = download.StatusImported
 	now := time.Now()
-	dl.CompletedAt = &now
-	if err := i.downloads.Update(dl); err != nil {
-		i.log.Warn("update download status failed", "download_id", downloadID, "error", err)
+	job.Download.CompletedAt = &now
+	if err := i.downloads.Update(job.Download); err != nil {
+		i.log.Warn("update download status failed", "download_id", job.Download.ID, "error", err)
 	}
 
 	// Add history entry
 	historyMap := map[string]any{
-		"source_path":  srcPath,
-		"dest_path":    destPath,
+		"source_path":  job.SourcePath,
+		"dest_path":    job.DestPath,
 		"size_bytes":   size,
-		"quality":      quality,
-		"indexer":      dl.Indexer,
-		"release_name": dl.ReleaseName,
+		"quality":      job.Quality,
+		"indexer":      job.Download.Indexer,
+		"release_name": job.Download.ReleaseName,
 	}
-	if episode != nil {
-		historyMap["season"] = episode.Season
-		historyMap["episode"] = episode.Episode
+	if job.Episode != nil {
+		historyMap["season"] = job.Episode.Season
+		historyMap["episode"] = job.Episode.Episode
 	}
 	historyData, _ := json.Marshal(historyMap)
 	_ = i.history.Add(&HistoryEntry{
-		ContentID: content.ID,
-		EpisodeID: dl.EpisodeID,
+		ContentID: job.Content.ID,
+		EpisodeID: job.Download.EpisodeID,
 		Event:     EventImported,
 		Data:      string(historyData),
 	})
 
-	result := &ImportResult{
+	return &ImportResult{
 		FileID:     file.ID,
-		SourcePath: srcPath,
-		DestPath:   destPath,
+		SourcePath: job.SourcePath,
+		DestPath:   job.DestPath,
 		SizeBytes:  size,
-		Quality:    quality,
+		Quality:    job.Quality,
+	}, nil
+}
+
+// notifyMediaServer triggers a scan of the imported file path.
+// This is best-effort and failures are logged but don't fail the import.
+func (i *Importer) notifyMediaServer(ctx context.Context, job *ImportJob, result *ImportResult) {
+	if i.mediaServer == nil {
+		return
 	}
 
-	// Notify Plex (best effort)
-	if i.plex != nil {
-		if err := i.plex.ScanPath(ctx, destPath); err != nil {
-			result.PlexError = err
-		} else {
-			result.PlexNotified = true
-		}
+	if err := i.mediaServer.ScanPath(ctx, job.DestPath); err != nil {
+		result.PlexError = err
+		i.log.Warn("plex notification failed", "error", err)
+	} else {
+		result.PlexNotified = true
+		i.log.Debug("plex notified", "path", job.DestPath)
 	}
-
-	if result.PlexNotified {
-		i.log.Debug("plex notified", "path", destPath)
-	} else if result.PlexError != nil {
-		i.log.Warn("plex notification failed", "error", result.PlexError)
-	}
-
-	i.log.Info("import complete", "download_id", downloadID, "dest", destPath, "quality", quality)
-
-	return result, nil
 }
 
 // extractQuality extracts resolution from a release name.

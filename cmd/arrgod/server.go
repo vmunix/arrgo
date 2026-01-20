@@ -190,15 +190,22 @@ func runServer(configPath string) error {
 	}
 
 	// Native API v1
-	apiV1 := v1.New(db, v1.Config{
+	apiV1, err := v1.NewWithDeps(v1.ServerDeps{
+		Library:   libraryStore,
+		Downloads: downloadStore,
+		History:   historyStore,
+		Searcher:  searcher,
+		Manager:   downloadManager,
+		Plex:      plexClient,
+		Importer:  imp,
+	}, v1.Config{
 		MovieRoot:       cfg.Libraries.Movies.Root,
 		SeriesRoot:      cfg.Libraries.Series.Root,
 		QualityProfiles: profiles,
 	})
-	apiV1.SetSearcher(searcher)
-	apiV1.SetManager(downloadManager)
-	apiV1.SetPlex(plexClient)
-	apiV1.SetImporter(imp)
+	if err != nil {
+		return fmt.Errorf("create api: %w", err)
+	}
 	apiV1.RegisterRoutes(mux)
 
 	// Compat API (if enabled)
@@ -237,8 +244,6 @@ func runServer(configPath string) error {
 		"log_level", cfg.Server.LogLevel,
 	)
 
-	// Silence unused variable warnings for stores not yet wired up
-	_ = historyStore
 
 	// === HTTP Server ===
 	srv := &http.Server{Addr: addr, Handler: logRequests(mux, logger)}

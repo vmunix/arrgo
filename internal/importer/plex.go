@@ -418,3 +418,9 @@ func (c *PlexClient) HasMovie(ctx context.Context, title string, year int) (bool
 
 	return false, nil
 }
+
+// HasContent implements MediaServer.HasContent.
+// It checks if Plex has content with the given title and year.
+func (c *PlexClient) HasContent(ctx context.Context, title string, year int) (bool, error) {
+	return c.HasMovie(ctx, title, year)
+}
