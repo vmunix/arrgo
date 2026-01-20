@@ -464,3 +464,39 @@ func TestInfo_Episodes_Slice(t *testing.T) {
 	assert.Len(t, info.Episodes, 3)
 	assert.Equal(t, 5, info.Episodes[0])
 }
+
+func TestParse_AlternateEpisodeFormats(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantSeason  int
+		wantEpisode int
+	}{
+		{
+			name:        "1x05 format",
+			input:       "Show.1x05.720p.HDTV.x264-GRP",
+			wantSeason:  1,
+			wantEpisode: 5,
+		},
+		{
+			name:        "12x24 format double digit",
+			input:       "Show.12x24.Episode.Title.1080p.WEB-DL.x264-GRP",
+			wantSeason:  12,
+			wantEpisode: 24,
+		},
+		{
+			name:        "s01.05 format with dot",
+			input:       "Show.s01.05.720p.HDTV.x264-GRP",
+			wantSeason:  1,
+			wantEpisode: 5,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Parse(tt.input)
+			assert.Equal(t, tt.wantSeason, got.Season, "Season")
+			assert.Equal(t, tt.wantEpisode, got.Episode, "Episode")
+		})
+	}
+}

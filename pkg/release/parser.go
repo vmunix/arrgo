@@ -12,6 +12,8 @@ var (
 	yearRegex        = regexp.MustCompile(`\b(19|20)\d{2}\b`)
 	dailyRegex       = regexp.MustCompile(`\b(20\d{2})\.(\d{2})\.(\d{2})\b`)
 	seasonEpRegex    = regexp.MustCompile(`(?i)S(\d{1,2})E(\d{1,2})`)
+	altSeasonEpRegex = regexp.MustCompile(`(?i)\b(\d{1,2})x(\d{1,2})\b`)             // 1x05 format
+	dotSeasonEpRegex = regexp.MustCompile(`(?i)\bs(\d{1,2})\.(\d{1,2})(?:\.|$|\s)`) // s01.05 format
 	titleMarkerRegex = regexp.MustCompile(`(?i)\b(19|20)\d{2}\b|\b\d{3,4}p\b|\bS\d{1,2}E\d{1,2}\b|\b4K\b|\bUHD\b`)
 	hdrRegex         = regexp.MustCompile(`(?i)\bHDR10\+|\b(HDR10Plus|HDR10|HDR|DV|Dolby\.?Vision|HLG)\b`)
 	editionRegex     = regexp.MustCompile(`(?i)\b(Directors?[\s.]?Cut|Extended|IMAX|Theatrical[\s.]?Cut?|Unrated|Uncut|Remastered|Anniversary|Criterion|Special[\s.]?Edition)\b`)
@@ -88,13 +90,33 @@ func Parse(name string) *Info {
 		}
 	}
 
-	// Season/Episode - use pre-compiled
+	// Season/Episode - try multiple formats in priority order
 	if matches := seasonEpRegex.FindStringSubmatch(normalized); len(matches) == 3 {
+		// Standard S01E01 format
 		if season, err := strconv.Atoi(matches[1]); err == nil {
 			info.Season = season
 		}
 		if episode, err := strconv.Atoi(matches[2]); err == nil {
 			info.Episode = episode
+			info.Episodes = []int{episode}
+		}
+	} else if matches := altSeasonEpRegex.FindStringSubmatch(name); len(matches) == 3 {
+		// Alternate 1x05 format (use original name to match dots)
+		if season, err := strconv.Atoi(matches[1]); err == nil {
+			info.Season = season
+		}
+		if episode, err := strconv.Atoi(matches[2]); err == nil {
+			info.Episode = episode
+			info.Episodes = []int{episode}
+		}
+	} else if matches := dotSeasonEpRegex.FindStringSubmatch(name); len(matches) == 3 {
+		// Dot-separated s01.05 format (use original name to match dots)
+		if season, err := strconv.Atoi(matches[1]); err == nil {
+			info.Season = season
+		}
+		if episode, err := strconv.Atoi(matches[2]); err == nil {
+			info.Episode = episode
+			info.Episodes = []int{episode}
 		}
 	}
 
