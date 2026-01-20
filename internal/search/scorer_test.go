@@ -631,6 +631,30 @@ func TestMatchesRejectList(t *testing.T) {
 			rejectList: []string{"hdtv", "x264"},
 			want:       false,
 		},
+		{
+			name:       "cam in reject list",
+			info:       release.Info{Source: release.SourceCAM},
+			rejectList: []string{"cam"},
+			want:       true,
+		},
+		{
+			name:       "telesync in reject list",
+			info:       release.Info{Source: release.SourceTelesync},
+			rejectList: []string{"ts"},
+			want:       true,
+		},
+		{
+			name:       "hdcam alias for cam in reject list",
+			info:       release.Info{Source: release.SourceCAM},
+			rejectList: []string{"hdcam"},
+			want:       true,
+		},
+		{
+			name:       "telesync spelled out in reject list",
+			info:       release.Info{Source: release.SourceTelesync},
+			rejectList: []string{"telesync"},
+			want:       true,
+		},
 	}
 
 	for _, tt := range tests {

@@ -262,14 +262,13 @@ func matchesRejectList(info release.Info, rejectList []string) bool {
 }
 
 // rejectMatchesSpecial handles special reject list matching.
-// Note: cam, camrip, ts, telesync, hdcam are not currently tracked by the parser.
-// These would require extending pkg/release to detect these low-quality sources.
 func rejectMatchesSpecial(info release.Info, reject string) bool {
 	// Handle common reject patterns
 	switch reject {
-	case "cam", "camrip", "ts", "telesync", "hdcam":
-		// Low-quality sources not currently tracked by parser - future enhancement
-		return false
+	case "cam", "camrip", "hdcam":
+		return info.Source == release.SourceCAM
+	case "ts", "telesync", "hdts":
+		return info.Source == release.SourceTelesync
 	case "hdtv":
 		return info.Source == release.SourceHDTV
 	case "webrip":

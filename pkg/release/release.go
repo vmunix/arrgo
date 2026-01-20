@@ -33,6 +33,8 @@ const (
 	SourceWEBDL
 	SourceWEBRip
 	SourceHDTV
+	SourceCAM
+	SourceTelesync
 )
 
 func (s Source) String() string {
@@ -45,6 +47,10 @@ func (s Source) String() string {
 		return "webrip"
 	case SourceHDTV:
 		return "hdtv"
+	case SourceCAM:
+		return "cam"
+	case SourceTelesync:
+		return "telesync"
 	default:
 		return "unknown"
 	}
