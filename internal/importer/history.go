@@ -91,8 +91,10 @@ func (s *HistoryStore) List(f HistoryFilter) ([]*HistoryEntry, error) {
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
 	}
 
-	query := `SELECT id, content_id, episode_id, event, data, created_at
-		FROM history ` + whereClause + ` ORDER BY created_at DESC`
+	// G202: False positive - whereClause contains only "WHERE col = ?" style conditions,
+	// actual values are passed via args parameter (parameterized query).
+	query := `SELECT id, content_id, episode_id, event, data, created_at ` + //nolint:gosec
+		`FROM history ` + whereClause + ` ORDER BY created_at DESC`
 
 	if f.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", f.Limit)
