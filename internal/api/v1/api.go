@@ -98,6 +98,8 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// System
 	mux.HandleFunc("GET /api/v1/status", s.getStatus)
+	mux.HandleFunc("GET /api/v1/dashboard", s.getDashboard)
+	mux.HandleFunc("GET /api/v1/verify", s.verify)
 	mux.HandleFunc("GET /api/v1/profiles", s.listProfiles)
 	mux.HandleFunc("POST /api/v1/scan", s.triggerScan)
 
@@ -670,6 +672,64 @@ func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 		Status:  "ok",
 		Version: "0.1.0",
 	})
+}
+
+func (s *Server) getDashboard(w http.ResponseWriter, _ *http.Request) {
+	resp := DashboardResponse{
+		Version: "0.1.0",
+	}
+
+	// Connection status
+	resp.Connections.Server = true
+	resp.Connections.Plex = s.plex != nil
+	resp.Connections.SABnzbd = s.manager != nil
+
+	// Download counts by status
+	for _, status := range []download.Status{
+		download.StatusQueued,
+		download.StatusDownloading,
+		download.StatusCompleted,
+		download.StatusImported,
+		download.StatusCleaned,
+		download.StatusFailed,
+	} {
+		st := status
+		downloads, _ := s.downloads.List(download.DownloadFilter{Status: &st})
+		switch status {
+		case download.StatusQueued:
+			resp.Downloads.Queued = len(downloads)
+		case download.StatusDownloading:
+			resp.Downloads.Downloading = len(downloads)
+		case download.StatusCompleted:
+			resp.Downloads.Completed = len(downloads)
+		case download.StatusImported:
+			resp.Downloads.Imported = len(downloads)
+		case download.StatusCleaned:
+			resp.Downloads.Cleaned = len(downloads)
+		case download.StatusFailed:
+			resp.Downloads.Failed = len(downloads)
+		}
+	}
+
+	// Stuck count (>1hr in non-terminal state)
+	resp.Stuck.Threshold = 60
+	thresholds := map[download.Status]time.Duration{
+		download.StatusQueued:      time.Hour,
+		download.StatusDownloading: time.Hour,
+		download.StatusCompleted:   time.Hour,
+	}
+	stuck, _ := s.downloads.ListStuck(thresholds)
+	resp.Stuck.Count = len(stuck)
+
+	// Library counts
+	movieType := library.ContentTypeMovie
+	seriesType := library.ContentTypeSeries
+	movies, _, _ := s.library.ListContent(library.ContentFilter{Type: &movieType})
+	series, _, _ := s.library.ListContent(library.ContentFilter{Type: &seriesType})
+	resp.Library.Movies = len(movies)
+	resp.Library.Series = len(series)
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
