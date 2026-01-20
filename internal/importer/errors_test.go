@@ -4,16 +4,14 @@ package importer
 import (
 	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestErrors(t *testing.T) {
 	// Verify errors are distinct
-	if errors.Is(ErrDownloadNotFound, ErrDownloadNotReady) {
-		t.Error("errors should be distinct")
-	}
-	if errors.Is(ErrNoVideoFile, ErrCopyFailed) {
-		t.Error("errors should be distinct")
-	}
+	assert.False(t, errors.Is(ErrDownloadNotFound, ErrDownloadNotReady), "errors should be distinct")
+	assert.False(t, errors.Is(ErrNoVideoFile, ErrCopyFailed), "errors should be distinct")
 
 	// Verify all errors have messages
 	errs := []error{
@@ -25,8 +23,6 @@ func TestErrors(t *testing.T) {
 		ErrPathTraversal,
 	}
 	for _, err := range errs {
-		if err.Error() == "" {
-			t.Errorf("error %v should have a message", err)
-		}
+		assert.NotEmpty(t, err.Error(), "error %v should have a message", err)
 	}
 }
