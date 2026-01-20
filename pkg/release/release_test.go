@@ -563,6 +563,13 @@ func TestParse_MultiEpisode(t *testing.T) {
 			wantEpisode:  5,
 			wantEpisodes: []int{5}, // expandRange returns just start when end < start
 		},
+		{
+			name:         "Range where start equals end",
+			input:        "Show.S01E05-05.720p.HDTV.x264-GRP",
+			wantSeason:   1,
+			wantEpisode:  5,
+			wantEpisodes: []int{5},
+		},
 	}
 
 	for _, tt := range tests {
@@ -604,6 +611,11 @@ func TestParse_AudioGaps(t *testing.T) {
 		{
 			name:      "Dolby Digital explicit",
 			input:     "Movie.2024.1080p.BluRay.Dolby.Digital.5.1.x264-GRP",
+			wantAudio: AudioAC3,
+		},
+		{
+			name:      "DD.7.1 surround",
+			input:     "Movie.2024.1080p.BluRay.DD.7.1.x264-GRP",
 			wantAudio: AudioAC3,
 		},
 	}
@@ -732,6 +744,166 @@ func TestParse_SeasonPack(t *testing.T) {
 			assert.Equal(t, tt.wantCompleteSeason, got.IsCompleteSeason, "IsCompleteSeason")
 			assert.Equal(t, tt.wantSplitSeason, got.IsSplitSeason, "IsSplitSeason")
 			assert.Equal(t, tt.wantSplitPart, got.SplitPart, "SplitPart")
+		})
+	}
+}
+
+func TestParseEpisodeSequence(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  []int
+	}{
+		{
+			name:  "Triple episode sequence",
+			input: "E05E06E07",
+			want:  []int{5, 6, 7},
+		},
+		{
+			name:  "Single episode",
+			input: "E01",
+			want:  []int{1},
+		},
+		{
+			name:  "Double episode",
+			input: "E10E11",
+			want:  []int{10, 11},
+		},
+		{
+			name:  "Empty string",
+			input: "",
+			want:  []int{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseEpisodeSequence(tt.input)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestExpandRange(t *testing.T) {
+	tests := []struct {
+		name  string
+		start int
+		end   int
+		want  []int
+	}{
+		{
+			name:  "Normal range 1 to 3",
+			start: 1,
+			end:   3,
+			want:  []int{1, 2, 3},
+		},
+		{
+			name:  "Start equals end",
+			start: 5,
+			end:   5,
+			want:  []int{5},
+		},
+		{
+			name:  "End less than start",
+			start: 5,
+			end:   2,
+			want:  []int{5},
+		},
+		{
+			name:  "Single element range",
+			start: 1,
+			end:   1,
+			want:  []int{1},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := expandRange(tt.start, tt.end)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestMonthToNumber(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "Jan capitalized",
+			input: "Jan",
+			want:  "01",
+		},
+		{
+			name:  "jan lowercase",
+			input: "jan",
+			want:  "01",
+		},
+		{
+			name:  "DEC uppercase",
+			input: "DEC",
+			want:  "12",
+		},
+		{
+			name:  "Invalid month",
+			input: "Invalid",
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := monthToNumber(tt.input)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func TestIsValidDate(t *testing.T) {
+	tests := []struct {
+		name  string
+		month string
+		day   string
+		want  bool
+	}{
+		{
+			name:  "Valid mid-month",
+			month: "01",
+			day:   "15",
+			want:  true,
+		},
+		{
+			name:  "Valid December 31",
+			month: "12",
+			day:   "31",
+			want:  true,
+		},
+		{
+			name:  "Invalid month 13",
+			month: "13",
+			day:   "01",
+			want:  false,
+		},
+		{
+			name:  "Invalid day 32",
+			month: "01",
+			day:   "32",
+			want:  false,
+		},
+		{
+			name:  "Invalid month 00",
+			month: "00",
+			day:   "15",
+			want:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isValidDate(tt.month, tt.day)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

@@ -524,7 +524,9 @@ func parseEpisodeSequence(s string) []int {
 	return episodes
 }
 
-// expandRange creates a slice from start to end inclusive
+// expandRange creates a slice from start to end inclusive.
+// If end < start, returns a single-element slice containing just start.
+// If start == end, returns a single-element slice containing that value.
 func expandRange(start, end int) []int {
 	if end < start {
 		return []int{start}
