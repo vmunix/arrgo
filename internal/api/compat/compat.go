@@ -136,6 +136,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v3/series", s.authMiddleware(s.listSeries))
 	mux.HandleFunc("GET /api/v3/series/{id}", s.authMiddleware(s.getSeries))
 	mux.HandleFunc("POST /api/v3/series", s.authMiddleware(s.addSeries))
+	mux.HandleFunc("GET /api/v3/languageprofile", s.authMiddleware(s.listLanguageProfiles))
 }
 
 // authMiddleware validates the X-Api-Key header.
@@ -549,6 +550,18 @@ func (s *Server) createTag(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"id":    1,
 		"label": req.Label,
+	})
+}
+
+// Language profile handler (Sonarr v3+ requires this)
+
+func (s *Server) listLanguageProfiles(w http.ResponseWriter, r *http.Request) {
+	// Return a single "English" profile - arrgo doesn't filter by language
+	writeJSON(w, http.StatusOK, []map[string]any{
+		{
+			"id":   1,
+			"name": "English",
+		},
 	})
 }
 
