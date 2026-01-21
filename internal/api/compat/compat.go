@@ -1039,7 +1039,9 @@ func (s *Server) searchAndGrab(contentID int64, title string, year int, profile 
 
 	// Legacy: direct manager call
 	if s.manager != nil {
-		_, _ = s.manager.Grab(ctx, contentID, nil, best.DownloadURL, best.Title, best.Indexer)
+		if _, err := s.manager.Grab(ctx, contentID, nil, best.DownloadURL, best.Title, best.Indexer); err != nil {
+			s.log.Error("failed to grab release", "error", err, "release", best.Title)
+		}
 	}
 }
 
@@ -1090,7 +1092,9 @@ func (s *Server) searchAndGrabSeries(contentID int64, title string, profile stri
 
 		// Legacy: direct manager call
 		if s.manager != nil {
-			_, _ = s.manager.Grab(ctx, contentID, nil, best.DownloadURL, best.Title, best.Indexer)
+			if _, err := s.manager.Grab(ctx, contentID, nil, best.DownloadURL, best.Title, best.Indexer); err != nil {
+				s.log.Error("failed to grab release", "error", err, "release", best.Title, "season", season)
+			}
 		}
 	}
 }
