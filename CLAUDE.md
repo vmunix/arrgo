@@ -115,6 +115,8 @@ Or use defaults syntax in config: `${VAR:-default_value}`
 ./arrgo queue            # Show active downloads
 ./arrgo queue --all      # Include terminal states (cleaned, failed)
 ./arrgo queue -s failed  # Filter by state
+./arrgo queue cancel <id>         # Cancel a download
+./arrgo queue cancel <id> --delete # Cancel and delete files
 
 # Library management
 ./arrgo library list              # List all tracked content
