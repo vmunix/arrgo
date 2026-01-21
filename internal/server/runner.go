@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/vmunix/arrgo/internal/adapters/plex"
+	"github.com/vmunix/arrgo/internal/adapters/sabnzbd"
 	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/events"
 	"github.com/vmunix/arrgo/internal/handlers"
@@ -27,21 +29,23 @@ type Runner struct {
 	logger *slog.Logger
 
 	// Dependencies
-	downloader download.Downloader
-	importer   handlers.FileImporter
+	downloader  download.Downloader
+	importer    handlers.FileImporter
+	plexChecker plex.Checker // Can be nil if Plex not configured
 }
 
 // NewRunner creates a new runner.
-func NewRunner(db *sql.DB, cfg Config, logger *slog.Logger, downloader download.Downloader, importer handlers.FileImporter) *Runner {
+func NewRunner(db *sql.DB, cfg Config, logger *slog.Logger, downloader download.Downloader, importer handlers.FileImporter, plexChecker plex.Checker) *Runner {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Runner{
-		db:         db,
-		config:     cfg,
-		logger:     logger,
-		downloader: downloader,
-		importer:   importer,
+		db:          db,
+		config:      cfg,
+		logger:      logger,
+		downloader:  downloader,
+		importer:    importer,
+		plexChecker: plexChecker,
 	}
 }
 
@@ -80,6 +84,24 @@ func (r *Runner) Run(ctx context.Context) error {
 		r.logger.Info("starting cleanup handler")
 		return cleanupHandler.Start(ctx)
 	})
+
+	// Create adapters
+	sabnzbdAdapter := sabnzbd.New(bus, r.downloader, downloadStore, r.config.PollInterval, r.logger.With("adapter", "sabnzbd"))
+
+	// Start adapters
+	g.Go(func() error {
+		r.logger.Info("starting sabnzbd adapter", "interval", r.config.PollInterval)
+		return sabnzbdAdapter.Start(ctx)
+	})
+
+	// Only start Plex adapter if configured
+	if r.plexChecker != nil {
+		plexAdapter := plex.New(bus, r.plexChecker, r.config.PollInterval, r.logger.With("adapter", "plex"))
+		g.Go(func() error {
+			r.logger.Info("starting plex adapter", "interval", r.config.PollInterval)
+			return plexAdapter.Start(ctx)
+		})
+	}
 
 	return g.Wait()
 }

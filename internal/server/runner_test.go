@@ -104,7 +104,7 @@ func TestRunner_StartsAndStops(t *testing.T) {
 		PollInterval:   100 * time.Millisecond,
 		DownloadRoot:   "/tmp/downloads",
 		CleanupEnabled: false,
-	}, nil, mockDownloader, mockImporter)
+	}, nil, mockDownloader, mockImporter, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -134,7 +134,7 @@ func TestNewRunner_DefaultLogger(t *testing.T) {
 	db := setupTestDB(t)
 
 	// Should not panic with nil logger
-	runner := NewRunner(db, Config{}, nil, &mockDownloader{}, &mockImporter{})
+	runner := NewRunner(db, Config{}, nil, &mockDownloader{}, &mockImporter{}, nil)
 	require.NotNil(t, runner)
 	require.NotNil(t, runner.logger)
 }
@@ -148,7 +148,7 @@ func TestRunner_ConfigFields(t *testing.T) {
 		CleanupEnabled: true,
 	}
 
-	runner := NewRunner(db, cfg, nil, &mockDownloader{}, &mockImporter{})
+	runner := NewRunner(db, cfg, nil, &mockDownloader{}, &mockImporter{}, nil)
 
 	require.Equal(t, cfg.PollInterval, runner.config.PollInterval)
 	require.Equal(t, cfg.DownloadRoot, runner.config.DownloadRoot)
