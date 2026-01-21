@@ -286,6 +286,19 @@ func (s *Server) addContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Emit ContentAdded event
+	if s.deps.Bus != nil {
+		evt := &events.ContentAdded{
+			BaseEvent:      events.NewBaseEvent(events.EventContentAdded, events.EntityContent, c.ID),
+			ContentID:      c.ID,
+			ContentType:    string(c.Type),
+			Title:          c.Title,
+			Year:           c.Year,
+			QualityProfile: c.QualityProfile,
+		}
+		_ = s.deps.Bus.Publish(r.Context(), evt)
+	}
+
 	writeJSON(w, http.StatusCreated, contentToResponse(c))
 }
 
@@ -312,6 +325,9 @@ func (s *Server) updateContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Capture old status for event
+	oldStatus := c.Status
+
 	// Apply updates
 	if req.Status != nil {
 		c.Status = library.ContentStatus(*req.Status)
@@ -323,6 +339,17 @@ func (s *Server) updateContent(w http.ResponseWriter, r *http.Request) {
 	if err := s.deps.Library.UpdateContent(c); err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
+	}
+
+	// Emit ContentStatusChanged event if status changed
+	if s.deps.Bus != nil && oldStatus != c.Status {
+		evt := &events.ContentStatusChanged{
+			BaseEvent: events.NewBaseEvent(events.EventContentStatusChanged, events.EntityContent, c.ID),
+			ContentID: c.ID,
+			OldStatus: string(oldStatus),
+			NewStatus: string(c.Status),
+		}
+		_ = s.deps.Bus.Publish(r.Context(), evt)
 	}
 
 	writeJSON(w, http.StatusOK, contentToResponse(c))

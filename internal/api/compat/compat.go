@@ -436,6 +436,19 @@ func (s *Server) addMovie(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Publish ContentAdded event
+	if s.bus != nil {
+		evt := &events.ContentAdded{
+			BaseEvent:      events.NewBaseEvent(events.EventContentAdded, events.EntityContent, content.ID),
+			ContentID:      content.ID,
+			ContentType:    string(content.Type),
+			Title:          content.Title,
+			Year:           content.Year,
+			QualityProfile: content.QualityProfile,
+		}
+		_ = s.bus.Publish(r.Context(), evt)
+	}
+
 	// Auto-search if requested and searcher available
 	if req.AddOptions.SearchForMovie && s.searcher != nil && s.manager != nil {
 		go s.searchAndGrab(content.ID, req.Title, req.Year, profileName)
@@ -859,6 +872,19 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 	if err := s.library.AddContent(content); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
+	}
+
+	// Publish ContentAdded event
+	if s.bus != nil {
+		evt := &events.ContentAdded{
+			BaseEvent:      events.NewBaseEvent(events.EventContentAdded, events.EntityContent, content.ID),
+			ContentID:      content.ID,
+			ContentType:    string(content.Type),
+			Title:          content.Title,
+			Year:           content.Year,
+			QualityProfile: content.QualityProfile,
+		}
+		_ = s.bus.Publish(r.Context(), evt)
 	}
 
 	// Auto-search if requested
