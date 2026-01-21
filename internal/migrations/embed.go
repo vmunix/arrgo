@@ -13,3 +13,6 @@ var Migration002LastTransitionAt string
 
 //go:embed sql/003_downloads_status_cleaned.sql
 var Migration003DownloadsStatusCleaned string
+
+//go:embed sql/005_events.sql
+var Migration005Events string
