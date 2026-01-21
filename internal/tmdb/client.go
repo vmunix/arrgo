@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -21,6 +22,7 @@ type Client struct {
 	baseURL    string
 	httpClient *http.Client
 	cache      *cache
+	log        *slog.Logger
 }
 
 // Option configures a Client.
@@ -47,6 +49,13 @@ func WithHTTPClient(hc *http.Client) Option {
 	}
 }
 
+// WithLogger sets a logger for debug output.
+func WithLogger(log *slog.Logger) Option {
+	return func(c *Client) {
+		c.log = log.With("component", "tmdb")
+	}
+}
+
 // NewClient creates a new TMDB client.
 func NewClient(apiKey string, opts ...Option) *Client {
 	c := &Client{
@@ -67,8 +76,13 @@ func NewClient(apiKey string, opts ...Option) *Client {
 func (c *Client) GetMovie(ctx context.Context, tmdbID int64) (*Movie, error) {
 	// Check cache first
 	if movie, ok := c.cache.get(tmdbID); ok {
+		if c.log != nil {
+			c.log.Debug("cache hit", "tmdb_id", tmdbID, "title", movie.Title)
+		}
 		return movie, nil
 	}
+
+	start := time.Now()
 
 	// Build request
 	url := fmt.Sprintf("%s/3/movie/%d?api_key=%s", c.baseURL, tmdbID, c.apiKey)
@@ -80,15 +94,24 @@ func (c *Client) GetMovie(ctx context.Context, tmdbID int64) (*Movie, error) {
 	// Execute
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		if c.log != nil {
+			c.log.Debug("request failed", "tmdb_id", tmdbID, "error", err)
+		}
 		return nil, fmt.Errorf("execute request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// Handle errors
 	if resp.StatusCode == http.StatusNotFound {
+		if c.log != nil {
+			c.log.Debug("not found", "tmdb_id", tmdbID)
+		}
 		return nil, ErrNotFound
 	}
 	if resp.StatusCode != http.StatusOK {
+		if c.log != nil {
+			c.log.Debug("api error", "tmdb_id", tmdbID, "status", resp.StatusCode)
+		}
 		return nil, fmt.Errorf("TMDB API error: %s", resp.Status)
 	}
 
@@ -96,6 +119,10 @@ func (c *Client) GetMovie(ctx context.Context, tmdbID int64) (*Movie, error) {
 	var movie Movie
 	if err := json.NewDecoder(resp.Body).Decode(&movie); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
+	}
+
+	if c.log != nil {
+		c.log.Debug("fetched movie", "tmdb_id", tmdbID, "title", movie.Title, "duration_ms", time.Since(start).Milliseconds())
 	}
 
 	// Cache and return

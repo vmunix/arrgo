@@ -8,8 +8,8 @@ type Movie struct {
 	ID           int64   `json:"id"`
 	Title        string  `json:"title"`
 	Overview     string  `json:"overview"`
-	ReleaseDate  string  `json:"release_date"`  // "2024-03-01"
-	PosterPath   string  `json:"poster_path"`   // "/abc123.jpg"
+	ReleaseDate  string  `json:"release_date"` // "2024-03-01"
+	PosterPath   string  `json:"poster_path"`  // "/abc123.jpg"
 	BackdropPath string  `json:"backdrop_path"`
 	VoteAverage  float64 `json:"vote_average"`
 	VoteCount    int     `json:"vote_count"`

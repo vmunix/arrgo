@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -18,6 +19,7 @@ type Client struct {
 	baseURL    string
 	apiKey     string
 	httpClient *http.Client
+	log        *slog.Logger
 }
 
 // Release represents a search result from a Newznab indexer.
@@ -31,7 +33,11 @@ type Release struct {
 }
 
 // NewClient creates a new Newznab client.
-func NewClient(name, baseURL, apiKey string) *Client {
+func NewClient(name, baseURL, apiKey string, log *slog.Logger) *Client {
+	var clientLog *slog.Logger
+	if log != nil {
+		clientLog = log.With("component", "newznab", "indexer", name)
+	}
 	return &Client{
 		name:    name,
 		baseURL: strings.TrimSuffix(baseURL, "/"),
@@ -39,6 +45,7 @@ func NewClient(name, baseURL, apiKey string) *Client {
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
+		log: clientLog,
 	}
 }
 
@@ -84,6 +91,8 @@ func (c *Client) Search(ctx context.Context, query string, categories []int) ([]
 
 // SearchWithOffset queries the indexer with pagination support.
 func (c *Client) SearchWithOffset(ctx context.Context, query string, categories []int, limit, offset int) ([]Release, error) {
+	start := time.Now()
+
 	// Build URL
 	reqURL, err := url.Parse(c.baseURL + "/api")
 	if err != nil {
@@ -183,6 +192,10 @@ func (c *Client) SearchWithOffset(ctx context.Context, query string, categories 
 		}
 
 		releases = append(releases, rel)
+	}
+
+	if c.log != nil {
+		c.log.Debug("search complete", "query", query, "results", len(releases), "duration_ms", time.Since(start).Milliseconds())
 	}
 
 	return releases, nil

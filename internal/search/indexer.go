@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/vmunix/arrgo/pkg/newznab"
+	"github.com/vmunix/arrgo/pkg/release"
 )
 
 // ErrNoIndexers is returned when no indexers are configured.
@@ -27,7 +28,9 @@ func NewIndexerPool(clients []*newznab.Client, log *slog.Logger) *IndexerPool {
 // Search queries all indexers in parallel and merges results.
 // Returns releases from all indexers and any errors encountered.
 func (p *IndexerPool) Search(ctx context.Context, q Query) ([]Release, []error) {
-	p.log.Debug("search started", "query", q.Text, "type", q.Type, "indexers", len(p.clients))
+	// Normalize query for better indexer matching (e.g., & → and)
+	searchText := release.NormalizeSearchQuery(q.Text)
+	p.log.Debug("search started", "query", searchText, "original", q.Text, "type", q.Type, "indexers", len(p.clients))
 	start := time.Now()
 
 	if len(p.clients) == 0 {
@@ -57,7 +60,7 @@ func (p *IndexerPool) Search(ctx context.Context, q Query) ([]Release, []error) 
 		go func(c *newznab.Client) {
 			defer wg.Done()
 			indexerStart := time.Now()
-			releases, err := c.Search(ctx, q.Text, categories)
+			releases, err := c.Search(ctx, searchText, categories)
 			if err != nil {
 				p.log.Warn("indexer failed", "indexer", c.Name(), "error", err, "duration_ms", time.Since(indexerStart).Milliseconds())
 			} else {
@@ -94,6 +97,6 @@ func (p *IndexerPool) Search(ctx context.Context, q Query) ([]Release, []error) 
 		}
 	}
 
-	p.log.Info("search complete", "query", q.Text, "results", len(allReleases), "errors", len(errs), "duration_ms", time.Since(start).Milliseconds())
+	p.log.Info("search complete", "query", searchText, "results", len(allReleases), "errors", len(errs), "duration_ms", time.Since(start).Milliseconds())
 	return allReleases, errs
 }

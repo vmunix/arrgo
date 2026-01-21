@@ -120,6 +120,11 @@ type downloadResponse struct {
 	Indexer     string     `json:"indexer"`
 	AddedAt     time.Time  `json:"added_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	// Live status from download client (only present for active downloads)
+	Progress *float64 `json:"progress,omitempty"` // 0-100
+	Size     *int64   `json:"size,omitempty"`     // bytes
+	Speed    *int64   `json:"speed,omitempty"`    // bytes/sec
+	ETA      *string  `json:"eta,omitempty"`      // human readable
 }
 
 // listDownloadsResponse is the response for GET /downloads.

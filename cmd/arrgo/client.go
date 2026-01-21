@@ -107,6 +107,11 @@ type DownloadResponse struct {
 	Indexer     string  `json:"indexer"`
 	AddedAt     string  `json:"added_at"`
 	CompletedAt *string `json:"completed_at,omitempty"`
+	// Live status fields
+	Progress *float64 `json:"progress,omitempty"`
+	Size     *int64   `json:"size,omitempty"`
+	Speed    *int64   `json:"speed,omitempty"`
+	ETA      *string  `json:"eta,omitempty"`
 }
 
 type ListDownloadsResponse struct {

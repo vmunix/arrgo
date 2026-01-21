@@ -91,3 +91,12 @@ func stripLeadingArticle(s string) string {
 	}
 	return s
 }
+
+// NormalizeSearchQuery prepares a search query for indexer APIs.
+// Converts & to "and" and collapses whitespace.
+// Unlike CleanTitle, preserves case and most punctuation for better search results.
+func NormalizeSearchQuery(query string) string {
+	s := strings.ReplaceAll(query, "&", "and")
+	fields := strings.Fields(s)
+	return strings.Join(fields, " ")
+}

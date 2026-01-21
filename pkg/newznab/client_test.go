@@ -46,7 +46,7 @@ func TestClient_Search(t *testing.T) {
 	defer server.Close()
 
 	// Create client
-	client := NewClient("TestIndexer", server.URL, "test-key")
+	client := NewClient("TestIndexer", server.URL, "test-key", nil)
 
 	// Search
 	releases, err := client.Search(context.Background(), "test query", []int{2000})
@@ -72,7 +72,7 @@ func TestClient_SearchWithCategories(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("Test", server.URL, "key")
+	client := NewClient("Test", server.URL, "key", nil)
 	_, err := client.Search(context.Background(), "test", []int{2000, 2040, 2045})
 	require.NoError(t, err, "Search failed")
 }
@@ -83,17 +83,17 @@ func TestClient_SearchError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient("Test", server.URL, "bad-key")
+	client := NewClient("Test", server.URL, "bad-key", nil)
 	_, err := client.Search(context.Background(), "test", nil)
 	assert.Error(t, err, "expected error for 401 response")
 }
 
 func TestClient_Name(t *testing.T) {
-	client := NewClient("MyIndexer", "http://example.com", "key")
+	client := NewClient("MyIndexer", "http://example.com", "key", nil)
 	assert.Equal(t, "MyIndexer", client.Name(), "unexpected name")
 }
 
 func TestNewClient_TrimsTrailingSlash(t *testing.T) {
-	client := NewClient("Test", "http://example.com/", "key")
+	client := NewClient("Test", "http://example.com/", "key", nil)
 	assert.Equal(t, "http://example.com", client.baseURL, "expected trailing slash trimmed")
 }

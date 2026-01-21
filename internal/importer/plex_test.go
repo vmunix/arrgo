@@ -31,7 +31,7 @@ func TestPlexClient_GetSections(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewPlexClient(server.URL, "test-token")
+	client := NewPlexClient(server.URL, "test-token", nil)
 	sections, err := client.GetSections(context.Background())
 	require.NoError(t, err, "GetSections")
 
@@ -66,7 +66,7 @@ func TestPlexClient_ScanPath(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewPlexClient(server.URL, "test-token")
+	client := NewPlexClient(server.URL, "test-token", nil)
 	err := client.ScanPath(context.Background(), "/movies/Test Movie (2024)/movie.mkv")
 	require.NoError(t, err, "ScanPath")
 
@@ -85,13 +85,13 @@ func TestPlexClient_ScanPath_NoMatchingSection(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewPlexClient(server.URL, "test-token")
+	client := NewPlexClient(server.URL, "test-token", nil)
 	err := client.ScanPath(context.Background(), "/other/path/movie.mkv")
 	assert.Error(t, err, "expected error for non-matching path")
 }
 
 func TestPlexClient_ConnectionError(t *testing.T) {
-	client := NewPlexClient("http://localhost:99999", "token")
+	client := NewPlexClient("http://localhost:99999", "token", nil)
 	_, err := client.GetSections(context.Background())
 	assert.Error(t, err, "expected connection error")
 }
@@ -107,7 +107,7 @@ func TestPlexClient_GetIdentity(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewPlexClient(server.URL, "test-token")
+	client := NewPlexClient(server.URL, "test-token", nil)
 	identity, err := client.GetIdentity(context.Background())
 
 	require.NoError(t, err)
@@ -116,7 +116,7 @@ func TestPlexClient_GetIdentity(t *testing.T) {
 }
 
 func TestPlexClient_GetIdentity_ConnectionError(t *testing.T) {
-	client := NewPlexClient("http://localhost:1", "test-token")
+	client := NewPlexClient("http://localhost:1", "test-token", nil)
 	_, err := client.GetIdentity(context.Background())
 
 	assert.Error(t, err, "expected error")
@@ -138,7 +138,7 @@ func TestPlexClient_GetSections_WithMetadata(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewPlexClient(server.URL, "test-token")
+	client := NewPlexClient(server.URL, "test-token", nil)
 	sections, err := client.GetSections(context.Background())
 
 	require.NoError(t, err)
@@ -159,7 +159,7 @@ func TestPlexClient_GetLibraryCount(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewPlexClient(server.URL, "test-token")
+	client := NewPlexClient(server.URL, "test-token", nil)
 	count, err := client.GetLibraryCount(context.Background(), "1")
 
 	require.NoError(t, err)
@@ -188,7 +188,7 @@ func TestPlexClient_HasMovie(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewPlexClient(server.URL, "test-token")
+	client := NewPlexClient(server.URL, "test-token", nil)
 
 	// Should find movie
 	found, err := client.HasMovie(context.Background(), "Test Movie", 2024)

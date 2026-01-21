@@ -62,22 +62,26 @@ func printQueueActive(d *ListDownloadsResponse) {
 	}
 
 	fmt.Printf("Active Downloads (%d):\n\n", d.Total)
-	fmt.Printf("  %-4s %-12s %-44s %s\n", "ID", "STATE", "RELEASE", "PROGRESS")
-	fmt.Println("  " + strings.Repeat("-", 70))
+	fmt.Printf("  %-4s %-12s %-50s %-8s %s\n", "ID", "STATE", "RELEASE", "PROGRESS", "ETA")
+	fmt.Println("  " + strings.Repeat("-", 90))
 
 	for i := range d.Items {
 		dl := &d.Items[i]
 		title := dl.ReleaseName
-		if len(title) > 44 {
-			title = title[:41] + "..."
+		if len(title) > 50 {
+			title = title[:47] + "..."
 		}
 		progress := "-"
-		if dl.Status == "downloading" {
-			progress = "..." // Would need live data from SABnzbd
+		if dl.Progress != nil {
+			progress = fmt.Sprintf("%.1f%%", *dl.Progress)
 		} else if dl.Status == "completed" {
 			progress = "100%"
 		}
-		fmt.Printf("  %-4d %-12s %-44s %s\n", dl.ID, dl.Status, title, progress)
+		eta := "-"
+		if dl.ETA != nil {
+			eta = *dl.ETA
+		}
+		fmt.Printf("  %-4d %-12s %-50s %-8s %s\n", dl.ID, dl.Status, title, progress, eta)
 	}
 }
 

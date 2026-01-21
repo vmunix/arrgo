@@ -153,7 +153,7 @@ func setupIntegrationTest(t *testing.T) *testEnv {
 	searcher := search.NewSearcher(env.mockIndexer, scorer, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	// Create SABnzbd client pointing to mock
-	sabnzbdClient := download.NewSABnzbdClient(env.sabnzbd.URL, "test-api-key", "arrgo")
+	sabnzbdClient := download.NewSABnzbdClient(env.sabnzbd.URL, "test-api-key", "arrgo", nil)
 
 	// Create download store and manager
 	downloadStore := download.NewStore(db)
@@ -556,7 +556,7 @@ func TestIntegration_FullLifecycle(t *testing.T) {
 	}
 	scorer := search.NewScorer(profiles)
 	searcher := search.NewSearcher(mockIndexer, scorer, logger)
-	sabnzbdClient := download.NewSABnzbdClient(sabnzbd.URL, "test-api-key", "arrgo")
+	sabnzbdClient := download.NewSABnzbdClient(sabnzbd.URL, "test-api-key", "arrgo", nil)
 	downloadStore := download.NewStore(db)
 	manager := download.NewManager(sabnzbdClient, downloadStore, logger)
 

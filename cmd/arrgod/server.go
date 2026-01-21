@@ -128,13 +128,14 @@ func runServer(configPath string) error {
 			cfg.Downloaders.SABnzbd.URL,
 			cfg.Downloaders.SABnzbd.APIKey,
 			cfg.Downloaders.SABnzbd.Category,
+			logger,
 		)
 	}
 
 	// Create Newznab clients for all configured indexers
 	newznabClients := make([]*newznab.Client, 0, len(cfg.Indexers))
 	for name, indexer := range cfg.Indexers {
-		newznabClients = append(newznabClients, newznab.NewClient(name, indexer.URL, indexer.APIKey))
+		newznabClients = append(newznabClients, newznab.NewClient(name, indexer.URL, indexer.APIKey, logger))
 	}
 	var indexerPool *search.IndexerPool
 	if len(newznabClients) > 0 {
@@ -146,6 +147,7 @@ func runServer(configPath string) error {
 		plexClient = importer.NewPlexClient(
 			cfg.Notifications.Plex.URL,
 			cfg.Notifications.Plex.Token,
+			logger,
 		)
 	}
 
@@ -234,7 +236,7 @@ func runServer(configPath string) error {
 
 		// Wire TMDB client if configured
 		if cfg.TMDB != nil && cfg.TMDB.APIKey != "" {
-			tmdbClient := tmdb.NewClient(cfg.TMDB.APIKey)
+			tmdbClient := tmdb.NewClient(cfg.TMDB.APIKey, tmdb.WithLogger(logger))
 			apiCompat.SetTMDB(tmdbClient)
 			logger.Info("TMDB client configured")
 		}

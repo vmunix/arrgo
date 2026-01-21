@@ -110,6 +110,21 @@ func (mr *MockDownloadManagerMockRecorder) Client() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Client", reflect.TypeOf((*MockDownloadManager)(nil).Client))
 }
 
+// GetActive mocks base method.
+func (m *MockDownloadManager) GetActive(ctx context.Context) ([]*download.ActiveDownload, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetActive", ctx)
+	ret0, _ := ret[0].([]*download.ActiveDownload)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetActive indicates an expected call of GetActive.
+func (mr *MockDownloadManagerMockRecorder) GetActive(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetActive", reflect.TypeOf((*MockDownloadManager)(nil).GetActive), ctx)
+}
+
 // Grab mocks base method.
 func (m *MockDownloadManager) Grab(ctx context.Context, contentID int64, episodeID *int64, downloadURL, title, indexer string) (*download.Download, error) {
 	m.ctrl.T.Helper()

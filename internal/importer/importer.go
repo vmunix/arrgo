@@ -45,9 +45,9 @@ func New(db *sql.DB, cfg Config, log *slog.Logger) *Importer {
 	var mediaServer MediaServer
 	if cfg.PlexURL != "" && cfg.PlexToken != "" {
 		if cfg.PlexLocalPath != "" && cfg.PlexRemotePath != "" {
-			mediaServer = NewPlexClientWithPathMapping(cfg.PlexURL, cfg.PlexToken, cfg.PlexLocalPath, cfg.PlexRemotePath)
+			mediaServer = NewPlexClientWithPathMapping(cfg.PlexURL, cfg.PlexToken, cfg.PlexLocalPath, cfg.PlexRemotePath, log)
 		} else {
-			mediaServer = NewPlexClient(cfg.PlexURL, cfg.PlexToken)
+			mediaServer = NewPlexClient(cfg.PlexURL, cfg.PlexToken, log)
 		}
 	}
 

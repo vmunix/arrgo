@@ -73,18 +73,18 @@ type sonarrSeason struct {
 
 // sonarrSeriesResponse is the full Sonarr format for a series.
 type sonarrSeriesResponse struct {
-	ID                int64          `json:"id,omitempty"`
-	TVDBID            int64          `json:"tvdbId"`
-	Title             string         `json:"title"`
-	SortTitle         string         `json:"sortTitle"`
-	Year              int            `json:"year"`
-	SeasonCount       int            `json:"seasonCount"`
-	Seasons           []sonarrSeason `json:"seasons"`
-	Status            string         `json:"status"`
-	Overview          string         `json:"overview,omitempty"`
-	Network           string         `json:"network,omitempty"`
-	Runtime           int            `json:"runtime,omitempty"`
-	Images            []struct {
+	ID          int64          `json:"id,omitempty"`
+	TVDBID      int64          `json:"tvdbId"`
+	Title       string         `json:"title"`
+	SortTitle   string         `json:"sortTitle"`
+	Year        int            `json:"year"`
+	SeasonCount int            `json:"seasonCount"`
+	Seasons     []sonarrSeason `json:"seasons"`
+	Status      string         `json:"status"`
+	Overview    string         `json:"overview,omitempty"`
+	Network     string         `json:"network,omitempty"`
+	Runtime     int            `json:"runtime,omitempty"`
+	Images      []struct {
 		CoverType string `json:"coverType"`
 		URL       string `json:"url"`
 	} `json:"images,omitempty"`

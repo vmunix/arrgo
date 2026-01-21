@@ -41,7 +41,7 @@ func TestSABnzbdClient_Add(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewSABnzbdClient(server.URL, "test-key", "")
+	client := NewSABnzbdClient(server.URL, "test-key", "", nil)
 	id, err := client.Add(context.Background(), "http://example.com/test.nzb", "movies")
 	require.NoError(t, err)
 	assert.Equal(t, "nzo_abc123", id)
@@ -57,7 +57,7 @@ func TestSABnzbdClient_Add_InvalidKey(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewSABnzbdClient(server.URL, "bad-key", "")
+	client := NewSABnzbdClient(server.URL, "bad-key", "", nil)
 	_, err := client.Add(context.Background(), "http://example.com/test.nzb", "movies")
 	require.ErrorIs(t, err, ErrInvalidAPIKey)
 }
@@ -67,7 +67,7 @@ func TestSABnzbdClient_Add_Unavailable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	server.Close()
 
-	client := NewSABnzbdClient(server.URL, "test-key", "")
+	client := NewSABnzbdClient(server.URL, "test-key", "", nil)
 	_, err := client.Add(context.Background(), "http://example.com/test.nzb", "movies")
 	require.ErrorIs(t, err, ErrClientUnavailable)
 }
@@ -102,7 +102,7 @@ func TestSABnzbdClient_Status(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewSABnzbdClient(server.URL, "test-key", "")
+	client := NewSABnzbdClient(server.URL, "test-key", "", nil)
 	status, err := client.Status(context.Background(), "nzo_abc123")
 	require.NoError(t, err)
 	assert.Equal(t, "nzo_abc123", status.ID)
@@ -146,7 +146,7 @@ func TestSABnzbdClient_Status_Completed(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewSABnzbdClient(server.URL, "test-key", "")
+	client := NewSABnzbdClient(server.URL, "test-key", "", nil)
 	status, err := client.Status(context.Background(), "nzo_abc123")
 	require.NoError(t, err)
 	assert.Equal(t, "nzo_abc123", status.ID)
@@ -180,7 +180,7 @@ func TestSABnzbdClient_Status_NotFound(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewSABnzbdClient(server.URL, "test-key", "")
+	client := NewSABnzbdClient(server.URL, "test-key", "", nil)
 	_, err := client.Status(context.Background(), "nzo_notfound")
 	require.ErrorIs(t, err, ErrDownloadNotFound)
 }
@@ -242,7 +242,7 @@ func TestSABnzbdClient_List(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewSABnzbdClient(server.URL, "test-key", "")
+	client := NewSABnzbdClient(server.URL, "test-key", "", nil)
 	list, err := client.List(context.Background())
 	require.NoError(t, err)
 	require.Len(t, list, 4)
@@ -273,7 +273,7 @@ func TestSABnzbdClient_Remove(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewSABnzbdClient(server.URL, "test-key", "")
+	client := NewSABnzbdClient(server.URL, "test-key", "", nil)
 	err := client.Remove(context.Background(), "nzo_abc123", false)
 	require.NoError(t, err)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -17,14 +18,19 @@ type SABnzbdClient struct {
 	apiKey     string
 	category   string
 	httpClient *http.Client
+	log        *slog.Logger
 }
 
 // NewSABnzbdClient creates a new SABnzbd client.
-func NewSABnzbdClient(baseURL, apiKey, category string) *SABnzbdClient {
+func NewSABnzbdClient(baseURL, apiKey, category string, log *slog.Logger) *SABnzbdClient {
+	if log == nil {
+		log = slog.Default()
+	}
 	return &SABnzbdClient{
 		baseURL:  strings.TrimSuffix(baseURL, "/"),
 		apiKey:   apiKey,
 		category: category,
+		log:      log.With("component", "sabnzbd"),
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -33,6 +39,8 @@ func NewSABnzbdClient(baseURL, apiKey, category string) *SABnzbdClient {
 
 // Add sends an NZB URL to SABnzbd.
 func (c *SABnzbdClient) Add(ctx context.Context, nzbURL, category string) (string, error) {
+	c.log.Debug("adding nzb", "category", category)
+
 	params := url.Values{
 		"apikey": {c.apiKey},
 		"output": {"json"},
@@ -42,7 +50,7 @@ func (c *SABnzbdClient) Add(ctx context.Context, nzbURL, category string) (strin
 	}
 
 	var resp addResponse
-	if err := c.doRequest(ctx, params, &resp); err != nil {
+	if err := c.doRequest(ctx, "addurl", params, &resp); err != nil {
 		return "", err
 	}
 
@@ -57,6 +65,7 @@ func (c *SABnzbdClient) Add(ctx context.Context, nzbURL, category string) (strin
 		return "", fmt.Errorf("sabnzbd returned no nzo_id")
 	}
 
+	c.log.Debug("nzb added", "nzo_id", resp.NzoIDs[0])
 	return resp.NzoIDs[0], nil
 }
 
@@ -111,6 +120,8 @@ func (c *SABnzbdClient) List(ctx context.Context) ([]*ClientStatus, error) {
 
 // Remove cancels a download from the queue.
 func (c *SABnzbdClient) Remove(ctx context.Context, clientID string, deleteFiles bool) error {
+	c.log.Debug("removing download", "client_id", clientID, "delete_files", deleteFiles)
+
 	params := url.Values{
 		"apikey": {c.apiKey},
 		"output": {"json"},
@@ -120,7 +131,7 @@ func (c *SABnzbdClient) Remove(ctx context.Context, clientID string, deleteFiles
 	}
 
 	var resp statusResponse
-	if err := c.doRequest(ctx, params, &resp); err != nil {
+	if err := c.doRequest(ctx, "queue/delete", params, &resp); err != nil {
 		return err
 	}
 
@@ -128,6 +139,7 @@ func (c *SABnzbdClient) Remove(ctx context.Context, clientID string, deleteFiles
 		return fmt.Errorf("sabnzbd remove failed")
 	}
 
+	c.log.Debug("download removed", "client_id", clientID)
 	return nil
 }
 
@@ -140,7 +152,7 @@ func (c *SABnzbdClient) getQueue(ctx context.Context) ([]*ClientStatus, error) {
 	}
 
 	var resp queueResponse
-	if err := c.doRequest(ctx, params, &resp); err != nil {
+	if err := c.doRequest(ctx, "queue", params, &resp); err != nil {
 		return nil, err
 	}
 
@@ -170,7 +182,7 @@ func (c *SABnzbdClient) getHistory(ctx context.Context) ([]*ClientStatus, error)
 	}
 
 	var resp historyResponse
-	if err := c.doRequest(ctx, params, &resp); err != nil {
+	if err := c.doRequest(ctx, "history", params, &resp); err != nil {
 		return nil, err
 	}
 
@@ -190,7 +202,8 @@ func (c *SABnzbdClient) getHistory(ctx context.Context) ([]*ClientStatus, error)
 }
 
 // doRequest performs an HTTP request to the SABnzbd API.
-func (c *SABnzbdClient) doRequest(ctx context.Context, params url.Values, result any) error {
+func (c *SABnzbdClient) doRequest(ctx context.Context, mode string, params url.Values, result any) error {
+	start := time.Now()
 	reqURL := c.baseURL + "/api?" + params.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
@@ -200,11 +213,13 @@ func (c *SABnzbdClient) doRequest(ctx context.Context, params url.Values, result
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		c.log.Debug("api request failed", "mode", mode, "error", err)
 		return ErrClientUnavailable
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
+		c.log.Debug("api unexpected status", "mode", mode, "status", resp.StatusCode)
 		return fmt.Errorf("unexpected status: %d", resp.StatusCode)
 	}
 
@@ -212,6 +227,7 @@ func (c *SABnzbdClient) doRequest(ctx context.Context, params url.Values, result
 		return fmt.Errorf("decode response: %w", err)
 	}
 
+	c.log.Debug("api request complete", "mode", mode, "duration_ms", time.Since(start).Milliseconds())
 	return nil
 }
 

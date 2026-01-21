@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"path/filepath"
@@ -19,13 +20,15 @@ type PlexClient struct {
 	remotePath string // Path prefix as seen by Plex
 	localPath  string // Corresponding local path
 	httpClient *http.Client
+	log        *slog.Logger
 }
 
 // NewPlexClient creates a new Plex client.
-func NewPlexClient(baseURL, token string) *PlexClient {
+func NewPlexClient(baseURL, token string, log *slog.Logger) *PlexClient {
 	return &PlexClient{
 		baseURL: strings.TrimSuffix(baseURL, "/"),
 		token:   token,
+		log:     plexLogger(log),
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -34,16 +37,24 @@ func NewPlexClient(baseURL, token string) *PlexClient {
 
 // NewPlexClientWithPathMapping creates a new Plex client with path translation.
 // localPath is the path on this machine, remotePath is how Plex sees it.
-func NewPlexClientWithPathMapping(baseURL, token, localPath, remotePath string) *PlexClient {
+func NewPlexClientWithPathMapping(baseURL, token, localPath, remotePath string, log *slog.Logger) *PlexClient {
 	return &PlexClient{
 		baseURL:    strings.TrimSuffix(baseURL, "/"),
 		token:      token,
 		localPath:  localPath,
 		remotePath: remotePath,
+		log:        plexLogger(log),
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+func plexLogger(log *slog.Logger) *slog.Logger {
+	if log == nil {
+		return nil
+	}
+	return log.With("component", "plex")
 }
 
 // translateToRemote converts a local path to the path Plex expects.
@@ -146,6 +157,10 @@ func (c *PlexClient) ScanPath(ctx context.Context, filePath string) error {
 	remotePath := c.translateToRemote(filePath)
 	remoteDir := filepath.Dir(remotePath)
 
+	if c.log != nil {
+		c.log.Debug("scanning path", "local", filePath, "remote", remotePath)
+	}
+
 	// Find the section that contains this path
 	sections, err := c.GetSections(ctx)
 	if err != nil {
@@ -179,6 +194,7 @@ func (c *PlexClient) ScanPath(ctx context.Context, filePath string) error {
 	}
 	req.Header.Set("X-Plex-Token", c.token)
 
+	start := time.Now()
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
@@ -187,6 +203,10 @@ func (c *PlexClient) ScanPath(ctx context.Context, filePath string) error {
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("scan failed with status: %d", resp.StatusCode)
+	}
+
+	if c.log != nil {
+		c.log.Debug("scan triggered", "section", sectionKey, "path", remoteDir, "duration_ms", time.Since(start).Milliseconds())
 	}
 
 	return nil

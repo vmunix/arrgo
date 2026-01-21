@@ -41,7 +41,7 @@ func run(configPath, output string, pages, limit int) error {
 	// Create clients
 	clients := make([]*newznab.Client, 0, len(cfg.Indexers))
 	for name, idx := range cfg.Indexers {
-		clients = append(clients, newznab.NewClient(name, idx.URL, idx.APIKey))
+		clients = append(clients, newznab.NewClient(name, idx.URL, idx.APIKey, nil))
 	}
 
 	// Categories to fetch

@@ -78,3 +78,24 @@ func TestCleanTitleWithRomanNumerals(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeSearchQuery(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"Deadpool & Wolverine 2024", "Deadpool and Wolverine 2024"},
+		{"Fast & Furious", "Fast and Furious"},
+		{"Simon & Garfunkel", "Simon and Garfunkel"},
+		{"  Extra   Spaces  ", "Extra Spaces"},
+		{"Normal Title 2024", "Normal Title 2024"},
+		{"Tom & Jerry", "Tom and Jerry"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := NormalizeSearchQuery(tt.input)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
