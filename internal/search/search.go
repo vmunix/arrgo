@@ -144,6 +144,19 @@ func (s *Searcher) Search(ctx context.Context, q Query, profile string) (*Result
 			continue
 		}
 
+		// For series season requests: filter out individual episodes, prefer season packs
+		// When searching for a season (Season set, Episode not set), we want season packs
+		if q.Type == "series" && q.Season != nil && q.Episode == nil {
+			// If release has an episode number (not a season pack), skip it
+			if info.Episode > 0 && !info.IsCompleteSeason {
+				continue
+			}
+			// Verify the release is for the right season
+			if info.Season > 0 && info.Season != *q.Season {
+				continue
+			}
+		}
+
 		// Penalize sequels when query doesn't specify one
 		// This ranks "Back to the Future" (1985) above "Part II" and "Part III"
 		// Use negative score to rank below non-sequels with same quality

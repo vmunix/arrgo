@@ -251,3 +251,76 @@ func TestSearcher_SequelPenalty(t *testing.T) {
 	assert.Equal(t, "original", result.Releases[0].GUID, "Expected original first")
 	assert.Equal(t, "sequel", result.Releases[1].GUID, "Expected sequel second")
 }
+
+func TestSearcher_SeasonPackPreference(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	profiles := map[string]config.QualityProfile{
+		"hd": {
+			Resolution: []string{"1080p"},
+			Sources:    []string{"webdl"},
+		},
+	}
+	scorer := search.NewScorer(profiles)
+
+	mockClient := mocks.NewMockIndexerAPI(ctrl)
+	mockClient.EXPECT().
+		Search(gomock.Any(), gomock.Any()).
+		Return([]search.Release{
+			// Individual episodes - should be filtered out when searching for season
+			{Title: "Star.Trek.TNG.S01E01.1080p.WEB-DL.x264", GUID: "ep1", Indexer: "test"},
+			{Title: "Star.Trek.TNG.S01E04.1080p.WEB-DL.x264", GUID: "ep4", Indexer: "test"},
+			// Season pack - should be included
+			{Title: "Star.Trek.TNG.S01.1080p.WEB-DL.x264", GUID: "s01pack", Indexer: "test"},
+			// Wrong season - should be filtered out
+			{Title: "Star.Trek.TNG.S02.1080p.WEB-DL.x264", GUID: "s02pack", Indexer: "test"},
+		}, nil)
+
+	searcher := search.NewSearcher(mockClient, scorer, testLogger())
+
+	// Search for Season 1 - should filter out episodes and wrong season
+	season := 1
+	query := search.Query{
+		Text:   "Star Trek TNG S01",
+		Type:   "series",
+		Season: &season,
+	}
+	result, err := searcher.Search(context.Background(), query, "hd")
+
+	require.NoError(t, err)
+	require.Len(t, result.Releases, 1, "Should only return S01 season pack")
+	assert.Equal(t, "s01pack", result.Releases[0].GUID, "Expected S01 season pack")
+}
+
+func TestSearcher_SeasonPackPreference_NoFilteringForEpisodeSearch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	profiles := map[string]config.QualityProfile{
+		"hd": {Resolution: []string{"1080p"}},
+	}
+	scorer := search.NewScorer(profiles)
+
+	mockClient := mocks.NewMockIndexerAPI(ctrl)
+	mockClient.EXPECT().
+		Search(gomock.Any(), gomock.Any()).
+		Return([]search.Release{
+			{Title: "Star.Trek.TNG.S01E04.1080p.WEB-DL.x264", GUID: "ep4", Indexer: "test"},
+		}, nil)
+
+	searcher := search.NewSearcher(mockClient, scorer, testLogger())
+
+	// Search for specific episode - should NOT filter out the episode
+	season := 1
+	episode := 4
+	query := search.Query{
+		Text:    "Star Trek TNG S01E04",
+		Type:    "series",
+		Season:  &season,
+		Episode: &episode,
+	}
+	result, err := searcher.Search(context.Background(), query, "hd")
+
+	require.NoError(t, err)
+	require.Len(t, result.Releases, 1, "Should return the episode when searching for specific episode")
+	assert.Equal(t, "ep4", result.Releases[0].GUID)
+}

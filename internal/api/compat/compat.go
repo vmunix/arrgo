@@ -970,9 +970,11 @@ func (s *Server) searchAndGrabSeries(contentID int64, title string, profile stri
 
 	// Search for each monitored season
 	for _, seasonNum := range seasons {
+		season := seasonNum // Create a copy for the pointer
 		query := search.Query{
-			Text: fmt.Sprintf("%s S%02d", title, seasonNum),
-			Type: "series",
+			Text:   fmt.Sprintf("%s S%02d", title, season),
+			Type:   "series",
+			Season: &season, // Signal we want season packs, not individual episodes
 		}
 
 		result, err := s.searcher.Search(ctx, query, profile)
