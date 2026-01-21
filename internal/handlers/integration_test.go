@@ -97,8 +97,8 @@ func TestIntegration_GrabToImport(t *testing.T) {
 	imp := &integrationImporter{}
 
 	// Create handlers
-	downloadHandler := handlers.NewDownloadHandler(bus, store, client, nil)
-	importHandler := handlers.NewImportHandler(bus, store, imp, nil)
+	downloadHandler := handlers.NewDownloadHandler(bus, store, nil, client, nil)
+	importHandler := handlers.NewImportHandler(bus, store, nil, imp, nil)
 
 	// Subscribe to events we want to track
 	downloadCreated := bus.Subscribe(events.EventDownloadCreated, 10)
@@ -203,7 +203,7 @@ func TestIntegration_GrabFailure(t *testing.T) {
 	store := download.NewStore(db)
 	client := &failingDownloader{err: assert.AnError}
 
-	downloadHandler := handlers.NewDownloadHandler(bus, store, client, nil)
+	downloadHandler := handlers.NewDownloadHandler(bus, store, nil, client, nil)
 
 	// Subscribe to failure event
 	failed := bus.Subscribe(events.EventDownloadFailed, 10)
@@ -282,7 +282,7 @@ func TestIntegration_ImportFailure(t *testing.T) {
 	}
 	require.NoError(t, store.Add(dl))
 
-	importHandler := handlers.NewImportHandler(bus, store, imp, nil)
+	importHandler := handlers.NewImportHandler(bus, store, nil, imp, nil)
 
 	// Subscribe to failure event
 	failed := bus.Subscribe(events.EventImportFailed, 10)

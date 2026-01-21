@@ -76,7 +76,7 @@ func TestDownloadHandler_GrabRequested(t *testing.T) {
 	store := download.NewStore(db)
 	client := &mockDownloader{returnID: "sab-123"}
 
-	handler := NewDownloadHandler(bus, store, client, nil)
+	handler := NewDownloadHandler(bus, store, nil, client, nil)
 
 	// Subscribe to DownloadCreated before starting
 	created := bus.Subscribe(events.EventDownloadCreated, 10)

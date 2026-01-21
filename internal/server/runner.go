@@ -13,6 +13,7 @@ import (
 	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/events"
 	"github.com/vmunix/arrgo/internal/handlers"
+	"github.com/vmunix/arrgo/internal/library"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -75,10 +76,11 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	// Create stores
 	downloadStore := download.NewStore(r.db)
+	libraryStore := library.NewStore(r.db)
 
 	// Create handlers
-	downloadHandler := handlers.NewDownloadHandler(r.bus, downloadStore, r.downloader, r.logger.With("handler", "download"))
-	importHandler := handlers.NewImportHandler(r.bus, downloadStore, r.importer, r.logger.With("handler", "import"))
+	downloadHandler := handlers.NewDownloadHandler(r.bus, downloadStore, libraryStore, r.downloader, r.logger.With("handler", "download"))
+	importHandler := handlers.NewImportHandler(r.bus, downloadStore, libraryStore, r.importer, r.logger.With("handler", "import"))
 	cleanupHandler := handlers.NewCleanupHandler(r.bus, downloadStore, handlers.CleanupConfig{
 		DownloadRoot: r.config.DownloadRoot,
 		Enabled:      r.config.CleanupEnabled,

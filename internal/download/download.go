@@ -30,6 +30,7 @@ const (
 	StatusFailed      Status = "failed"
 	StatusImported    Status = "imported"
 	StatusCleaned     Status = "cleaned"
+	StatusSkipped     Status = "skipped" // Duplicate detected, import skipped
 )
 
 // Download represents an active or recent download.

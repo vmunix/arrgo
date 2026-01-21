@@ -55,6 +55,7 @@ func (h *CleanupHandler) Name() string {
 // Start begins processing events.
 func (h *CleanupHandler) Start(ctx context.Context) error {
 	importCompleted := h.Bus().Subscribe(events.EventImportCompleted, 100)
+	importSkipped := h.Bus().Subscribe(events.EventImportSkipped, 100)
 	plexDetected := h.Bus().Subscribe(events.EventPlexItemDetected, 100)
 
 	for {
@@ -64,6 +65,11 @@ func (h *CleanupHandler) Start(ctx context.Context) error {
 				return nil // Channel closed
 			}
 			h.handleImportCompleted(ctx, e.(*events.ImportCompleted))
+		case e := <-importSkipped:
+			if e == nil {
+				return nil // Channel closed
+			}
+			h.handleImportSkipped(ctx, e.(*events.ImportSkipped))
 		case e := <-plexDetected:
 			if e == nil {
 				return nil // Channel closed
@@ -73,6 +79,65 @@ func (h *CleanupHandler) Start(ctx context.Context) error {
 			return ctx.Err()
 		}
 	}
+}
+
+// handleImportSkipped cleans up immediately since Plex already has the content.
+func (h *CleanupHandler) handleImportSkipped(ctx context.Context, e *events.ImportSkipped) {
+	if !h.config.Enabled {
+		h.Logger().Debug("cleanup disabled, skipping", "download_id", e.DownloadID)
+		return
+	}
+
+	// Get download to retrieve release name
+	dl, err := h.store.Get(e.DownloadID)
+	if err != nil {
+		h.Logger().Error("failed to get download for cleanup",
+			"download_id", e.DownloadID,
+			"error", err)
+		return
+	}
+
+	h.Logger().Info("import skipped due to existing quality, starting immediate cleanup",
+		"download_id", e.DownloadID,
+		"content_id", e.ContentID,
+		"release_name", dl.ReleaseName,
+		"reason", e.Reason)
+
+	// Perform cleanup immediately (Plex already has content)
+	sourcePath := filepath.Join(h.config.DownloadRoot, dl.ReleaseName)
+
+	// Emit CleanupStarted event
+	if err := h.Bus().Publish(ctx, &events.CleanupStarted{
+		BaseEvent:  events.NewBaseEvent(events.EventCleanupStarted, events.EntityDownload, e.DownloadID),
+		DownloadID: e.DownloadID,
+		SourcePath: sourcePath,
+	}); err != nil {
+		h.Logger().Error("failed to publish CleanupStarted event", "error", err)
+	}
+
+	// Safely delete source files
+	if err := h.cleanupSource(sourcePath); err != nil {
+		h.Logger().Error("cleanup failed",
+			"download_id", e.DownloadID,
+			"source_path", sourcePath,
+			"error", err)
+		return
+	}
+
+	// Note: StatusSkipped is terminal - no transition needed.
+	// The skipped state correctly reflects that the import was skipped due to duplicate.
+
+	// Emit CleanupCompleted event
+	if err := h.Bus().Publish(ctx, &events.CleanupCompleted{
+		BaseEvent:  events.NewBaseEvent(events.EventCleanupCompleted, events.EntityDownload, e.DownloadID),
+		DownloadID: e.DownloadID,
+	}); err != nil {
+		h.Logger().Error("failed to publish CleanupCompleted event", "error", err)
+	}
+
+	h.Logger().Info("cleanup completed for skipped import",
+		"download_id", e.DownloadID,
+		"source_path", sourcePath)
 }
 
 // handleImportCompleted tracks pending cleanup for the imported content.

@@ -85,7 +85,7 @@ func TestImportHandler_Name(t *testing.T) {
 	bus := events.NewBus(nil, nil)
 	defer bus.Close()
 
-	handler := NewImportHandler(bus, nil, nil, nil)
+	handler := NewImportHandler(bus, nil, nil, nil, nil)
 	assert.Equal(t, "import", handler.Name())
 }
 
@@ -117,7 +117,7 @@ func TestImportHandler_DownloadCompleted(t *testing.T) {
 		},
 	}
 
-	handler := NewImportHandler(bus, store, imp, nil)
+	handler := NewImportHandler(bus, store, nil, imp, nil)
 
 	// Subscribe to ImportStarted and ImportCompleted before starting
 	started := bus.Subscribe(events.EventImportStarted, 10)
@@ -192,7 +192,7 @@ func TestImportHandler_ImportFailed(t *testing.T) {
 		returnError: errors.New("no video file found"),
 	}
 
-	handler := NewImportHandler(bus, store, imp, nil)
+	handler := NewImportHandler(bus, store, nil, imp, nil)
 
 	// Subscribe to ImportFailed before starting
 	failed := bus.Subscribe(events.EventImportFailed, 10)
@@ -260,7 +260,7 @@ func TestImportHandler_PreventsConcurrentImport(t *testing.T) {
 		},
 	}
 
-	handler := NewImportHandler(bus, store, imp, nil)
+	handler := NewImportHandler(bus, store, nil, imp, nil)
 
 	// Subscribe to ImportCompleted to track completion
 	completed := bus.Subscribe(events.EventImportCompleted, 10)
@@ -347,7 +347,7 @@ func TestImportHandler_AllowsDifferentDownloads(t *testing.T) {
 		counter: &importCount,
 	}
 
-	handler := NewImportHandler(bus, store, wrappedImp, nil)
+	handler := NewImportHandler(bus, store, nil, wrappedImp, nil)
 
 	// Subscribe to ImportCompleted to track completion
 	completed := bus.Subscribe(events.EventImportCompleted, 10)
@@ -397,7 +397,7 @@ func TestImportHandler_DownloadNotFound(t *testing.T) {
 	store := download.NewStore(db)
 	imp := &mockImporter{}
 
-	handler := NewImportHandler(bus, store, imp, nil)
+	handler := NewImportHandler(bus, store, nil, imp, nil)
 
 	// Subscribe to ImportFailed before starting
 	failed := bus.Subscribe(events.EventImportFailed, 10)
