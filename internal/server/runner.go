@@ -9,6 +9,7 @@ import (
 
 	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/events"
+	"github.com/vmunix/arrgo/internal/handlers"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -24,17 +25,23 @@ type Runner struct {
 	db     *sql.DB
 	config Config
 	logger *slog.Logger
+
+	// Dependencies
+	downloader download.Downloader
+	importer   handlers.FileImporter
 }
 
 // NewRunner creates a new runner.
-func NewRunner(db *sql.DB, cfg Config, logger *slog.Logger) *Runner {
+func NewRunner(db *sql.DB, cfg Config, logger *slog.Logger, downloader download.Downloader, importer handlers.FileImporter) *Runner {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Runner{
-		db:     db,
-		config: cfg,
-		logger: logger,
+		db:         db,
+		config:     cfg,
+		logger:     logger,
+		downloader: downloader,
+		importer:   importer,
 	}
 }
 
@@ -47,17 +54,31 @@ func (r *Runner) Run(ctx context.Context) error {
 	defer bus.Close()
 
 	// Create stores
-	_ = download.NewStore(r.db)
+	downloadStore := download.NewStore(r.db)
+
+	// Create handlers
+	downloadHandler := handlers.NewDownloadHandler(bus, downloadStore, r.downloader, r.logger.With("handler", "download"))
+	importHandler := handlers.NewImportHandler(bus, downloadStore, r.importer, r.logger.With("handler", "import"))
+	cleanupHandler := handlers.NewCleanupHandler(bus, downloadStore, handlers.CleanupConfig{
+		DownloadRoot: r.config.DownloadRoot,
+		Enabled:      r.config.CleanupEnabled,
+	}, r.logger.With("handler", "cleanup"))
 
 	// Use errgroup to manage component lifecycle
 	g, ctx := errgroup.WithContext(ctx)
 
-	// Skeleton: wait for context cancellation
-	// Full wiring requires more dependencies (download client, importer, plex client)
-	// that will be added when integrating with the existing server.
+	// Start handlers
 	g.Go(func() error {
-		<-ctx.Done()
-		return ctx.Err()
+		r.logger.Info("starting download handler")
+		return downloadHandler.Start(ctx)
+	})
+	g.Go(func() error {
+		r.logger.Info("starting import handler")
+		return importHandler.Start(ctx)
+	})
+	g.Go(func() error {
+		r.logger.Info("starting cleanup handler")
+		return cleanupHandler.Start(ctx)
 	})
 
 	return g.Wait()
