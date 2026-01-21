@@ -110,8 +110,8 @@ func (i *Importer) prepareImport(downloadID int64, downloadPath string) (*Import
 		return nil, fmt.Errorf("get download: %w", err)
 	}
 
-	// Verify download is completed
-	if dl.Status != download.StatusCompleted {
+	// Verify download is ready for import (completed or already transitioning to importing)
+	if dl.Status != download.StatusCompleted && dl.Status != download.StatusImporting {
 		return nil, fmt.Errorf("%w: status is %s", ErrDownloadNotReady, dl.Status)
 	}
 
