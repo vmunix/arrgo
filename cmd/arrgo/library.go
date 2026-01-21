@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -86,8 +87,17 @@ func init() {
 	checkCmd.Flags().IntP("limit", "l", 100, "Maximum number of items to check")
 	checkCmd.Flags().Bool("issues-only", false, "Only show items with issues")
 
+	deleteCmd := &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Delete content from library",
+		Long:  "Removes content and associated file records from the library. Does not delete actual files on disk.",
+		Args:  cobra.ExactArgs(1),
+		RunE:  runLibraryDelete,
+	}
+
 	libraryCmd.AddCommand(listCmd)
 	libraryCmd.AddCommand(checkCmd)
+	libraryCmd.AddCommand(deleteCmd)
 	rootCmd.AddCommand(libraryCmd)
 }
 
@@ -265,4 +275,56 @@ func printLibraryCheck(data *LibraryCheckResponse, issuesOnly bool) {
 	} else {
 		fmt.Println("All items healthy!")
 	}
+}
+
+func runLibraryDelete(cmd *cobra.Command, args []string) error {
+	id, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid ID: %s", args[0])
+	}
+
+	// First get the content to show what we're deleting
+	urlStr := fmt.Sprintf("%s/api/v1/content/%d", serverURL, id)
+
+	req, err := http.NewRequest(http.MethodGet, urlStr, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return fmt.Errorf("content ID %d not found", id)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("server returned %d", resp.StatusCode)
+	}
+
+	var content LibraryContentResponse
+	if err := json.NewDecoder(resp.Body).Decode(&content); err != nil {
+		return fmt.Errorf("decode response: %w", err)
+	}
+
+	// Now delete
+	req, err = http.NewRequest(http.MethodDelete, urlStr, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("delete failed: server returned %d", resp.StatusCode)
+	}
+
+	fmt.Printf("Deleted: %s (%d)\n", content.Title, content.Year)
+	return nil
 }
