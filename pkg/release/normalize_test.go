@@ -6,6 +6,34 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestNormalizeRomanNumerals(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"Rocky III", "Rocky 3"},
+		{"Part II", "Part 2"},
+		{"Chapter IV", "Chapter 4"},
+		{"Star Wars Episode V", "Star Wars Episode 5"},
+		{"Final Fantasy VII", "Final Fantasy 7"},
+		{"Resident Evil VIII", "Resident Evil 8"},
+		{"Henry V", "Henry 5"},
+		{"The Godfather Part II", "The Godfather Part 2"},
+		// Should NOT convert
+		{"I Robot", "I Robot"},                           // "I" alone is ambiguous
+		{"VII Days", "VII Days"},                         // Roman at start without context
+		{"Matrix", "Matrix"},                             // No roman numerals
+		{"2001 A Space Odyssey", "2001 A Space Odyssey"}, // Arabic stays
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := NormalizeRomanNumerals(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestCleanTitle(t *testing.T) {
 	tests := []struct {
 		input string

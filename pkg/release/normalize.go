@@ -1,6 +1,7 @@
 package release
 
 import (
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -8,6 +9,30 @@ import (
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
 )
+
+// romanNumeralRegex matches Roman numerals II-X when preceded by a space (not at start of string).
+// Does NOT match standalone "I" to avoid false positives like "I Robot".
+// Does NOT match at start of string to avoid false positives like "VII Days".
+var romanNumeralRegex = regexp.MustCompile(` (II|III|IV|V|VI|VII|VIII|IX|X)\b`)
+
+var romanToArabic = map[string]string{
+	"II": "2", "III": "3", "IV": "4", "V": "5",
+	"VI": "6", "VII": "7", "VIII": "8", "IX": "9", "X": "10",
+}
+
+// NormalizeRomanNumerals converts Roman numerals (II-X) to Arabic numbers.
+// Does not convert standalone "I" to avoid false positives.
+// Does not convert Roman numerals at the start of the string.
+func NormalizeRomanNumerals(s string) string {
+	return romanNumeralRegex.ReplaceAllStringFunc(s, func(match string) string {
+		// match includes leading space, extract the Roman numeral part
+		roman := strings.TrimSpace(match)
+		if arabic, ok := romanToArabic[strings.ToUpper(roman)]; ok {
+			return " " + arabic
+		}
+		return match
+	})
+}
 
 // CleanTitle normalizes a title for matching purposes.
 // Removes articles, punctuation, accents, and normalizes whitespace.
