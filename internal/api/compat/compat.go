@@ -450,7 +450,7 @@ func (s *Server) addMovie(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Auto-search if requested and searcher available
-	if req.AddOptions.SearchForMovie && s.searcher != nil && s.manager != nil {
+	if req.AddOptions.SearchForMovie && s.searcher != nil && (s.manager != nil || s.bus != nil) {
 		go s.searchAndGrab(content.ID, req.Title, req.Year, profileName)
 	}
 
@@ -501,7 +501,7 @@ func (s *Server) updateMovie(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Trigger search if requested
-	if req.AddOptions.SearchForMovie && req.Monitored && s.searcher != nil && s.manager != nil {
+	if req.AddOptions.SearchForMovie && req.Monitored && s.searcher != nil && (s.manager != nil || s.bus != nil) {
 		title := req.Title
 		if title == "" {
 			title = content.Title
@@ -641,7 +641,7 @@ func (s *Server) executeCommand(w http.ResponseWriter, r *http.Request) {
 	// Dispatch based on command name
 	switch req.Name {
 	case "MoviesSearch":
-		if s.searcher != nil && s.manager != nil && len(req.MovieIDs) > 0 {
+		if s.searcher != nil && (s.manager != nil || s.bus != nil) && len(req.MovieIDs) > 0 {
 			for _, movieID := range req.MovieIDs {
 				content, err := s.library.GetContent(movieID)
 				if err != nil {
@@ -651,7 +651,7 @@ func (s *Server) executeCommand(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "SeriesSearch":
-		if s.searcher != nil && s.manager != nil && req.SeriesID > 0 {
+		if s.searcher != nil && (s.manager != nil || s.bus != nil) && req.SeriesID > 0 {
 			content, err := s.library.GetContent(req.SeriesID)
 			if err == nil {
 				// Search for season 1 by default (full series search not supported yet)
@@ -888,7 +888,7 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Auto-search if requested
-	if req.AddOptions.SearchForMissingEpisodes && s.searcher != nil && s.manager != nil {
+	if req.AddOptions.SearchForMissingEpisodes && s.searcher != nil && (s.manager != nil || s.bus != nil) {
 		// Extract monitored season numbers
 		var monitoredSeasons []int
 		for _, season := range req.Seasons {
@@ -939,7 +939,7 @@ func (s *Server) updateSeries(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Track if we need to trigger search
-	shouldSearch := req.Monitored && content.Status == library.StatusWanted && s.searcher != nil && s.manager != nil
+	shouldSearch := req.Monitored && content.Status == library.StatusWanted && s.searcher != nil && (s.manager != nil || s.bus != nil)
 
 	// Update monitoring status
 	if req.Monitored {
