@@ -272,6 +272,70 @@ func TestOverseerrMovieFlow_ExistingWanted(t *testing.T) {
 	})
 }
 
+// TestOverseerrMovieFlow_ExistingAvailable tests that available movies are skipped.
+// Overseerr checks hasFile=true to determine if movie is already downloaded.
+func TestOverseerrMovieFlow_ExistingAvailable(t *testing.T) {
+	_, mux, db := setupServer(t, testAPIKey)
+
+	// Pre-populate with available movie (already downloaded)
+	_, err := db.Exec(`
+		INSERT INTO content (id, type, tmdb_id, title, year, status, quality_profile, root_path)
+		VALUES (300, 'movie', 157336, 'Interstellar', 2014, 'available', 'hd', '/movies')
+	`)
+	require.NoError(t, err)
+
+	// Lookup should return hasFile=true and monitored=true
+	// This tells Overseerr the movie is already available - skip it
+	t.Run("lookup_available_movie", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v3/movie/lookup?term=tmdb:157336", nil)
+		req.Header.Set("X-Api-Key", testAPIKey)
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+
+		var results []map[string]any
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &results))
+
+		require.Len(t, results, 1)
+		assert.EqualValues(t, 300, results[0]["id"], "available movie should have id")
+		assert.Equal(t, true, results[0]["hasFile"], "available movie should have hasFile=true")
+		assert.Equal(t, true, results[0]["monitored"], "available movie should have monitored=true")
+	})
+}
+
+// TestOverseerrCommandMoviesSearch tests the MoviesSearch command dispatch.
+func TestOverseerrCommandMoviesSearch(t *testing.T) {
+	_, mux, db := setupServer(t, testAPIKey)
+
+	// Pre-populate with a movie
+	_, err := db.Exec(`
+		INSERT INTO content (id, type, tmdb_id, title, year, status, quality_profile, root_path)
+		VALUES (400, 'movie', 680, 'Pulp Fiction', 1994, 'wanted', 'hd', '/movies')
+	`)
+	require.NoError(t, err)
+
+	// Send MoviesSearch command
+	payload := `{
+		"name": "MoviesSearch",
+		"movieIds": [400]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v3/command", strings.NewReader(payload))
+	req.Header.Set("X-Api-Key", testAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var result map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+
+	assert.Equal(t, "MoviesSearch", result["name"])
+	assert.Equal(t, "queued", result["status"])
+}
+
 // TestOverseerrRequiredEndpoints verifies all endpoints Overseerr needs are present.
 func TestOverseerrRequiredEndpoints(t *testing.T) {
 	_, mux, _ := setupServer(t, testAPIKey)

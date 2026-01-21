@@ -6,6 +6,7 @@ import "strconv"
 // Movie represents TMDB movie metadata.
 type Movie struct {
 	ID           int64   `json:"id"`
+	IMDBID       string  `json:"imdb_id,omitempty"` // e.g., "tt0133093"
 	Title        string  `json:"title"`
 	Overview     string  `json:"overview"`
 	ReleaseDate  string  `json:"release_date"` // "2024-03-01"

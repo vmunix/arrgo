@@ -45,6 +45,7 @@ type radarrAddRequest struct {
 type radarrMovieResponse struct {
 	ID               int64  `json:"id"`
 	TMDBID           int64  `json:"tmdbId"`
+	IMDBID           string `json:"imdbId,omitempty"`
 	Title            string `json:"title"`
 	Year             int    `json:"year"`
 	Monitored        bool   `json:"monitored"`
@@ -305,6 +306,9 @@ func (s *Server) lookupMovie(w http.ResponseWriter, r *http.Request) {
 			response["year"] = movie.Year()
 			response["overview"] = movie.Overview
 			response["runtime"] = movie.Runtime
+			if movie.IMDBID != "" {
+				response["imdbId"] = movie.IMDBID
+			}
 			if movie.PosterPath != "" {
 				response["images"] = []map[string]any{{
 					"coverType": "poster",
@@ -601,16 +605,38 @@ func (s *Server) listQueue(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) executeCommand(w http.ResponseWriter, r *http.Request) {
-	// Handle commands like MoviesSearch, RefreshMovie
 	var req struct {
-		Name string `json:"name"`
+		Name     string  `json:"name"`
+		MovieIDs []int64 `json:"movieIds"` // For MoviesSearch
+		SeriesID int64   `json:"seriesId"` // For SeriesSearch
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
 		return
 	}
 
-	// TODO: dispatch to appropriate handler
+	// Dispatch based on command name
+	switch req.Name {
+	case "MoviesSearch":
+		if s.searcher != nil && s.manager != nil && len(req.MovieIDs) > 0 {
+			for _, movieID := range req.MovieIDs {
+				content, err := s.library.GetContent(movieID)
+				if err != nil {
+					continue
+				}
+				go s.searchAndGrab(content.ID, content.Title, content.Year, content.QualityProfile)
+			}
+		}
+	case "SeriesSearch":
+		if s.searcher != nil && s.manager != nil && req.SeriesID > 0 {
+			content, err := s.library.GetContent(req.SeriesID)
+			if err == nil {
+				// Search for season 1 by default (full series search not supported yet)
+				go s.searchAndGrabSeries(content.ID, content.Title, content.QualityProfile, []int{1})
+			}
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id":     1,
 		"name":   req.Name,
