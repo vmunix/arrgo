@@ -147,8 +147,16 @@ func (a *Adapter) processDisappeared(ctx context.Context, dl *download.Download)
 	a.lastStatus[dl.ID] = download.StatusFailed
 }
 
-// emitCompleted publishes a DownloadCompleted event.
+// emitCompleted transitions the download to completed and publishes a DownloadCompleted event.
 func (a *Adapter) emitCompleted(ctx context.Context, dl *download.Download, status *download.ClientStatus) {
+	// Transition status before emitting event - ImportHandler requires completed status
+	if err := a.store.Transition(dl, download.StatusCompleted); err != nil {
+		a.logger.Error("failed to transition download to completed",
+			"download_id", dl.ID,
+			"error", err)
+		return
+	}
+
 	evt := &events.DownloadCompleted{
 		BaseEvent:  events.NewBaseEvent(events.EventDownloadCompleted, events.EntityDownload, dl.ID),
 		DownloadID: dl.ID,
@@ -166,8 +174,16 @@ func (a *Adapter) emitCompleted(ctx context.Context, dl *download.Download, stat
 		"path", status.Path)
 }
 
-// emitFailed publishes a DownloadFailed event.
+// emitFailed transitions the download to failed and publishes a DownloadFailed event.
 func (a *Adapter) emitFailed(ctx context.Context, dl *download.Download, reason string, retryable bool) {
+	// Transition status before emitting event
+	if err := a.store.Transition(dl, download.StatusFailed); err != nil {
+		a.logger.Error("failed to transition download to failed",
+			"download_id", dl.ID,
+			"error", err)
+		return
+	}
+
 	evt := &events.DownloadFailed{
 		BaseEvent:  events.NewBaseEvent(events.EventDownloadFailed, events.EntityDownload, dl.ID),
 		DownloadID: dl.ID,
@@ -187,8 +203,18 @@ func (a *Adapter) emitFailed(ctx context.Context, dl *download.Download, reason 
 		"retryable", retryable)
 }
 
-// emitProgressed publishes a DownloadProgressed event.
+// emitProgressed transitions to downloading if needed and publishes a DownloadProgressed event.
 func (a *Adapter) emitProgressed(ctx context.Context, dl *download.Download, status *download.ClientStatus) {
+	// Transition to downloading if SABnzbd reports downloading and we're still queued
+	if status.Status == download.StatusDownloading && dl.Status == download.StatusQueued {
+		if err := a.store.Transition(dl, download.StatusDownloading); err != nil {
+			a.logger.Error("failed to transition download to downloading",
+				"download_id", dl.ID,
+				"error", err)
+			// Continue anyway - progress event is still useful
+		}
+	}
+
 	evt := &events.DownloadProgressed{
 		BaseEvent:  events.NewBaseEvent(events.EventDownloadProgressed, events.EntityDownload, dl.ID),
 		DownloadID: dl.ID,
