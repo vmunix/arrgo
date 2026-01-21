@@ -1,0 +1,321 @@
+// Package plex provides an adapter that verifies imported content in Plex.
+package plex
+
+import (
+	"context"
+	"log/slog"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/vmunix/arrgo/internal/events"
+)
+
+// mockChecker implements Checker for testing.
+type mockChecker struct {
+	mu         sync.RWMutex
+	hasContent map[int64]bool // contentID -> exists
+	plexKeys   map[int64]string
+	calls      int
+}
+
+func (m *mockChecker) HasContentByID(ctx context.Context, contentID int64) (bool, string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls++
+	if m.hasContent[contentID] {
+		return true, m.plexKeys[contentID], nil
+	}
+	return false, "", nil
+}
+
+func TestAdapter_Name(t *testing.T) {
+	adapter := &Adapter{}
+	assert.Equal(t, "plex", adapter.Name())
+}
+
+func TestAdapter_EmitsPlexItemDetected(t *testing.T) {
+	bus := events.NewBus(nil, nil)
+	defer bus.Close()
+
+	client := &mockChecker{
+		hasContent: map[int64]bool{42: true},
+		plexKeys:   map[int64]string{42: "/library/metadata/12345"},
+	}
+
+	adapter := New(bus, client, 10*time.Millisecond, nil)
+
+	// Subscribe to events
+	detected := bus.Subscribe(events.EventPlexItemDetected, 10)
+
+	// Start adapter
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = adapter.Start(ctx) }()
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Emit ImportCompleted to register pending
+	ic := &events.ImportCompleted{
+		BaseEvent:  events.NewBaseEvent(events.EventImportCompleted, events.EntityDownload, 1),
+		DownloadID: 1,
+		ContentID:  42,
+		FilePath:   "/movies/test.mkv",
+		FileSize:   1000000,
+	}
+	_ = bus.Publish(ctx, ic)
+
+	// Wait for PlexItemDetected
+	select {
+	case e := <-detected:
+		pid := e.(*events.PlexItemDetected)
+		assert.Equal(t, int64(42), pid.ContentID)
+		assert.Equal(t, "/library/metadata/12345", pid.PlexKey)
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for PlexItemDetected")
+	}
+}
+
+func TestAdapter_TracksPendingVerifications(t *testing.T) {
+	bus := events.NewBus(nil, slog.Default())
+	defer bus.Close()
+
+	// Client that doesn't have the content yet
+	client := &mockChecker{
+		hasContent: map[int64]bool{},
+		plexKeys:   map[int64]string{},
+	}
+
+	adapter := New(bus, client, 10*time.Millisecond, slog.Default())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = adapter.Start(ctx) }()
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Emit ImportCompleted
+	ic := &events.ImportCompleted{
+		BaseEvent:  events.NewBaseEvent(events.EventImportCompleted, events.EntityDownload, 1),
+		DownloadID: 1,
+		ContentID:  99,
+		FilePath:   "/movies/pending.mkv",
+		FileSize:   2000000,
+	}
+	_ = bus.Publish(ctx, ic)
+
+	// Wait a bit for it to process
+	time.Sleep(50 * time.Millisecond)
+
+	// Check pending count
+	adapter.mu.RLock()
+	pendingCount := len(adapter.pending)
+	adapter.mu.RUnlock()
+
+	assert.Equal(t, 1, pendingCount, "should have 1 pending verification")
+}
+
+func TestAdapter_RemovesPendingAfterDetection(t *testing.T) {
+	bus := events.NewBus(nil, slog.Default())
+	defer bus.Close()
+
+	client := &mockChecker{
+		hasContent: map[int64]bool{},
+		plexKeys:   map[int64]string{},
+	}
+
+	adapter := New(bus, client, 10*time.Millisecond, slog.Default())
+	detected := bus.Subscribe(events.EventPlexItemDetected, 10)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = adapter.Start(ctx) }()
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Emit ImportCompleted
+	ic := &events.ImportCompleted{
+		BaseEvent:  events.NewBaseEvent(events.EventImportCompleted, events.EntityDownload, 1),
+		DownloadID: 1,
+		ContentID:  100,
+		FilePath:   "/movies/todetect.mkv",
+		FileSize:   3000000,
+	}
+	_ = bus.Publish(ctx, ic)
+
+	// Wait for pending to be tracked
+	time.Sleep(30 * time.Millisecond)
+
+	// Verify it's pending
+	adapter.mu.RLock()
+	_, exists := adapter.pending[100]
+	adapter.mu.RUnlock()
+	require.True(t, exists, "content should be pending")
+
+	// Now make client return the content as found
+	client.mu.Lock()
+	client.hasContent[100] = true
+	client.plexKeys[100] = "/library/metadata/999"
+	client.mu.Unlock()
+
+	// Wait for detection
+	select {
+	case <-detected:
+		// Success
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timeout waiting for detection")
+	}
+
+	// Wait a bit for cleanup
+	time.Sleep(20 * time.Millisecond)
+
+	// Verify it's removed from pending
+	adapter.mu.RLock()
+	_, exists = adapter.pending[100]
+	adapter.mu.RUnlock()
+	assert.False(t, exists, "content should no longer be pending after detection")
+}
+
+func TestAdapter_NoDuplicatePlexItemDetected(t *testing.T) {
+	bus := events.NewBus(nil, slog.Default())
+	defer bus.Close()
+
+	client := &mockChecker{
+		hasContent: map[int64]bool{42: true},
+		plexKeys:   map[int64]string{42: "/library/metadata/12345"},
+	}
+
+	adapter := New(bus, client, 10*time.Millisecond, slog.Default())
+	detected := bus.Subscribe(events.EventPlexItemDetected, 10)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = adapter.Start(ctx) }()
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Emit ImportCompleted
+	ic := &events.ImportCompleted{
+		BaseEvent:  events.NewBaseEvent(events.EventImportCompleted, events.EntityDownload, 1),
+		DownloadID: 1,
+		ContentID:  42,
+		FilePath:   "/movies/test.mkv",
+		FileSize:   1000000,
+	}
+	_ = bus.Publish(ctx, ic)
+
+	// Wait for the first PlexItemDetected
+	select {
+	case <-detected:
+		// Good
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timeout waiting for first PlexItemDetected")
+	}
+
+	// Wait a bit longer to ensure no duplicates
+	time.Sleep(50 * time.Millisecond)
+
+	// Check for any additional events
+	select {
+	case <-detected:
+		t.Fatal("received duplicate PlexItemDetected event")
+	default:
+		// Good - no duplicate
+	}
+}
+
+func TestAdapter_HandlesMultiplePendingVerifications(t *testing.T) {
+	bus := events.NewBus(nil, slog.Default())
+	defer bus.Close()
+
+	client := &mockChecker{
+		hasContent: map[int64]bool{},
+		plexKeys:   map[int64]string{},
+	}
+
+	adapter := New(bus, client, 10*time.Millisecond, slog.Default())
+	detected := bus.Subscribe(events.EventPlexItemDetected, 10)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = adapter.Start(ctx) }()
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Emit multiple ImportCompleted events
+	for i := int64(1); i <= 3; i++ {
+		ic := &events.ImportCompleted{
+			BaseEvent:  events.NewBaseEvent(events.EventImportCompleted, events.EntityDownload, i),
+			DownloadID: i,
+			ContentID:  i * 10,
+			FilePath:   "/movies/test" + string(rune('0'+i)) + ".mkv",
+			FileSize:   1000000 * i,
+		}
+		_ = bus.Publish(ctx, ic)
+	}
+
+	// Wait for pending to be tracked
+	time.Sleep(30 * time.Millisecond)
+
+	adapter.mu.RLock()
+	pendingCount := len(adapter.pending)
+	adapter.mu.RUnlock()
+	assert.Equal(t, 3, pendingCount, "should have 3 pending verifications")
+
+	// Make one item be found
+	client.mu.Lock()
+	client.hasContent[20] = true
+	client.plexKeys[20] = "/library/metadata/20"
+	client.mu.Unlock()
+
+	// Wait for PlexItemDetected for content ID 20
+	select {
+	case e := <-detected:
+		pid := e.(*events.PlexItemDetected)
+		assert.Equal(t, int64(20), pid.ContentID)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timeout waiting for PlexItemDetected")
+	}
+
+	// Verify only 2 remaining pending
+	time.Sleep(20 * time.Millisecond)
+	adapter.mu.RLock()
+	pendingCount = len(adapter.pending)
+	adapter.mu.RUnlock()
+	assert.Equal(t, 2, pendingCount, "should have 2 pending verifications remaining")
+}
+
+func TestAdapter_StopsOnContextCancel(t *testing.T) {
+	bus := events.NewBus(nil, slog.Default())
+	defer bus.Close()
+
+	client := &mockChecker{
+		hasContent: map[int64]bool{},
+		plexKeys:   map[int64]string{},
+	}
+
+	adapter := New(bus, client, 10*time.Millisecond, slog.Default())
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	done := make(chan error, 1)
+	go func() {
+		done <- adapter.Start(ctx)
+	}()
+
+	// Give it time to start
+	time.Sleep(20 * time.Millisecond)
+
+	// Cancel context
+	cancel()
+
+	// Should complete quickly
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("adapter did not stop after context cancel")
+	}
+}
