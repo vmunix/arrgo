@@ -201,9 +201,11 @@ func runServer(configPath string) error {
 		}
 
 		runner := server.NewRunner(db, server.Config{
-			PollInterval:   30 * time.Second,
-			DownloadRoot:   sabDownloadRoot(cfg),
-			CleanupEnabled: cfg.Importer.ShouldCleanupSource(),
+			PollInterval:         30 * time.Second,
+			DownloadRoot:         sabDownloadRoot(cfg),
+			DownloadRemotePath:   sabRemotePath(cfg),
+			DownloadLocalPath:    sabLocalPath(cfg),
+			CleanupEnabled:       cfg.Importer.ShouldCleanupSource(),
 		}, logger, sabClient, imp, plexChecker)
 
 		eventBus = runner.Start()
@@ -356,6 +358,22 @@ func plexRemotePathFromConfig(cfg *config.Config) string {
 // sabDownloadRoot returns the local path for SABnzbd downloads.
 func sabDownloadRoot(cfg *config.Config) string {
 	if cfg.Downloaders.SABnzbd != nil && cfg.Downloaders.SABnzbd.LocalPath != "" {
+		return cfg.Downloaders.SABnzbd.LocalPath
+	}
+	return ""
+}
+
+// sabRemotePath returns the remote path prefix as seen by SABnzbd.
+func sabRemotePath(cfg *config.Config) string {
+	if cfg.Downloaders.SABnzbd != nil {
+		return cfg.Downloaders.SABnzbd.RemotePath
+	}
+	return ""
+}
+
+// sabLocalPath returns the local path prefix for SABnzbd downloads.
+func sabLocalPath(cfg *config.Config) string {
+	if cfg.Downloaders.SABnzbd != nil {
 		return cfg.Downloaders.SABnzbd.LocalPath
 	}
 	return ""

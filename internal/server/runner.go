@@ -18,9 +18,11 @@ import (
 
 // Config for the event-driven server.
 type Config struct {
-	PollInterval   time.Duration
-	DownloadRoot   string
-	CleanupEnabled bool
+	PollInterval         time.Duration
+	DownloadRoot         string
+	DownloadRemotePath   string // Path prefix as seen by SABnzbd
+	DownloadLocalPath    string // Local path prefix
+	CleanupEnabled       bool
 }
 
 // Runner manages the event-driven components.
@@ -99,7 +101,11 @@ func (r *Runner) Run(ctx context.Context) error {
 	})
 
 	// Create adapters
-	sabnzbdAdapter := sabnzbd.New(r.bus, r.downloader, downloadStore, r.config.PollInterval, r.logger.With("adapter", "sabnzbd"))
+	sabnzbdAdapter := sabnzbd.New(r.bus, r.downloader, downloadStore, sabnzbd.Config{
+		Interval:   r.config.PollInterval,
+		RemotePath: r.config.DownloadRemotePath,
+		LocalPath:  r.config.DownloadLocalPath,
+	}, r.logger.With("adapter", "sabnzbd"))
 
 	// Start adapters
 	g.Go(func() error {
