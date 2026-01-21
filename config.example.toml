@@ -60,6 +60,7 @@ api_key = "${NZBGEEK_API_KEY}"
 url = "http://localhost:8085"
 api_key = "${SABNZBD_API_KEY}"
 category = "arrgo"
+poll_interval = "5s"  # How often to check download status (default: 5s)
 # Path mapping for Docker: translate SABnzbd's container paths to host paths
 # remote_path = "/data/usenet"       # Path as reported by SABnzbd
 # local_path = "/srv/data/usenet"    # Corresponding path on this machine
@@ -75,6 +76,7 @@ category = "arrgo"
 url = "http://localhost:32400"
 token = "${PLEX_TOKEN}"
 libraries = ["Movies", "TV Shows"]
+poll_interval = "60s"  # How often to check library for new content (default: 60s)
 # Path mapping for Docker: translate local paths to Plex's container paths
 # remote_path = "/data/media"        # Path as seen by Plex
 # local_path = "/srv/data/media"     # Corresponding path on this machine
