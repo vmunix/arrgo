@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	_ "embed"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -85,7 +87,8 @@ func setupServer(t *testing.T, apiKey string) (*Server, *http.ServeMux, *sql.DB)
 		QualityProfiles: map[string]int{"hd": 1, "uhd": 2},
 	}
 
-	srv := New(cfg, lib, dl)
+	testLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv := New(cfg, lib, dl, testLogger)
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)
 
@@ -231,7 +234,8 @@ func TestListRootFolders_EmptyWhenNoRootsConfigured(t *testing.T) {
 		QualityProfiles: map[string]int{"hd": 1},
 	}
 
-	srv := New(cfg, lib, dlStore)
+	testLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv := New(cfg, lib, dlStore, testLogger)
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)
 
@@ -480,7 +484,8 @@ func TestAuthMiddleware_APIKeyNotConfigured_SkipsAuth(t *testing.T) {
 		QualityProfiles: map[string]int{"hd": 1},
 	}
 
-	srv := New(cfg, lib, dlStore)
+	testLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv := New(cfg, lib, dlStore, testLogger)
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)
 
@@ -518,7 +523,8 @@ func TestLookupMovie_WithTMDB(t *testing.T) {
 	db := setupTestDB(t)
 	store := library.NewStore(db)
 	dlStore := download.NewStore(db)
-	srv := New(Config{APIKey: "test-key"}, store, dlStore)
+	testLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv := New(Config{APIKey: "test-key"}, store, dlStore, testLogger)
 
 	tmdbClient := tmdb.NewClient("fake-key", tmdb.WithBaseURL(tmdbServer.URL))
 	srv.SetTMDB(tmdbClient)

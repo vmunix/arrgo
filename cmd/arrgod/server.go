@@ -230,7 +230,7 @@ func runServer(configPath string) error {
 			SeriesRoot:      cfg.Libraries.Series.Root,
 			QualityProfiles: profileIDs,
 		}
-		apiCompat := compat.New(compatCfg, libraryStore, downloadStore)
+		apiCompat := compat.New(compatCfg, libraryStore, downloadStore, logger.With("component", "compat"))
 		apiCompat.SetSearcher(searcher)
 		apiCompat.SetManager(downloadManager)
 

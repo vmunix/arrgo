@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"syscall"
@@ -142,14 +143,16 @@ type Server struct {
 	searcher  *search.Searcher
 	manager   *download.Manager
 	tmdb      *tmdb.Client
+	log       *slog.Logger
 }
 
 // New creates a new compatibility server.
-func New(cfg Config, lib *library.Store, dl *download.Store) *Server {
+func New(cfg Config, lib *library.Store, dl *download.Store, log *slog.Logger) *Server {
 	return &Server{
 		cfg:       cfg,
 		library:   lib,
 		downloads: dl,
+		log:       log,
 	}
 }
 
@@ -787,6 +790,22 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Debug: Log what Overseerr is requesting
+	var monitoredSeasons []int
+	for _, season := range req.Seasons {
+		if season.Monitored {
+			monitoredSeasons = append(monitoredSeasons, season.SeasonNumber)
+		}
+	}
+	s.log.Debug("addSeries request",
+		"title", req.Title,
+		"tvdbId", req.TVDBID,
+		"monitored", req.Monitored,
+		"searchForMissing", req.AddOptions.SearchForMissingEpisodes,
+		"totalSeasons", len(req.Seasons),
+		"monitoredSeasons", monitoredSeasons,
+	)
+
 	// Check if series already exists
 	contents, _, err := s.library.ListContent(library.ContentFilter{TVDBID: &req.TVDBID, Limit: 1})
 	if err == nil && len(contents) > 0 {
@@ -864,6 +883,21 @@ func (s *Server) updateSeries(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
 		return
 	}
+
+	// Debug: Log what Overseerr is requesting
+	var monitoredSeasons []int
+	for _, season := range req.Seasons {
+		if season.Monitored {
+			monitoredSeasons = append(monitoredSeasons, season.SeasonNumber)
+		}
+	}
+	s.log.Debug("updateSeries request",
+		"id", req.ID,
+		"monitored", req.Monitored,
+		"searchForMissing", req.AddOptions.SearchForMissingEpisodes,
+		"totalSeasons", len(req.Seasons),
+		"monitoredSeasons", monitoredSeasons,
+	)
 
 	content, err := s.library.GetContent(req.ID)
 	if err != nil {
