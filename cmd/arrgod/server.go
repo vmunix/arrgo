@@ -239,6 +239,7 @@ func runServer(configPath string) error {
 	}, v1.Config{
 		MovieRoot:       cfg.Libraries.Movies.Root,
 		SeriesRoot:      cfg.Libraries.Series.Root,
+		DownloadRoot:    sabDownloadRoot(cfg),
 		QualityProfiles: profiles,
 	})
 	if err != nil {
