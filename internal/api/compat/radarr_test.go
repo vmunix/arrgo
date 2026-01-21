@@ -593,7 +593,7 @@ func TestSonarrAddSeries(t *testing.T) {
 		"rootFolderPath": "/series",
 		"seriesType": "standard",
 		"monitored": true,
-		"seasons": [1],
+		"seasons": [{"seasonNumber": 1, "monitored": true}],
 		"addOptions": {"searchForMissingEpisodes": false}
 	}`
 

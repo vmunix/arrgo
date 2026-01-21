@@ -116,17 +116,17 @@ type sonarrSeriesResponse struct {
 
 // sonarrAddRequest is the Sonarr format for adding a series (full Overseerr format).
 type sonarrAddRequest struct {
-	TVDBID            int64  `json:"tvdbId"`
-	Title             string `json:"title"`
-	Year              int    `json:"year"`
-	QualityProfileID  int    `json:"qualityProfileId"`
-	LanguageProfileID int    `json:"languageProfileId"`
-	Seasons           []int  `json:"seasons"` // Season numbers to monitor
-	SeasonFolder      bool   `json:"seasonFolder"`
-	RootFolderPath    string `json:"rootFolderPath"`
-	SeriesType        string `json:"seriesType"` // standard, daily, anime
-	Monitored         bool   `json:"monitored"`
-	Tags              []int  `json:"tags"`
+	TVDBID            int64          `json:"tvdbId"`
+	Title             string         `json:"title"`
+	Year              int            `json:"year"`
+	QualityProfileID  int            `json:"qualityProfileId"`
+	LanguageProfileID int            `json:"languageProfileId"`
+	Seasons           []sonarrSeason `json:"seasons"` // Seasons with monitored status
+	SeasonFolder      bool           `json:"seasonFolder"`
+	RootFolderPath    string         `json:"rootFolderPath"`
+	SeriesType        string         `json:"seriesType"` // standard, daily, anime
+	Monitored         bool           `json:"monitored"`
+	Tags              []int          `json:"tags"`
 	AddOptions        struct {
 		IgnoreEpisodesWithFiles  bool `json:"ignoreEpisodesWithFiles"`
 		SearchForMissingEpisodes bool `json:"searchForMissingEpisodes"`
@@ -676,7 +676,13 @@ func (s *Server) lookupSeries(w http.ResponseWriter, r *http.Request) {
 	contents, _, err := s.library.ListContent(library.ContentFilter{TVDBID: &tvdbID, Limit: 1})
 	if err == nil && len(contents) > 0 {
 		// Found in library - return with ID (signals "already exists")
-		writeJSON(w, http.StatusOK, []sonarrSeriesResponse{s.contentToSonarrSeries(contents[0])})
+		resp := s.contentToSonarrSeries(contents[0])
+		// For "wanted" items, return monitored=false so Overseerr sends PUT to trigger search
+		// (Overseerr skips items with monitored=true, thinking they're already handled)
+		if contents[0].Status == library.StatusWanted {
+			resp.Monitored = false
+		}
+		writeJSON(w, http.StatusOK, []sonarrSeriesResponse{resp})
 		return
 	}
 
@@ -805,7 +811,14 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 
 	// Auto-search if requested
 	if req.AddOptions.SearchForMissingEpisodes && s.searcher != nil && s.manager != nil {
-		go s.searchAndGrabSeries(content.ID, req.Title, req.Year, profileName)
+		// Extract monitored season numbers
+		var monitoredSeasons []int
+		for _, season := range req.Seasons {
+			if season.Monitored && season.SeasonNumber > 0 {
+				monitoredSeasons = append(monitoredSeasons, season.SeasonNumber)
+			}
+		}
+		go s.searchAndGrabSeries(content.ID, req.Title, profileName, monitoredSeasons)
 	}
 
 	writeJSON(w, http.StatusCreated, s.contentToSonarrSeries(content))
@@ -813,10 +826,13 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) updateSeries(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ID        int64          `json:"id"`
-		Monitored bool           `json:"monitored"`
-		Seasons   []sonarrSeason `json:"seasons"`
-		Tags      []int          `json:"tags"`
+		ID         int64          `json:"id"`
+		Monitored  bool           `json:"monitored"`
+		Seasons    []sonarrSeason `json:"seasons"`
+		Tags       []int          `json:"tags"`
+		AddOptions struct {
+			SearchForMissingEpisodes bool `json:"searchForMissingEpisodes"`
+		} `json:"addOptions"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
@@ -829,6 +845,9 @@ func (s *Server) updateSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Track if we need to trigger search
+	shouldSearch := req.Monitored && content.Status == library.StatusWanted && s.searcher != nil && s.manager != nil
+
 	// Update monitoring status
 	if req.Monitored {
 		content.Status = library.StatusWanted
@@ -837,6 +856,18 @@ func (s *Server) updateSeries(w http.ResponseWriter, r *http.Request) {
 	if err := s.library.UpdateContent(content); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
+	}
+
+	// Trigger search for re-request flow (Overseerr sends PUT when re-requesting wanted series)
+	if shouldSearch || req.AddOptions.SearchForMissingEpisodes {
+		// Extract monitored season numbers
+		var monitoredSeasons []int
+		for _, season := range req.Seasons {
+			if season.Monitored && season.SeasonNumber > 0 {
+				monitoredSeasons = append(monitoredSeasons, season.SeasonNumber)
+			}
+		}
+		go s.searchAndGrabSeries(content.ID, content.Title, content.QualityProfile, monitoredSeasons)
 	}
 
 	writeJSON(w, http.StatusOK, s.contentToSonarrSeries(content))
@@ -879,6 +910,9 @@ func (s *Server) listLanguageProfiles(w http.ResponseWriter, r *http.Request) {
 
 // searchAndGrab performs a background search and grabs the best result.
 func (s *Server) searchAndGrab(contentID int64, title string, year int, profile string) {
+	if s.searcher == nil || s.manager == nil {
+		return
+	}
 	ctx := context.Background()
 
 	query := search.Query{
@@ -896,22 +930,32 @@ func (s *Server) searchAndGrab(contentID int64, title string, year int, profile 
 	_, _ = s.manager.Grab(ctx, contentID, nil, best.DownloadURL, best.Title, best.Indexer)
 }
 
-// searchAndGrabSeries performs a background search for series (season pack or latest episode).
-func (s *Server) searchAndGrabSeries(contentID int64, title string, _ int, profile string) {
-	ctx := context.Background()
-
-	// Search for season 1 pack first
-	query := search.Query{
-		Text: fmt.Sprintf("%s S01", title),
-		Type: "series",
-	}
-
-	result, err := s.searcher.Search(ctx, query, profile)
-	if err != nil || len(result.Releases) == 0 {
+// searchAndGrabSeries performs a background search for series seasons.
+func (s *Server) searchAndGrabSeries(contentID int64, title string, profile string, seasons []int) {
+	if s.searcher == nil || s.manager == nil {
 		return
 	}
+	ctx := context.Background()
 
-	// Grab the best match
-	best := result.Releases[0]
-	_, _ = s.manager.Grab(ctx, contentID, nil, best.DownloadURL, best.Title, best.Indexer)
+	// Default to season 1 if no specific seasons requested
+	if len(seasons) == 0 {
+		seasons = []int{1}
+	}
+
+	// Search for each monitored season
+	for _, seasonNum := range seasons {
+		query := search.Query{
+			Text: fmt.Sprintf("%s S%02d", title, seasonNum),
+			Type: "series",
+		}
+
+		result, err := s.searcher.Search(ctx, query, profile)
+		if err != nil || len(result.Releases) == 0 {
+			continue
+		}
+
+		// Grab the best match for this season
+		best := result.Releases[0]
+		_, _ = s.manager.Grab(ctx, contentID, nil, best.DownloadURL, best.Title, best.Indexer)
+	}
 }
