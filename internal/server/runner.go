@@ -19,12 +19,12 @@ import (
 
 // Config for the event-driven server.
 type Config struct {
-	SABnzbdPollInterval  time.Duration // How often to poll SABnzbd (default: 5s)
-	PlexPollInterval     time.Duration // How often to poll Plex (default: 60s)
-	DownloadRoot         string
-	DownloadRemotePath   string // Path prefix as seen by SABnzbd
-	DownloadLocalPath    string // Local path prefix
-	CleanupEnabled       bool
+	SABnzbdPollInterval time.Duration // How often to poll SABnzbd (default: 5s)
+	PlexPollInterval    time.Duration // How often to poll Plex (default: 60s)
+	DownloadRoot        string
+	DownloadRemotePath  string // Path prefix as seen by SABnzbd
+	DownloadLocalPath   string // Local path prefix
+	CleanupEnabled      bool
 }
 
 // Runner manages the event-driven components.

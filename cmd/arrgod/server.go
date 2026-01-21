@@ -201,12 +201,12 @@ func runServer(configPath string) error {
 		}
 
 		runner := server.NewRunner(db, server.Config{
-			SABnzbdPollInterval:  sabPollInterval(cfg),
-			PlexPollInterval:     plexPollInterval(cfg),
-			DownloadRoot:         sabDownloadRoot(cfg),
-			DownloadRemotePath:   sabRemotePath(cfg),
-			DownloadLocalPath:    sabLocalPath(cfg),
-			CleanupEnabled:       cfg.Importer.ShouldCleanupSource(),
+			SABnzbdPollInterval: sabPollInterval(cfg),
+			PlexPollInterval:    plexPollInterval(cfg),
+			DownloadRoot:        sabDownloadRoot(cfg),
+			DownloadRemotePath:  sabRemotePath(cfg),
+			DownloadLocalPath:   sabLocalPath(cfg),
+			CleanupEnabled:      cfg.Importer.ShouldCleanupSource(),
 		}, logger, sabClient, imp, plexChecker)
 
 		eventBus = runner.Start()

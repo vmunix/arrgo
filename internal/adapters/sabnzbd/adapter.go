@@ -21,11 +21,11 @@ type Config struct {
 
 // Adapter polls SABnzbd and emits events for status changes.
 type Adapter struct {
-	client   download.Downloader
-	bus      *events.Bus
-	store    *download.Store
-	config   Config
-	logger   *slog.Logger
+	client download.Downloader
+	bus    *events.Bus
+	store  *download.Store
+	config Config
+	logger *slog.Logger
 
 	// Track last known status to avoid duplicate state transition events
 	lastStatus map[int64]download.Status

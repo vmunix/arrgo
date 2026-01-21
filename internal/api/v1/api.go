@@ -24,7 +24,7 @@ import (
 type Config struct {
 	MovieRoot       string
 	SeriesRoot      string
-	DownloadRoot    string            // Root path for completed downloads (for tracked imports)
+	DownloadRoot    string // Root path for completed downloads (for tracked imports)
 	QualityProfiles map[string][]string
 }
 
