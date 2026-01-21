@@ -531,3 +531,128 @@ func TestCleanupHandler_MultipleContentIDs(t *testing.T) {
 	_, err = os.Stat(releaseDir2)
 	assert.True(t, os.IsNotExist(err), "release 2 should be deleted")
 }
+
+func TestCleanupHandler_ImportSkipped_ImmediateCleanup(t *testing.T) {
+	db := setupCleanupTestDB(t)
+	bus := events.NewBus(nil, nil)
+	defer bus.Close()
+
+	store := download.NewStore(db)
+
+	// Create download record in skipped status
+	dl := &download.Download{
+		ContentID:   42,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "sab-123",
+		Status:      download.StatusSkipped,
+		ReleaseName: "Test.Movie.2024.1080p.WEB-DL",
+		Indexer:     "nzbgeek",
+	}
+	require.NoError(t, store.Add(dl))
+
+	// Create temp directory structure
+	downloadRoot := t.TempDir()
+	releaseDir := filepath.Join(downloadRoot, dl.ReleaseName)
+	require.NoError(t, os.MkdirAll(releaseDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(releaseDir, "movie.mkv"), []byte("test"), 0644))
+
+	config := CleanupConfig{
+		DownloadRoot: downloadRoot,
+		Enabled:      true,
+	}
+	handler := NewCleanupHandler(bus, store, config, nil)
+
+	// Subscribe to CleanupCompleted
+	completed := bus.Subscribe(events.EventCleanupCompleted, 10)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = handler.Start(ctx) }()
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Publish ImportSkipped event (should trigger immediate cleanup, no Plex detection needed)
+	err := bus.Publish(ctx, &events.ImportSkipped{
+		BaseEvent:       events.NewBaseEvent(events.EventImportSkipped, events.EntityDownload, dl.ID),
+		DownloadID:      dl.ID,
+		ContentID:       42,
+		SourcePath:      releaseDir,
+		ReleaseQuality:  "1080p",
+		ExistingQuality: "2160p",
+		Reason:          "existing_quality_equal_or_better",
+	})
+	require.NoError(t, err)
+
+	// Should get CleanupCompleted (immediate, without waiting for Plex)
+	select {
+	case e := <-completed:
+		cc := e.(*events.CleanupCompleted)
+		assert.Equal(t, dl.ID, cc.DownloadID)
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for CleanupCompleted event")
+	}
+
+	// Verify files were deleted
+	_, err = os.Stat(releaseDir)
+	assert.True(t, os.IsNotExist(err), "release directory should be deleted")
+}
+
+func TestCleanupHandler_ImportSkipped_Disabled(t *testing.T) {
+	db := setupCleanupTestDB(t)
+	bus := events.NewBus(nil, nil)
+	defer bus.Close()
+
+	store := download.NewStore(db)
+
+	dl := &download.Download{
+		ContentID:   42,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "sab-123",
+		Status:      download.StatusSkipped,
+		ReleaseName: "Test.Movie.2024.1080p.WEB-DL",
+		Indexer:     "nzbgeek",
+	}
+	require.NoError(t, store.Add(dl))
+
+	downloadRoot := t.TempDir()
+	releaseDir := filepath.Join(downloadRoot, dl.ReleaseName)
+	require.NoError(t, os.MkdirAll(releaseDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(releaseDir, "movie.mkv"), []byte("test"), 0644))
+
+	config := CleanupConfig{
+		DownloadRoot: downloadRoot,
+		Enabled:      false, // Disabled
+	}
+	handler := NewCleanupHandler(bus, store, config, nil)
+
+	completed := bus.Subscribe(events.EventCleanupCompleted, 10)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = handler.Start(ctx) }()
+
+	time.Sleep(10 * time.Millisecond)
+
+	err := bus.Publish(ctx, &events.ImportSkipped{
+		BaseEvent:       events.NewBaseEvent(events.EventImportSkipped, events.EntityDownload, dl.ID),
+		DownloadID:      dl.ID,
+		ContentID:       42,
+		SourcePath:      releaseDir,
+		ReleaseQuality:  "1080p",
+		ExistingQuality: "2160p",
+		Reason:          "existing_quality_equal_or_better",
+	})
+	require.NoError(t, err)
+
+	// Should NOT get CleanupCompleted (disabled)
+	select {
+	case <-completed:
+		t.Fatal("should not cleanup when disabled")
+	case <-time.After(100 * time.Millisecond):
+		// Expected - no cleanup
+	}
+
+	// Verify files still exist
+	_, err = os.Stat(releaseDir)
+	assert.NoError(t, err, "release directory should still exist when cleanup is disabled")
+}

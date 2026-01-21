@@ -3,6 +3,7 @@ package plex
 
 import (
 	"context"
+	"database/sql"
 	"log/slog"
 	"sync"
 	"testing"
@@ -10,7 +11,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/events"
+	_ "modernc.org/sqlite"
 )
 
 // mockChecker implements Checker for testing.
@@ -317,5 +320,162 @@ func TestAdapter_StopsOnContextCancel(t *testing.T) {
 		require.NoError(t, err)
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("adapter did not stop after context cancel")
+	}
+}
+
+func setupPlexTestDB(t *testing.T) *sql.DB {
+	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+
+	_, err = db.Exec(`
+		CREATE TABLE downloads (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			content_id INTEGER NOT NULL,
+			episode_id INTEGER,
+			client TEXT NOT NULL,
+			client_id TEXT NOT NULL,
+			status TEXT NOT NULL,
+			release_name TEXT NOT NULL,
+			indexer TEXT NOT NULL,
+			added_at TIMESTAMP NOT NULL,
+			completed_at TIMESTAMP,
+			last_transition_at TIMESTAMP NOT NULL
+		)
+	`)
+	require.NoError(t, err)
+	return db
+}
+
+func TestAdapter_ReconcileOnStartup_FoundInPlex(t *testing.T) {
+	db := setupPlexTestDB(t)
+	bus := events.NewBus(nil, slog.Default())
+	defer bus.Close()
+
+	store := download.NewStore(db)
+
+	// Create download in imported status (stuck from previous run)
+	dl := &download.Download{
+		ContentID:   42,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "sab-123",
+		Status:      download.StatusImported,
+		ReleaseName: "Test.Movie.2024.1080p",
+		Indexer:     "nzbgeek",
+	}
+	require.NoError(t, store.Add(dl))
+
+	// Client reports content is in Plex
+	client := &mockChecker{
+		hasContent: map[int64]bool{42: true},
+		plexKeys:   map[int64]string{42: "/library/metadata/12345"},
+	}
+
+	adapter := New(bus, client, store, 10*time.Millisecond, slog.Default())
+
+	// Subscribe to PlexItemDetected
+	detected := bus.Subscribe(events.EventPlexItemDetected, 10)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = adapter.Start(ctx) }()
+
+	// Should emit PlexItemDetected during startup reconciliation
+	select {
+	case e := <-detected:
+		pid := e.(*events.PlexItemDetected)
+		assert.Equal(t, int64(42), pid.ContentID)
+		assert.Equal(t, "/library/metadata/12345", pid.PlexKey)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("timeout waiting for PlexItemDetected from reconciliation")
+	}
+}
+
+func TestAdapter_ReconcileOnStartup_NotInPlex(t *testing.T) {
+	db := setupPlexTestDB(t)
+	bus := events.NewBus(nil, slog.Default())
+	defer bus.Close()
+
+	store := download.NewStore(db)
+
+	// Create download in imported status
+	dl := &download.Download{
+		ContentID:   99,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "sab-456",
+		Status:      download.StatusImported,
+		ReleaseName: "Another.Movie.2024.1080p",
+		Indexer:     "nzbgeek",
+	}
+	require.NoError(t, store.Add(dl))
+
+	// Client reports content NOT in Plex yet
+	client := &mockChecker{
+		hasContent: map[int64]bool{},
+		plexKeys:   map[int64]string{},
+	}
+
+	adapter := New(bus, client, store, 10*time.Millisecond, slog.Default())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = adapter.Start(ctx) }()
+
+	// Give time for reconciliation
+	time.Sleep(50 * time.Millisecond)
+
+	// Should have added to pending
+	adapter.mu.RLock()
+	_, exists := adapter.pending[99]
+	adapter.mu.RUnlock()
+	assert.True(t, exists, "download should be added to pending during reconciliation")
+}
+
+func TestAdapter_ReconcileOnStartup_NoImportedDownloads(t *testing.T) {
+	db := setupPlexTestDB(t)
+	bus := events.NewBus(nil, slog.Default())
+	defer bus.Close()
+
+	store := download.NewStore(db)
+
+	// No downloads in imported status
+	dl := &download.Download{
+		ContentID:   42,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "sab-123",
+		Status:      download.StatusCleaned, // Already cleaned, not imported
+		ReleaseName: "Test.Movie.2024.1080p",
+		Indexer:     "nzbgeek",
+	}
+	require.NoError(t, store.Add(dl))
+
+	client := &mockChecker{
+		hasContent: map[int64]bool{},
+		plexKeys:   map[int64]string{},
+	}
+
+	adapter := New(bus, client, store, 10*time.Millisecond, slog.Default())
+
+	detected := bus.Subscribe(events.EventPlexItemDetected, 10)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = adapter.Start(ctx) }()
+
+	// Give time for reconciliation
+	time.Sleep(50 * time.Millisecond)
+
+	// Should have no pending (nothing to reconcile)
+	adapter.mu.RLock()
+	pendingCount := len(adapter.pending)
+	adapter.mu.RUnlock()
+	assert.Equal(t, 0, pendingCount, "should have no pending when no imported downloads")
+
+	// Should not have emitted any events
+	select {
+	case <-detected:
+		t.Fatal("should not emit PlexItemDetected when no imported downloads")
+	default:
+		// Good
 	}
 }
