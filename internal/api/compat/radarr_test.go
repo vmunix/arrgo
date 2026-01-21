@@ -178,19 +178,19 @@ func TestListQualityProfiles_IncludesIDAndName(t *testing.T) {
 	var profiles []testQualityProfile
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &profiles))
 
-	// Verify specific mappings exist
+	// Verify specific mappings exist (display names are used)
 	foundHD := false
 	foundUHD := false
 	for _, profile := range profiles {
-		if profile.Name == "hd" && profile.ID == 1 {
+		if profile.Name == "HD-1080p" && profile.ID == 1 {
 			foundHD = true
 		}
-		if profile.Name == "uhd" && profile.ID == 2 {
+		if profile.Name == "Ultra-HD" && profile.ID == 2 {
 			foundUHD = true
 		}
 	}
-	assert.True(t, foundHD, "hd profile with id=1 not found")
-	assert.True(t, foundUHD, "uhd profile with id=2 not found")
+	assert.True(t, foundHD, "HD-1080p profile with id=1 not found")
+	assert.True(t, foundUHD, "Ultra-HD profile with id=2 not found")
 }
 
 // Root Folders Tests

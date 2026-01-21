@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/vmunix/arrgo/internal/download"
@@ -276,7 +277,13 @@ func (s *Server) lookupMovie(w http.ResponseWriter, r *http.Request) {
 	contents, _, err := s.library.ListContent(library.ContentFilter{TMDBID: &tmdbID, Limit: 1})
 	if err == nil && len(contents) > 0 {
 		// Found in library - return with ID
-		writeJSON(w, http.StatusOK, []radarrMovieResponse{s.contentToRadarrMovie(contents[0])})
+		// For "wanted" items (no file yet), return monitored=false so Overseerr
+		// sends a PUT to re-enable monitoring, which triggers a search.
+		resp := s.contentToRadarrMovie(contents[0])
+		if contents[0].Status == library.StatusWanted {
+			resp.Monitored = false
+		}
+		writeJSON(w, http.StatusOK, []radarrMovieResponse{resp})
 		return
 	}
 
@@ -363,7 +370,7 @@ func (s *Server) contentToRadarrMovie(c *library.Content) radarrMovieResponse {
 		TMDBID:           tmdbID,
 		Title:            c.Title,
 		Year:             c.Year,
-		Monitored:        c.Status == library.StatusWanted,
+		Monitored:        c.Status == library.StatusWanted || c.Status == library.StatusAvailable,
 		Status:           "released",
 		HasFile:          c.Status == library.StatusAvailable,
 		IsAvailable:      true,
@@ -425,9 +432,15 @@ func (s *Server) addMovie(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) updateMovie(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ID        int64 `json:"id"`
-		Monitored bool  `json:"monitored"`
-		Tags      []int `json:"tags"`
+		ID         int64  `json:"id"`
+		Title      string `json:"title"`
+		Year       int    `json:"year"`
+		Monitored  bool   `json:"monitored"`
+		Tags       []int  `json:"tags"`
+		AddOptions struct {
+			SearchForMovie bool `json:"searchForMovie"`
+		} `json:"addOptions"`
+		QualityProfileID int `json:"qualityProfileId"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid request"})
@@ -445,9 +458,32 @@ func (s *Server) updateMovie(w http.ResponseWriter, r *http.Request) {
 		content.Status = library.StatusWanted
 	}
 
+	// Update quality profile if provided
+	if req.QualityProfileID > 0 {
+		for name, id := range s.cfg.QualityProfiles {
+			if id == req.QualityProfileID {
+				content.QualityProfile = name
+				break
+			}
+		}
+	}
+
 	if err := s.library.UpdateContent(content); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
+	}
+
+	// Trigger search if requested
+	if req.AddOptions.SearchForMovie && req.Monitored && s.searcher != nil && s.manager != nil {
+		title := req.Title
+		if title == "" {
+			title = content.Title
+		}
+		year := req.Year
+		if year == 0 {
+			year = content.Year
+		}
+		go s.searchAndGrab(content.ID, title, year, content.QualityProfile)
 	}
 
 	writeJSON(w, http.StatusOK, s.contentToRadarrMovie(content))
@@ -460,26 +496,54 @@ func (s *Server) listRootFolders(w http.ResponseWriter, r *http.Request) {
 		folders = append(folders, map[string]any{
 			"id":        1,
 			"path":      s.cfg.MovieRoot,
-			"freeSpace": 0,
+			"freeSpace": getFreeSpace(s.cfg.MovieRoot),
 		})
 	}
 	if s.cfg.SeriesRoot != "" {
 		folders = append(folders, map[string]any{
 			"id":        2,
 			"path":      s.cfg.SeriesRoot,
-			"freeSpace": 0,
+			"freeSpace": getFreeSpace(s.cfg.SeriesRoot),
 		})
 	}
 
 	writeJSON(w, http.StatusOK, folders)
 }
 
+// getFreeSpace returns the free space in bytes for a given path.
+func getFreeSpace(path string) uint64 {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(path, &stat); err != nil {
+		return 0
+	}
+	// Bsize is always positive, safe to convert
+	if stat.Bsize < 0 {
+		return 0
+	}
+	return stat.Bavail * uint64(stat.Bsize) //nolint:gosec // Bsize checked above
+}
+
 func (s *Server) listQualityProfiles(w http.ResponseWriter, r *http.Request) {
+	// Map internal profile names to Radarr-style display names
+	displayNames := map[string]string{
+		"any":    "Any",
+		"sd":     "SD",
+		"hd":     "HD-1080p",
+		"hd720":  "HD-720p",
+		"hd1080": "HD-1080p",
+		"uhd":    "Ultra-HD",
+	}
+
 	profiles := make([]map[string]any, 0, len(s.cfg.QualityProfiles))
 	for name, id := range s.cfg.QualityProfiles {
+		displayName := name
+		if dn, ok := displayNames[strings.ToLower(name)]; ok {
+			displayName = dn
+		}
 		profiles = append(profiles, map[string]any{
-			"id":   id,
-			"name": name,
+			"id":             id,
+			"name":           displayName,
+			"upgradeAllowed": true,
 		})
 	}
 	writeJSON(w, http.StatusOK, profiles)
