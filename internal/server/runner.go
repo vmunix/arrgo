@@ -118,7 +118,7 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	// Only start Plex adapter if configured
 	if r.plexChecker != nil {
-		plexAdapter := plex.New(r.bus, r.plexChecker, r.config.PlexPollInterval, r.logger.With("adapter", "plex"))
+		plexAdapter := plex.New(r.bus, r.plexChecker, downloadStore, r.config.PlexPollInterval, r.logger.With("adapter", "plex"))
 		g.Go(func() error {
 			r.logger.Info("starting plex adapter", "interval", r.config.PlexPollInterval)
 			return plexAdapter.Start(ctx)

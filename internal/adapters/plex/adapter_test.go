@@ -45,7 +45,7 @@ func TestAdapter_EmitsPlexItemDetected(t *testing.T) {
 		plexKeys:   map[int64]string{42: "/library/metadata/12345"},
 	}
 
-	adapter := New(bus, client, 10*time.Millisecond, nil)
+	adapter := New(bus, client, nil, 10*time.Millisecond, nil)
 
 	// Subscribe to events
 	detected := bus.Subscribe(events.EventPlexItemDetected, 10)
@@ -88,7 +88,7 @@ func TestAdapter_TracksPendingVerifications(t *testing.T) {
 		plexKeys:   map[int64]string{},
 	}
 
-	adapter := New(bus, client, 10*time.Millisecond, slog.Default())
+	adapter := New(bus, client, nil, 10*time.Millisecond, slog.Default())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -126,7 +126,7 @@ func TestAdapter_RemovesPendingAfterDetection(t *testing.T) {
 		plexKeys:   map[int64]string{},
 	}
 
-	adapter := New(bus, client, 10*time.Millisecond, slog.Default())
+	adapter := New(bus, client, nil, 10*time.Millisecond, slog.Default())
 	detected := bus.Subscribe(events.EventPlexItemDetected, 10)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -187,7 +187,7 @@ func TestAdapter_NoDuplicatePlexItemDetected(t *testing.T) {
 		plexKeys:   map[int64]string{42: "/library/metadata/12345"},
 	}
 
-	adapter := New(bus, client, 10*time.Millisecond, slog.Default())
+	adapter := New(bus, client, nil, 10*time.Millisecond, slog.Default())
 	detected := bus.Subscribe(events.EventPlexItemDetected, 10)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -235,7 +235,7 @@ func TestAdapter_HandlesMultiplePendingVerifications(t *testing.T) {
 		plexKeys:   map[int64]string{},
 	}
 
-	adapter := New(bus, client, 10*time.Millisecond, slog.Default())
+	adapter := New(bus, client, nil, 10*time.Millisecond, slog.Default())
 	detected := bus.Subscribe(events.EventPlexItemDetected, 10)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -296,7 +296,7 @@ func TestAdapter_StopsOnContextCancel(t *testing.T) {
 		plexKeys:   map[int64]string{},
 	}
 
-	adapter := New(bus, client, 10*time.Millisecond, slog.Default())
+	adapter := New(bus, client, nil, 10*time.Millisecond, slog.Default())
 
 	ctx, cancel := context.WithCancel(context.Background())
 

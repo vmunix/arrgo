@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/events"
 )
 
@@ -27,26 +28,28 @@ type pendingVerification struct {
 
 // Adapter polls Plex and emits events when imported content is detected.
 type Adapter struct {
-	client   Checker
-	bus      *events.Bus
-	interval time.Duration
-	logger   *slog.Logger
+	client        Checker
+	bus           *events.Bus
+	downloadStore *download.Store
+	interval      time.Duration
+	logger        *slog.Logger
 
 	mu      sync.RWMutex
 	pending map[int64]*pendingVerification // contentID -> pending
 }
 
 // New creates a new Plex adapter.
-func New(bus *events.Bus, client Checker, interval time.Duration, logger *slog.Logger) *Adapter {
+func New(bus *events.Bus, client Checker, store *download.Store, interval time.Duration, logger *slog.Logger) *Adapter {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Adapter{
-		client:   client,
-		bus:      bus,
-		interval: interval,
-		logger:   logger.With("component", "plex-adapter"),
-		pending:  make(map[int64]*pendingVerification),
+		client:        client,
+		bus:           bus,
+		downloadStore: store,
+		interval:      interval,
+		logger:        logger.With("component", "plex-adapter"),
+		pending:       make(map[int64]*pendingVerification),
 	}
 }
 
@@ -58,6 +61,9 @@ func (a *Adapter) Name() string {
 // Start begins listening for ImportCompleted events and polling Plex.
 // It runs until the context is canceled.
 func (a *Adapter) Start(ctx context.Context) error {
+	// Reconcile with database on startup - check for downloads stuck in imported status
+	a.reconcileOnStartup(ctx)
+
 	// Subscribe to ImportCompleted events
 	importCh := a.bus.Subscribe(events.EventImportCompleted, 100)
 
@@ -77,6 +83,81 @@ func (a *Adapter) Start(ctx context.Context) error {
 
 		case <-ticker.C:
 			a.checkPending(ctx)
+		}
+	}
+}
+
+// reconcileOnStartup checks for downloads stuck in imported status and verifies them against Plex.
+// This handles the case where the server was restarted before Plex detection completed.
+func (a *Adapter) reconcileOnStartup(ctx context.Context) {
+	if a.downloadStore == nil {
+		return
+	}
+
+	// Query for downloads in imported status
+	status := download.StatusImported
+	downloads, err := a.downloadStore.List(download.Filter{Status: &status})
+	if err != nil {
+		a.logger.Error("failed to list imported downloads for reconciliation", "error", err)
+		return
+	}
+
+	if len(downloads) == 0 {
+		a.logger.Debug("no imported downloads to reconcile")
+		return
+	}
+
+	a.logger.Info("reconciling imported downloads on startup", "count", len(downloads))
+
+	for _, dl := range downloads {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// Check if content is in Plex
+		found, plexKey, err := a.client.HasContentByID(ctx, dl.ContentID)
+		if err != nil {
+			a.logger.Error("failed to check content in Plex during reconciliation",
+				"content_id", dl.ContentID,
+				"download_id", dl.ID,
+				"error", err)
+			continue
+		}
+
+		if found {
+			a.logger.Info("found imported content in Plex during reconciliation",
+				"content_id", dl.ContentID,
+				"download_id", dl.ID,
+				"plex_key", plexKey)
+
+			// Emit PlexItemDetected event
+			evt := &events.PlexItemDetected{
+				BaseEvent: events.NewBaseEvent(events.EventPlexItemDetected, events.EntityContent, dl.ContentID),
+				ContentID: dl.ContentID,
+				PlexKey:   plexKey,
+			}
+
+			if err := a.bus.Publish(ctx, evt); err != nil {
+				a.logger.Error("failed to publish PlexItemDetected event during reconciliation",
+					"content_id", dl.ContentID,
+					"error", err)
+			}
+		} else {
+			// Not yet in Plex - add to pending for regular polling
+			a.mu.Lock()
+			a.pending[dl.ContentID] = &pendingVerification{
+				contentID:  dl.ContentID,
+				downloadID: dl.ID,
+				filePath:   "", // We don't have the file path from the download record
+				addedAt:    time.Now(),
+			}
+			a.mu.Unlock()
+
+			a.logger.Debug("added imported download to pending verification",
+				"content_id", dl.ContentID,
+				"download_id", dl.ID)
 		}
 	}
 }
