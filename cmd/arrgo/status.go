@@ -51,6 +51,7 @@ func printDashboard(server string, d *DashboardResponse) {
 	fmt.Printf("  Queued:       %d\n", d.Downloads.Queued)
 	fmt.Printf("  Downloading:  %d\n", d.Downloads.Downloading)
 	fmt.Printf("  Completed:    %d\n", d.Downloads.Completed)
+	fmt.Printf("  Importing:    %d\n", d.Downloads.Importing)
 	fmt.Printf("  Imported:     %d  (awaiting Plex verification)\n", d.Downloads.Imported)
 	fmt.Println()
 

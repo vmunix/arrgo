@@ -18,7 +18,8 @@ type TransitionHandler func(event TransitionEvent)
 var validTransitions = map[Status][]Status{
 	StatusQueued:      {StatusDownloading, StatusCompleted, StatusFailed}, // completed: can skip downloading if fast
 	StatusDownloading: {StatusCompleted, StatusFailed},
-	StatusCompleted:   {StatusImported, StatusFailed},
+	StatusCompleted:   {StatusImporting, StatusFailed},
+	StatusImporting:   {StatusImported, StatusFailed},
 	StatusImported:    {StatusCleaned, StatusFailed},
 	StatusCleaned:     {},             // terminal - no transitions out
 	StatusFailed:      {StatusQueued}, // allow retry

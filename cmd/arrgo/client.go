@@ -82,6 +82,7 @@ type DashboardResponse struct {
 		Queued      int `json:"queued"`
 		Downloading int `json:"downloading"`
 		Completed   int `json:"completed"`
+		Importing   int `json:"importing"`
 		Imported    int `json:"imported"`
 		Cleaned     int `json:"cleaned"`
 		Failed      int `json:"failed"`

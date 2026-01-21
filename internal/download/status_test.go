@@ -17,8 +17,10 @@ func TestCanTransitionTo_ValidTransitions(t *testing.T) {
 		{StatusQueued, StatusFailed},
 		{StatusDownloading, StatusCompleted},
 		{StatusDownloading, StatusFailed},
-		{StatusCompleted, StatusImported},
+		{StatusCompleted, StatusImporting},
 		{StatusCompleted, StatusFailed},
+		{StatusImporting, StatusImported},
+		{StatusImporting, StatusFailed},
 		{StatusImported, StatusCleaned},
 		{StatusImported, StatusFailed},
 		{StatusFailed, StatusQueued}, // retry
@@ -40,11 +42,15 @@ func TestCanTransitionTo_InvalidTransitions(t *testing.T) {
 		{StatusQueued, StatusImported},      // skip multiple
 		{StatusQueued, StatusCleaned},       // skip multiple
 		{StatusDownloading, StatusQueued},   // backwards
-		{StatusDownloading, StatusImported}, // skip completed
+		{StatusDownloading, StatusImported}, // skip completed+importing
 		{StatusCompleted, StatusQueued},     // backwards
-		{StatusCompleted, StatusCleaned},    // skip imported
+		{StatusCompleted, StatusCleaned},    // skip importing+imported
+		{StatusCompleted, StatusImported},   // skip importing
+		{StatusImporting, StatusQueued},     // backwards
+		{StatusImporting, StatusCompleted},  // backwards
 		{StatusImported, StatusQueued},      // backwards
 		{StatusImported, StatusCompleted},   // backwards
+		{StatusImported, StatusImporting},   // backwards
 		{StatusCleaned, StatusQueued},       // terminal
 		{StatusCleaned, StatusFailed},       // terminal
 	}
@@ -59,7 +65,7 @@ func TestCanTransitionTo_InvalidTransitions(t *testing.T) {
 
 func TestIsTerminal(t *testing.T) {
 	terminal := []Status{StatusCleaned, StatusFailed}
-	nonTerminal := []Status{StatusQueued, StatusDownloading, StatusCompleted, StatusImported}
+	nonTerminal := []Status{StatusQueued, StatusDownloading, StatusCompleted, StatusImporting, StatusImported}
 
 	for _, s := range terminal {
 		assert.True(t, s.IsTerminal(), "%s should be terminal", s)

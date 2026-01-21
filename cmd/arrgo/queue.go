@@ -17,7 +17,7 @@ var queueCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(queueCmd)
 	queueCmd.Flags().BoolP("all", "a", false, "Include terminal states (cleaned, failed)")
-	queueCmd.Flags().StringP("state", "s", "", "Filter by state (queued, downloading, completed, imported, cleaned, failed)")
+	queueCmd.Flags().StringP("state", "s", "", "Filter by state (queued, downloading, completed, importing, imported, cleaned, failed)")
 }
 
 func runQueueCmd(cmd *cobra.Command, args []string) error {

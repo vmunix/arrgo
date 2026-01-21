@@ -359,10 +359,20 @@ func poll(ctx context.Context, manager *download.Manager, imp *importer.Importer
 		// Translate remote path to local path if configured
 		importPath := translatePath(clientStatus.Path, sabCfg)
 
+		// Set status to importing before starting the copy
+		if err := store.Transition(dl, download.StatusImporting); err != nil {
+			log.Error("transition to importing failed", "download_id", dl.ID, "error", err)
+			continue
+		}
+
 		log.Info("importing download", "download_id", dl.ID, "path", importPath)
 
 		if _, err := imp.Import(ctx, dl.ID, importPath); err != nil {
 			log.Error("import failed", "download_id", dl.ID, "error", err)
+			// Transition to failed on import error
+			if transErr := store.Transition(dl, download.StatusFailed); transErr != nil {
+				log.Error("transition to failed error", "download_id", dl.ID, "error", transErr)
+			}
 			continue
 		}
 
@@ -438,43 +448,88 @@ func processImportedDownloads(ctx context.Context, store *download.Store, manage
 			continue
 		}
 
-		sourceFile := translatePath(clientStatus.Path, sabCfg)
-		sourceDir := filepath.Dir(sourceFile)
+		sourcePath := translatePath(clientStatus.Path, sabCfg)
 
-		// Safety checks:
-		// 1. Path must be under download root
-		// 2. Directory must not BE the download root (don't delete everything!)
-		if sabCfg == nil || sabCfg.LocalPath == "" {
-			log.Warn("no download root configured, skipping cleanup", "download_id", dl.ID)
+		// Validate the cleanup path against our internal knowledge
+		downloadRoot := ""
+		if sabCfg != nil {
+			downloadRoot = sabCfg.LocalPath
+		}
+		validation := validateCleanupPath(sourcePath, downloadRoot, dl.ReleaseName, log)
+
+		if !validation.Safe {
+			log.Warn("cleanup path validation failed",
+				"download_id", dl.ID,
+				"path", sourcePath,
+				"expected_release", dl.ReleaseName,
+				"reason", validation.Reason)
 			if err := store.Transition(dl, download.StatusCleaned); err != nil {
 				log.Error("transition failed", "download_id", dl.ID, "error", err)
 			}
 			continue
 		}
-		if !strings.HasPrefix(sourceDir, sabCfg.LocalPath) || sourceDir == sabCfg.LocalPath {
-			log.Warn("path not safe for cleanup", "download_id", dl.ID, "path", sourceDir, "root", sabCfg.LocalPath)
-			if err := store.Transition(dl, download.StatusCleaned); err != nil {
-				log.Error("transition failed", "download_id", dl.ID, "error", err)
-			}
-			continue
-		}
 
-		// Two-stage cleanup: delete file first, then directory only if empty
-		if err := os.Remove(sourceFile); err != nil && !os.IsNotExist(err) {
-			log.Error("cleanup file failed", "download_id", dl.ID, "path", sourceFile, "error", err)
-		} else {
-			log.Info("cleaned up source file", "download_id", dl.ID, "path", sourceFile)
+		log.Debug("cleanup path validated",
+			"download_id", dl.ID,
+			"source_dir", validation.SourceDir,
+			"source_file", validation.SourceFile,
+			"is_directory", validation.IsDirectory)
 
-			// Only remove directory if it's now empty
+		sourceDir := validation.SourceDir
+		sourceFile := validation.SourceFile
+
+		// Cleanup: if SABnzbd gave us a directory, remove files inside then directory if empty
+		// If it gave us a file, remove file then directory if empty
+		if sourceFile == "" {
+			// Directory mode: remove known media/download files, then directory if empty
 			entries, err := os.ReadDir(sourceDir)
-			if err == nil && len(entries) == 0 {
-				if err := os.Remove(sourceDir); err != nil {
-					log.Warn("cleanup dir failed", "download_id", dl.ID, "path", sourceDir, "error", err)
-				} else {
-					log.Info("cleaned up empty source dir", "download_id", dl.ID, "path", sourceDir)
+			if err != nil {
+				log.Error("cannot read source dir", "download_id", dl.ID, "path", sourceDir, "error", err)
+			} else {
+				for _, entry := range entries {
+					entryPath := filepath.Join(sourceDir, entry.Name())
+					if entry.IsDir() {
+						// Don't recursively delete subdirs - leave them
+						log.Debug("leaving subdir", "download_id", dl.ID, "path", entryPath)
+						continue
+					}
+					// Delete individual files
+					if err := os.Remove(entryPath); err != nil && !os.IsNotExist(err) {
+						log.Warn("cleanup file failed", "download_id", dl.ID, "path", entryPath, "error", err)
+					} else {
+						log.Debug("cleaned up file", "download_id", dl.ID, "path", entryPath)
+					}
 				}
-			} else if err == nil && len(entries) > 0 {
-				log.Info("source dir not empty, leaving", "download_id", dl.ID, "path", sourceDir, "remaining", len(entries))
+				// Remove directory only if now empty
+				entries, err = os.ReadDir(sourceDir)
+				if err == nil && len(entries) == 0 {
+					if err := os.Remove(sourceDir); err != nil {
+						log.Warn("cleanup dir failed", "download_id", dl.ID, "path", sourceDir, "error", err)
+					} else {
+						log.Info("cleaned up source dir", "download_id", dl.ID, "path", sourceDir)
+					}
+				} else if err == nil && len(entries) > 0 {
+					log.Info("source dir not empty after cleanup, leaving", "download_id", dl.ID, "path", sourceDir, "remaining", len(entries))
+				}
+			}
+		} else {
+			// File mode: two-stage cleanup
+			if err := os.Remove(sourceFile); err != nil && !os.IsNotExist(err) {
+				log.Error("cleanup file failed", "download_id", dl.ID, "path", sourceFile, "error", err)
+			} else {
+				log.Info("cleaned up source file", "download_id", dl.ID, "path", sourceFile)
+
+				// Only remove directory if it's now empty
+				entries, err := os.ReadDir(sourceDir)
+				if err == nil && len(entries) == 0 {
+					if err := os.Remove(sourceDir); err != nil {
+						log.Warn("cleanup dir failed", "download_id", dl.ID, "path", sourceDir, "error", err)
+					} else {
+						log.Info("cleaned up empty source dir", "download_id", dl.ID, "path", sourceDir)
+					}
+				} else if err == nil && len(entries) > 0 {
+					log.Info("source dir not empty, leaving", "download_id", dl.ID, "path", sourceDir, "remaining", len(entries))
+				}
 			}
 		}
 
@@ -482,4 +537,122 @@ func processImportedDownloads(ctx context.Context, store *download.Store, manage
 			log.Error("transition failed", "download_id", dl.ID, "error", err)
 		}
 	}
+}
+
+// cleanupPathValidation contains the result of validating a cleanup path.
+type cleanupPathValidation struct {
+	Safe        bool
+	SourceDir   string
+	SourceFile  string // Empty if SABnzbd returned a directory
+	Reason      string // Why it's not safe (if Safe is false)
+	IsDirectory bool   // True if SABnzbd returned a directory path
+}
+
+// validateCleanupPath checks if a path from the download client is safe to clean up.
+// It cross-references the path against our internal knowledge:
+// - The download root from config
+// - The expected release name from our database
+// - Path structure expectations (depth, format)
+func validateCleanupPath(clientPath, downloadRoot, expectedRelease string, log *slog.Logger) cleanupPathValidation {
+	result := cleanupPathValidation{}
+
+	// Check 1: Download root must be configured
+	if downloadRoot == "" {
+		result.Reason = "no download root configured"
+		return result
+	}
+
+	// Normalize paths
+	downloadRoot = filepath.Clean(downloadRoot)
+	clientPath = filepath.Clean(clientPath)
+
+	// Check 2: Path must be under download root
+	if !strings.HasPrefix(clientPath, downloadRoot+string(filepath.Separator)) && clientPath != downloadRoot {
+		result.Reason = fmt.Sprintf("path %q not under download root %q", clientPath, downloadRoot)
+		return result
+	}
+
+	// Check 3: Path must not BE the download root
+	if clientPath == downloadRoot {
+		result.Reason = "path is the download root itself"
+		return result
+	}
+
+	// Determine the release directory (should be one level under root)
+	relPath, err := filepath.Rel(downloadRoot, clientPath)
+	if err != nil {
+		result.Reason = fmt.Sprintf("cannot compute relative path: %v", err)
+		return result
+	}
+
+	// Check 4: Path should be at most one level deep (release dir or file within it)
+	parts := strings.Split(relPath, string(filepath.Separator))
+	if len(parts) == 0 {
+		result.Reason = "invalid relative path"
+		return result
+	}
+	if len(parts) > 2 {
+		result.Reason = fmt.Sprintf("path too deep: %d levels under root (expected 1-2)", len(parts))
+		return result
+	}
+
+	// The first part should be the release directory name
+	releaseDirName := parts[0]
+
+	// Check 5: Release directory name should match expected release
+	// Use case-insensitive comparison and allow for minor variations
+	if expectedRelease != "" {
+		// Normalize for comparison: lowercase, remove common separators
+		normalizeForCompare := func(s string) string {
+			s = strings.ToLower(s)
+			s = strings.ReplaceAll(s, ".", " ")
+			s = strings.ReplaceAll(s, "-", " ")
+			s = strings.ReplaceAll(s, "_", " ")
+			return strings.Join(strings.Fields(s), " ")
+		}
+
+		normalizedDir := normalizeForCompare(releaseDirName)
+		normalizedExpected := normalizeForCompare(expectedRelease)
+
+		// Check if the directory name contains the expected release name
+		// or vice versa (to handle slight naming differences)
+		if !strings.Contains(normalizedDir, normalizedExpected) &&
+			!strings.Contains(normalizedExpected, normalizedDir) &&
+			normalizedDir != normalizedExpected {
+			log.Warn("release name mismatch",
+				"dir_name", releaseDirName,
+				"expected", expectedRelease,
+				"normalized_dir", normalizedDir,
+				"normalized_expected", normalizedExpected)
+			result.Reason = fmt.Sprintf("release name mismatch: dir=%q expected=%q", releaseDirName, expectedRelease)
+			return result
+		}
+	}
+
+	// Determine if it's a file or directory
+	info, err := os.Stat(clientPath)
+	if err != nil {
+		// Path doesn't exist - might already be cleaned
+		result.Reason = fmt.Sprintf("path does not exist: %v", err)
+		return result
+	}
+
+	result.IsDirectory = info.IsDir()
+	if result.IsDirectory {
+		result.SourceDir = clientPath
+		result.SourceFile = ""
+	} else {
+		result.SourceFile = clientPath
+		result.SourceDir = filepath.Dir(clientPath)
+	}
+
+	// Final check: the source directory should be exactly one level under root
+	sourceDirRel, _ := filepath.Rel(downloadRoot, result.SourceDir)
+	if strings.Contains(sourceDirRel, string(filepath.Separator)) {
+		result.Reason = fmt.Sprintf("source dir %q is nested too deep", result.SourceDir)
+		return result
+	}
+
+	result.Safe = true
+	return result
 }

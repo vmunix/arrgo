@@ -1,5 +1,6 @@
--- Add 'cleaned' to downloads status CHECK constraint
--- SQLite doesn't support ALTER CHECK, so we recreate the table
+-- Add 'importing' status to downloads table.
+-- SQLite doesn't support ALTER TABLE to modify CHECK constraints,
+-- so we recreate the table with the updated constraint.
 
 CREATE TABLE downloads_new (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -10,15 +11,15 @@ CREATE TABLE downloads_new (
     status          TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'downloading', 'completed', 'importing', 'failed', 'imported', 'cleaned')),
     release_name    TEXT,
     indexer         TEXT,
-    added_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    completed_at    TIMESTAMP,
-    last_transition_at TIMESTAMP
+    added_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completed_at    DATETIME,
+    last_transition_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(client, client_id)
 );
 
 INSERT INTO downloads_new SELECT * FROM downloads;
 DROP TABLE downloads;
 ALTER TABLE downloads_new RENAME TO downloads;
 
-CREATE INDEX IF NOT EXISTS idx_downloads_content ON downloads(content_id);
-CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
-CREATE INDEX IF NOT EXISTS idx_downloads_client ON downloads(client, client_id);
+CREATE INDEX idx_downloads_content ON downloads(content_id);
+CREATE INDEX idx_downloads_status ON downloads(status);

@@ -225,12 +225,12 @@ func runImportListCmd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("fetch failed: %w", err)
 	}
 
-	// Split into pending (imported) and recent (cleaned)
+	// Split into pending (importing/imported) and recent (cleaned)
 	var pending, recent []DownloadResponse
 	for i := range downloads.Items {
 		dl := &downloads.Items[i]
 		switch dl.Status {
-		case "imported":
+		case "importing", "imported":
 			pending = append(pending, *dl)
 		case "cleaned":
 			// Only include if completed within last 24h

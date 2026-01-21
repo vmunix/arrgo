@@ -26,6 +26,7 @@ const (
 	StatusQueued      Status = "queued"
 	StatusDownloading Status = "downloading"
 	StatusCompleted   Status = "completed"
+	StatusImporting   Status = "importing"
 	StatusFailed      Status = "failed"
 	StatusImported    Status = "imported"
 	StatusCleaned     Status = "cleaned"
