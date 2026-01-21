@@ -114,6 +114,8 @@ func (a *Adapter) checkPending(ctx context.Context) {
 	}
 	a.mu.RUnlock()
 
+	a.logger.Debug("checking pending Plex verifications", "count", len(pendingIDs))
+
 	for _, contentID := range pendingIDs {
 		select {
 		case <-ctx.Done():
