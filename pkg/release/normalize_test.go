@@ -55,3 +55,22 @@ func TestCleanTitle(t *testing.T) {
 		})
 	}
 }
+
+func TestCleanTitleWithRomanNumerals(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"Back to the Future Part II", "back to the future part 2"},
+		{"Rocky III", "rocky 3"},
+		{"The Godfather Part III", "godfather part 3"},
+		{"Fast & Furious", "fast and furious"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := CleanTitle(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
