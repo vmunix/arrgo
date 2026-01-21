@@ -85,17 +85,42 @@ Or use defaults syntax in config: `${VAR:-default_value}`
 ./arrgo status           # Dashboard (connections, pipeline state, problems)
 ./arrgo queue            # Show active downloads
 ./arrgo queue --all      # Include terminal states (cleaned, failed)
-./arrgo import list      # Pending imports and recent completions
+./arrgo queue -s failed  # Filter by state
+
+# Library management
+./arrgo library list              # List all tracked content
+./arrgo library delete <id>       # Remove content from library
+./arrgo library check             # Verify files exist and Plex awareness
+
+# Search and grab
+./arrgo search "Movie Name"              # Search indexers
+./arrgo search -v "Movie Name"           # Verbose (show indexer, group, service)
+./arrgo search "Movie" --grab best       # Auto-grab best result
+./arrgo search "Movie" --grab 1          # Grab specific result by number
+
+# Import
+./arrgo import list                                    # Pending imports and recent completions
+./arrgo import <download_id>                           # Import tracked download
+./arrgo import --manual "/path/to/file.mkv"            # Manual import
+./arrgo import --manual "/path/to/file.mkv" --dry-run  # Preview import
+
+# Verification
 ./arrgo verify           # Reality-check against SABnzbd/filesystem/Plex
-./arrgo plex status      # Check Plex connection
+./arrgo verify <id>      # Verify specific download
+
+# Plex integration
+./arrgo plex status      # Check Plex connection and libraries
 ./arrgo plex list movies # List Plex library contents
 ./arrgo plex search "Movie Name"  # Search Plex
-./arrgo search "Movie Name"       # Search indexers
-./arrgo import --manual "/path/to/file.mkv" --dry-run  # Preview import
-./arrgo parse "Release.Name.2024.1080p.WEB-DL.mkv"     # Parse release (no server needed)
+./arrgo plex scan movies          # Trigger library scan
+
+# Local (no server needed)
+./arrgo parse "Release.Name.2024.1080p.WEB-DL.mkv"     # Parse release name
+./arrgo parse --score hd "Release.Name.1080p.mkv"     # Parse and score against profile
+./arrgo init             # Interactive setup wizard
 ```
 
-Note: Most commands require `arrgod` running. Only `parse` works standalone.
+Note: Most commands require `arrgod` running. `parse` and `init` work standalone.
 
 ## Module Responsibilities
 

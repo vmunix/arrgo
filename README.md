@@ -73,30 +73,47 @@ Environment variables can be referenced with `${VAR_NAME}` syntax.
 arrgod                   # Start API server + background jobs
 arrgod --config FILE     # Use custom config file
 
-# CLI client
-arrgo status             # System dashboard (connections, pipeline, problems)
-arrgo search "Movie"     # Search indexers for releases
+# System status
+arrgo status             # Dashboard (connections, pipeline state, problems)
+arrgo verify             # Reality-check downloads against SABnzbd/filesystem/Plex
+arrgo verify 42          # Verify specific download
+
+# Library management
+arrgo library list       # List all tracked content (movies, series)
+arrgo library delete 42  # Remove content from library
+arrgo library check      # Verify files exist and Plex awareness
+
+# Search and grab
+arrgo search "Movie"              # Search indexers for releases
+arrgo search -v "Movie"           # Verbose (show indexer, group, service)
+arrgo search "Movie" --grab best  # Auto-grab best result
+arrgo search "Movie" --grab 1     # Grab specific result by number
+arrgo search "Movie" --type movie --profile uhd  # Filter by type and profile
+
+# Download queue
 arrgo queue              # Show active downloads
 arrgo queue --all        # Include terminal states (cleaned, failed)
-arrgo queue --state X    # Filter by state
-arrgo import list        # Show pending imports and recent completions
-arrgo verify             # Reality-check downloads against SABnzbd/Plex
-arrgo verify 42          # Verify specific download
-arrgo init               # Interactive setup wizard
-arrgo parse "Release.Name.2024.1080p.mkv"  # Parse release name locally
+arrgo queue -s failed    # Filter by state (queued, downloading, completed, etc.)
 
 # Import content
-arrgo import 42                            # Import tracked download by ID
-arrgo import --manual "/path/to/file.mkv"  # Import file with auto-parsed metadata
+arrgo import list                            # Show pending imports and recent completions
+arrgo import 42                              # Import tracked download by ID
+arrgo import --manual "/path/to/file.mkv"    # Import file with auto-parsed metadata
 arrgo import --manual "/path/to/file.mkv" --dry-run  # Preview without changes
 
 # Plex integration
 arrgo plex status        # Show Plex connection and libraries
-arrgo plex scan movies   # Trigger library scan (case-insensitive names)
-arrgo plex scan --all    # Scan all libraries
 arrgo plex list          # List all Plex libraries
 arrgo plex list movies   # List library contents with tracking status
 arrgo plex search "Matrix"  # Search Plex with tracking status
+arrgo plex scan movies   # Trigger library scan (case-insensitive names)
+arrgo plex scan --all    # Scan all libraries
+
+# Local commands (no server needed)
+arrgo parse "Release.Name.2024.1080p.mkv"      # Parse release name
+arrgo parse --score hd "Release.1080p.mkv"    # Parse and score against profile
+arrgo parse -f releases.txt --json            # Batch parse from file
+arrgo init               # Interactive setup wizard
 
 # Global flags
 --json                   # Output as JSON
