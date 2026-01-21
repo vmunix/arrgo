@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -32,6 +33,10 @@ type Runner struct {
 	downloader  download.Downloader
 	importer    handlers.FileImporter
 	plexChecker plex.Checker // Can be nil if Plex not configured
+
+	// Runtime state
+	bus      *events.Bus
+	eventLog *events.EventLog
 }
 
 // NewRunner creates a new runner.
@@ -49,21 +54,29 @@ func NewRunner(db *sql.DB, cfg Config, logger *slog.Logger, downloader download.
 	}
 }
 
+// Start initializes the runner and returns the event bus.
+// Call Run() after Start() to begin processing.
+func (r *Runner) Start() *events.Bus {
+	r.eventLog = events.NewEventLog(r.db)
+	r.bus = events.NewBus(r.eventLog, r.logger.With("component", "bus"))
+	return r.bus
+}
+
 // Run starts all event-driven components.
-// It blocks until the context is canceled or an error occurs.
+// Must call Start() before Run().
 func (r *Runner) Run(ctx context.Context) error {
-	// Create event bus with persistence
-	eventLog := events.NewEventLog(r.db)
-	bus := events.NewBus(eventLog, r.logger.With("component", "bus"))
-	defer bus.Close()
+	if r.bus == nil {
+		return errors.New("must call Start() before Run()")
+	}
+	defer r.bus.Close()
 
 	// Create stores
 	downloadStore := download.NewStore(r.db)
 
 	// Create handlers
-	downloadHandler := handlers.NewDownloadHandler(bus, downloadStore, r.downloader, r.logger.With("handler", "download"))
-	importHandler := handlers.NewImportHandler(bus, downloadStore, r.importer, r.logger.With("handler", "import"))
-	cleanupHandler := handlers.NewCleanupHandler(bus, downloadStore, handlers.CleanupConfig{
+	downloadHandler := handlers.NewDownloadHandler(r.bus, downloadStore, r.downloader, r.logger.With("handler", "download"))
+	importHandler := handlers.NewImportHandler(r.bus, downloadStore, r.importer, r.logger.With("handler", "import"))
+	cleanupHandler := handlers.NewCleanupHandler(r.bus, downloadStore, handlers.CleanupConfig{
 		DownloadRoot: r.config.DownloadRoot,
 		Enabled:      r.config.CleanupEnabled,
 	}, r.logger.With("handler", "cleanup"))
@@ -86,7 +99,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	})
 
 	// Create adapters
-	sabnzbdAdapter := sabnzbd.New(bus, r.downloader, downloadStore, r.config.PollInterval, r.logger.With("adapter", "sabnzbd"))
+	sabnzbdAdapter := sabnzbd.New(r.bus, r.downloader, downloadStore, r.config.PollInterval, r.logger.With("adapter", "sabnzbd"))
 
 	// Start adapters
 	g.Go(func() error {
@@ -96,7 +109,7 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	// Only start Plex adapter if configured
 	if r.plexChecker != nil {
-		plexAdapter := plex.New(bus, r.plexChecker, r.config.PollInterval, r.logger.With("adapter", "plex"))
+		plexAdapter := plex.New(r.bus, r.plexChecker, r.config.PollInterval, r.logger.With("adapter", "plex"))
 		g.Go(func() error {
 			r.logger.Info("starting plex adapter", "interval", r.config.PollInterval)
 			return plexAdapter.Start(ctx)

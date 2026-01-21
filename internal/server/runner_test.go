@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/importer"
@@ -96,7 +97,6 @@ func setupTestDB(t *testing.T) *sql.DB {
 func TestRunner_StartsAndStops(t *testing.T) {
 	db := setupTestDB(t)
 
-	// Create mock dependencies
 	mockDownloader := &mockDownloader{}
 	mockImporter := &mockImporter{}
 
@@ -106,6 +106,10 @@ func TestRunner_StartsAndStops(t *testing.T) {
 		CleanupEnabled: false,
 	}, nil, mockDownloader, mockImporter, nil)
 
+	// Start returns the bus
+	bus := runner.Start()
+	require.NotNil(t, bus)
+
 	ctx, cancel := context.WithCancel(context.Background())
 
 	done := make(chan error, 1)
@@ -113,15 +117,11 @@ func TestRunner_StartsAndStops(t *testing.T) {
 		done <- runner.Run(ctx)
 	}()
 
-	// Give handlers time to start
 	time.Sleep(50 * time.Millisecond)
-
-	// Cancel and wait for clean shutdown
 	cancel()
 
 	select {
 	case err := <-done:
-		// context.Canceled is expected
 		if err != nil && !errors.Is(err, context.Canceled) {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -153,4 +153,13 @@ func TestRunner_ConfigFields(t *testing.T) {
 	require.Equal(t, cfg.PollInterval, runner.config.PollInterval)
 	require.Equal(t, cfg.DownloadRoot, runner.config.DownloadRoot)
 	require.True(t, runner.config.CleanupEnabled)
+}
+
+func TestRunner_RunWithoutStart(t *testing.T) {
+	db := setupTestDB(t)
+	runner := NewRunner(db, Config{}, nil, &mockDownloader{}, &mockImporter{}, nil)
+
+	err := runner.Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must call Start()")
 }
