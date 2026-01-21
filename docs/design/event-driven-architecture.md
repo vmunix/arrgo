@@ -47,6 +47,90 @@
                            └─────────────────┘
 ```
 
+## Scope: What Changes vs What Stays
+
+Not everything becomes event-driven. The key distinction:
+
+- **Event-Driven**: Long-running workflows with state changes (download lifecycle, import, cleanup)
+- **Request-Response**: Synchronous queries that return immediate results (search, parse, lookup)
+
+### Components That Stay Request-Response (Unchanged)
+
+| Component | Location | Reason |
+|-----------|----------|--------|
+| **Release Parser** | `pkg/release/` | Pure function: string → parsed info. No state. |
+| **Searcher** | `internal/search/` | Query → immediate results. No state changes. |
+| **Scorer** | `internal/search/scorer.go` | Pure scoring logic. No side effects. |
+| **IndexerPool** | `internal/search/indexer.go` | Aggregates indexer responses. Stateless. |
+| **Newznab Client** | `pkg/newznab/` | HTTP client for indexers. Stateless. |
+| **CLI Commands** | `cmd/arrgo/` | Thin client calling API. No changes needed. |
+| **Compat Layer** | `internal/api/compat/` | Translates Radarr/Sonarr API. Emits events at grab boundary. |
+
+### The Boundary: Search → Grab
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 REQUEST-RESPONSE (synchronous)                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  User ──→ POST /search ──→ Searcher ──→ IndexerPool ──→ Results │
+│                               │                                  │
+│                               ↓                                  │
+│                        release.Parse()                           │
+│                        scorer.Score()                            │
+│                               │                                  │
+│                               ↓                                  │
+│                        Return JSON results                       │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+                               │
+                               │ User selects result, clicks "grab"
+                               ↓
+┌─────────────────────────────────────────────────────────────────┐
+│                   EVENT-DRIVEN (asynchronous)                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  POST /grab ──→ Publish(GrabRequested) ──→ Return 202 Accepted  │
+│                         │                                        │
+│                         ↓                                        │
+│               DownloadHandler processes event                    │
+│                         │                                        │
+│                         ↓                                        │
+│               DownloadCreated → DownloadProgressed → ...         │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Components That Become Event-Driven
+
+| Component | Current Location | New Location | Change |
+|-----------|-----------------|--------------|--------|
+| **Download Manager** | `internal/download/manager.go` | `internal/handlers/download.go` | Becomes event handler |
+| **Poller (completed)** | `cmd/arrgod/server.go` | `internal/adapters/sabnzbd/` | Becomes adapter emitting events |
+| **Poller (import)** | `cmd/arrgod/server.go` | `internal/handlers/import.go` | Becomes event handler |
+| **Poller (cleanup)** | `cmd/arrgod/server.go` | `internal/handlers/cleanup.go` | Becomes event handler |
+| **Plex verification** | `cmd/arrgod/server.go` | `internal/adapters/plex/` | Becomes adapter emitting events |
+| **Importer** | `internal/importer/` | `internal/importer/` | Called by ImportHandler, no longer checks state |
+
+### Optional: Audit Events
+
+For logging/metrics (not flow control), we can optionally emit:
+
+```go
+// Emitted after search completes - useful for analytics
+type SearchPerformed struct {
+    BaseEvent
+    Query       string   `json:"query"`
+    Type        string   `json:"type"`         // "movie" or "series"
+    Profile     string   `json:"profile"`
+    ResultCount int      `json:"result_count"`
+    Indexers    []string `json:"indexers"`
+    DurationMs  int      `json:"duration_ms"`
+}
+```
+
+These are fire-and-forget, don't affect flow, and can be added later.
+
 ## Core Components
 
 ### 1. Event Bus (`pkg/events/bus.go`)
