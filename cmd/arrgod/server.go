@@ -106,6 +106,13 @@ func runServer(configPath string) error {
 	if _, err := db.Exec(migrations.Migration003DownloadsStatusCleaned); err != nil {
 		return fmt.Errorf("migrate 003: %w", err)
 	}
+	// Run migration 005 - events table
+	if _, err := db.Exec(migrations.Migration005Events); err != nil {
+		// Ignore "table already exists" for idempotent migrations
+		if !strings.Contains(err.Error(), "already exists") {
+			return fmt.Errorf("migrate 005: %w", err)
+		}
+	}
 
 	// === Stores (always created) ===
 	libraryStore := library.NewStore(db)
