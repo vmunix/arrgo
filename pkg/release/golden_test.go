@@ -1670,6 +1670,31 @@ var goldenCases = []struct {
 		year:       2024,
 		group:      "GROUP",
 	},
+
+	// === Service Pattern Variants (new cases) ===
+	{
+		name:       "DSNY service code",
+		input:      "Movie.Name.2024.1080p.DSNY.WEB-DL.x264-GROUP",
+		resolution: Resolution1080p,
+		source:     SourceWEBDL,
+		codec:      CodecX264,
+		service:    "Disney+",
+		title:      "Movie Name",
+		year:       2024,
+		group:      "GROUP",
+	},
+	{
+		name:       "APTV service code",
+		input:      "Movie.Name.2024.2160p.APTV.WEB-DL.DV.x265-GROUP",
+		resolution: Resolution2160p,
+		source:     SourceWEBDL,
+		codec:      CodecX265,
+		hdr:        DolbyVision,
+		service:    "Apple TV+",
+		title:      "Movie Name",
+		year:       2024,
+		group:      "GROUP",
+	},
 }
 
 func TestParse_Golden(t *testing.T) {

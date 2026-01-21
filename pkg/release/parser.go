@@ -47,6 +47,7 @@ var serviceMap = map[string]string{
 	"amzn":      "Amazon",
 	"amazon":    "Amazon",
 	"dsnp":      "Disney+",
+	"dsny":      "Disney+",
 	"disney":    "Disney+",
 	"atvp":      "Apple TV+",
 	"aptv":      "Apple TV+",
