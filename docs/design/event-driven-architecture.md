@@ -2,6 +2,24 @@
 
 > **Purpose**: Refactor arrgo's state management to an event-driven architecture for robust coordination of external services, real-time UI updates, and future extensibility.
 
+## Design Decisions
+
+Key decisions made during design review:
+
+| Aspect | Decision | Rationale |
+|--------|----------|-----------|
+| **Crash recovery** | No event replay - external systems are source of truth | SABnzbd/Plex still have state; next poll cycle rediscovers |
+| **State updates** | Handlers update state directly, then emit events | Events are notifications, not source of truth |
+| **Per-download locking** | Lock in ImportHandler | Handles races from CLI + adapter + API |
+| **Event types** | All 13+ from day one | Debugging value (e.g., "import started but never completed") |
+| **Backpressure** | Drop with warning, large buffers | Personal media library scale; buffers won't fill |
+| **Plex adapter** | Separate adapter | Consistent mental model: adapters poll external services |
+| **Compat layer** | Publishes GrabRequested directly | No extra hops; same process |
+| **Event retention** | Prune after 90 days | Keeps table lean; archaeology beyond 90 days uses logs |
+| **Migration** | Big bang cutover | Personal project; can test e2e before deploying |
+| **Package location** | `internal/events/` | Event types are arrgo-specific |
+| **Event versioning** | Don't worry about it | 90-day prune handles schema drift |
+
 ## Problem Statement
 
 ### Current Issues
@@ -64,7 +82,7 @@ Not everything becomes event-driven. The key distinction:
 | **IndexerPool** | `internal/search/indexer.go` | Aggregates indexer responses. Stateless. |
 | **Newznab Client** | `pkg/newznab/` | HTTP client for indexers. Stateless. |
 | **CLI Commands** | `cmd/arrgo/` | Thin client calling API. No changes needed. |
-| **Compat Layer** | `internal/api/compat/` | Translates Radarr/Sonarr API. Emits events at grab boundary. |
+| **Compat Layer** | `internal/api/compat/` | Translates Radarr/Sonarr API. Publishes `GrabRequested` directly to bus. |
 
 ### The Boundary: Search → Grab
 
@@ -133,7 +151,7 @@ These are fire-and-forget, don't affect flow, and can be added later.
 
 ## Core Components
 
-### 1. Event Bus (`pkg/events/bus.go`)
+### 1. Event Bus (`internal/events/bus.go`)
 
 Central pub/sub mechanism with persistence.
 
@@ -188,16 +206,13 @@ func (b *Bus) SubscribeAll(bufferSize int) <-chan Event
 // SubscribeEntity returns events for a specific entity (e.g., download ID)
 func (b *Bus) SubscribeEntity(entityType string, entityID int64, bufferSize int) <-chan Event
 
-// Replay replays events from the log (for crash recovery)
-func (b *Bus) Replay(ctx context.Context, since time.Time, handler func(Event) error) error
-
 // Close shuts down all subscribers
 func (b *Bus) Close() error
 ```
 
-### 2. Event Log (`pkg/events/log.go`)
+### 2. Event Log (`internal/events/log.go`)
 
-SQLite-backed event persistence for durability and replay.
+SQLite-backed event persistence for audit trail and debugging. Events are pruned after 90 days.
 
 ```go
 // EventLog persists events to SQLite
@@ -227,7 +242,7 @@ func (l *EventLog) ForEntity(entityType string, entityID int64) ([]Event, error)
 func (l *EventLog) Prune(olderThan time.Duration) (int64, error)  // Cleanup old events
 ```
 
-### 3. Event Types (`pkg/events/types.go`)
+### 3. Event Types (`internal/events/types.go`)
 
 All domain events with their payloads.
 
@@ -636,56 +651,37 @@ func (a *Adapter) Start(ctx context.Context) error {
 }
 ```
 
-### 6. State Projection (`internal/projection/`)
+### 6. State Updates
 
-Derives current state from events (optional optimization).
+Handlers update database state directly, then emit events. Events are notifications ("this happened"), not the source of truth. This keeps state updates atomic with the work being done.
 
 ```go
-// DownloadState projects current download state from events
-type DownloadState struct {
-    store *download.Store
-    bus   *events.Bus
-}
+// In ImportHandler.handleDownloadCompleted:
+func (h *ImportHandler) handleDownloadCompleted(ctx context.Context, e *events.DownloadCompleted) {
+    // ... do import work ...
 
-func (p *DownloadState) Start(ctx context.Context) error {
-    // Subscribe to all download-related events
-    events := p.bus.Subscribe("download.*", 1000)
+    // Update state directly
+    h.store.Transition(dl, download.StatusImported)
 
-    for {
-        select {
-        case e := <-events:
-            p.apply(e)
-        case <-ctx.Done():
-            return ctx.Err()
-        }
-    }
-}
-
-func (p *DownloadState) apply(e events.Event) {
-    switch e := e.(type) {
-    case *events.DownloadCreated:
-        // Already in DB from handler
-    case *events.DownloadProgressed:
-        p.store.UpdateProgress(e.DownloadID, e.Progress, e.ETA)
-    case *events.DownloadCompleted:
-        p.store.Transition(e.DownloadID, download.StatusCompleted)
-    case *events.ImportStarted:
-        p.store.Transition(e.DownloadID, download.StatusImporting)
-    case *events.ImportCompleted:
-        p.store.Transition(e.DownloadID, download.StatusImported)
-    case *events.CleanupCompleted:
-        p.store.Transition(e.DownloadID, download.StatusCleaned)
-    case *events.DownloadFailed, *events.ImportFailed:
-        p.store.Transition(e.EntityID(), download.StatusFailed)
-    }
+    // Then emit event (notification for TUI, audit trail, other handlers)
+    h.bus.Publish(ctx, &events.ImportCompleted{...})
 }
 ```
+
+This means each handler owns its state transitions:
+
+| Handler | Updates status to |
+|---------|-------------------|
+| DownloadHandler | Queued |
+| SABnzbd Adapter | (emits DownloadCompleted, doesn't update status) |
+| ImportHandler | Importing → Imported (or Failed) |
+| CleanupHandler | Cleaned |
 
 ## Server Startup
 
 ```go
 func (s *Server) Run(ctx context.Context) error {
-    // Create event bus
+    // Create event bus with persistence for audit trail
     eventLog := events.NewEventLog(s.db)
     bus := events.NewBus(eventLog, s.logger)
 
@@ -698,15 +694,6 @@ func (s *Server) Run(ctx context.Context) error {
     sabnzbdAdapter := adapters.NewSABnzbdAdapter(bus, s.sabnzbd, s.downloadStore, 30*time.Second)
     plexAdapter := adapters.NewPlexAdapter(bus, s.plex, s.library, 60*time.Second)
 
-    // Create state projection
-    downloadProjection := projection.NewDownloadState(s.downloadStore, bus)
-
-    // Replay any unprocessed events from crash recovery
-    bus.Replay(ctx, s.lastShutdown, func(e events.Event) error {
-        // Re-process events that weren't fully handled
-        return nil
-    })
-
     // Start all components
     g, ctx := errgroup.WithContext(ctx)
 
@@ -715,8 +702,21 @@ func (s *Server) Run(ctx context.Context) error {
     g.Go(func() error { return cleanupHandler.Start(ctx) })
     g.Go(func() error { return sabnzbdAdapter.Start(ctx) })
     g.Go(func() error { return plexAdapter.Start(ctx) })
-    g.Go(func() error { return downloadProjection.Start(ctx) })
     g.Go(func() error { return s.httpServer.Serve(ctx) })
+
+    // Periodic event log cleanup (90 days)
+    g.Go(func() error {
+        ticker := time.NewTicker(24 * time.Hour)
+        defer ticker.Stop()
+        for {
+            select {
+            case <-ticker.C:
+                eventLog.Prune(90 * 24 * time.Hour)
+            case <-ctx.Done():
+                return ctx.Err()
+            }
+        }
+    })
 
     return g.Wait()
 }
@@ -748,6 +748,26 @@ func (h *GrabHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     json.NewEncoder(w).Encode(map[string]string{"status": "accepted"})
 }
 ```
+
+## Compat Layer Integration (Overseerr)
+
+The compat layer publishes `GrabRequested` directly to the bus (no HTTP hop):
+
+```
+Overseerr                    arrgo compat              Bus         DownloadHandler    SABnzbd
+    │                            │                      │                │              │
+    ├─POST /api/v3/movie────────►│                      │                │              │
+    │  {title, search:true}      │                      │                │              │
+    │                            ├─add to library       │                │              │
+    │                            ├─search indexers      │                │              │
+    │                            ├─bus.Publish(────────►│                │              │
+    │                            │   GrabRequested)     ├───────────────►│              │
+    │◄──200 {movie}──────────────┤                      │                ├─POST /api───►│
+    │                            │                      │                │◄──nzo_id─────┤
+    │                            │                      │◄─DownloadCreated──┤           │
+```
+
+Note: Compat returns to Overseerr before the grab completes. Overseerr only needs confirmation the movie was added.
 
 ## TUI Integration (Future)
 
@@ -781,21 +801,23 @@ func (t *TUI) handleEvent(e events.Event) {
 
 ## Migration Strategy
 
+**Approach:** Big bang cutover. Build all event-driven components, test end-to-end, then swap out the old poller in one commit.
+
 ### Phase 1: Event Bus Core
-1. Create `pkg/events/` package
+1. Create `internal/events/` package
 2. Implement Bus, EventLog, BaseEvent
 3. Add events table migration
 4. Unit tests for bus and log
 
 ### Phase 2: Event Types
-1. Define all event types in `pkg/events/types.go`
+1. Define all event types in `internal/events/types.go`
 2. Implement JSON marshaling/unmarshaling
 3. Event type registry for deserialization
 
 ### Phase 3: Handlers
 1. Create `internal/handlers/` package
 2. Implement DownloadHandler (extract from current manager)
-3. Implement ImportHandler (extract from current poller)
+3. Implement ImportHandler (extract from current poller) - includes per-download locking
 4. Implement CleanupHandler (extract from current poller)
 5. Per-handler unit tests with mock bus
 
@@ -805,85 +827,81 @@ func (t *TUI) handleEvent(e events.Event) {
 3. Implement PlexAdapter (extract from current poller)
 4. Per-adapter integration tests
 
-### Phase 5: Wire Up
+### Phase 5: Wire Up & Cutover
 1. Update server.go to use event-driven components
 2. Update API handlers to emit events
-3. Remove old poller code
-4. Integration tests for full flow
-
-### Phase 6: State Projection
-1. Implement download state projection
-2. Migrate status updates to projection
-3. Remove direct status updates from handlers
+3. Update compat layer to publish GrabRequested directly
+4. Remove old poller code entirely
+5. Integration tests for full flow
 
 ## Testing Strategy
 
 ### Unit Tests
-- Bus: publish/subscribe, buffering, close
+- Bus: publish/subscribe, buffering, close, backpressure (drop with warning)
 - EventLog: append, query, prune
-- Handlers: mock bus, verify events emitted
+- Handlers: mock bus, verify events emitted, verify state updated
 - Adapters: mock clients, verify events emitted
 
 ### Integration Tests
 - Full flow: GrabRequested → DownloadCreated → ... → CleanupCompleted
-- Crash recovery: events replayed correctly
-- Concurrent operations: no races
+- Concurrent operations: CLI import + adapter completion = no races (per-download lock)
+- Event persistence: events queryable after flow completes
 
 ### Property Tests
 - Event ordering preserved
-- No duplicate processing
+- No duplicate processing (per-download lock)
 - State consistency after any event sequence
 
 ## File Structure
 
 ```
-pkg/
-└── events/
-    ├── bus.go           # Event bus implementation
-    ├── bus_test.go
-    ├── log.go           # SQLite event log
-    ├── log_test.go
-    ├── types.go         # All event type definitions
-    └── types_test.go
-
 internal/
+├── events/
+│   ├── bus.go           # Event bus implementation
+│   ├── bus_test.go
+│   ├── log.go           # SQLite event log
+│   ├── log_test.go
+│   ├── types.go         # All event type definitions
+│   └── types_test.go
 ├── handlers/
 │   ├── handler.go       # Handler interface
 │   ├── download.go      # Download lifecycle handler
 │   ├── download_test.go
-│   ├── import.go        # Import handler
+│   ├── import.go        # Import handler (with per-download lock)
 │   ├── import_test.go
 │   ├── cleanup.go       # Cleanup handler
 │   └── cleanup_test.go
-├── adapters/
-│   ├── adapter.go       # Adapter interface
-│   ├── sabnzbd/
-│   │   ├── adapter.go
-│   │   └── adapter_test.go
-│   └── plex/
-│       ├── adapter.go
-│       └── adapter_test.go
-└── projection/
-    ├── download.go      # Download state projection
-    └── download_test.go
+└── adapters/
+    ├── adapter.go       # Adapter interface
+    ├── sabnzbd/
+    │   ├── adapter.go
+    │   └── adapter_test.go
+    └── plex/
+        ├── adapter.go
+        └── adapter_test.go
 ```
 
 ## Success Criteria
 
-1. **No race conditions**: Concurrent imports impossible due to per-entity locking
-2. **Clear audit trail**: All state changes recorded as events
-3. **Crash recovery**: Server restart replays unprocessed events
+1. **No race conditions**: Concurrent imports impossible due to per-entity locking in ImportHandler
+2. **Clear audit trail**: All state changes recorded as events (queryable for debugging)
+3. **Graceful restart**: External systems (SABnzbd, Plex) are source of truth; next poll cycle rediscovers state
 4. **Real-time ready**: TUI can subscribe to event stream
 5. **Extensible**: Adding BitTorrent = new adapter only
 6. **Testable**: Each component testable in isolation
 7. **All existing functionality preserved**: CLI, API, compat layer unchanged
 
-## Open Questions
+## Resolved Questions
 
-1. **Event retention**: How long to keep events? 7 days? 30 days? Configurable?
-2. **Backpressure**: What if subscriber falls behind? Drop events? Block publisher?
-3. **Event versioning**: How to handle event schema changes over time?
-4. **Distributed future**: If arrgo ever needs multiple instances, do we need a real message broker?
+| Question | Decision |
+|----------|----------|
+| **Event retention** | Prune after 90 days. Keeps table lean. |
+| **Backpressure** | Drop with warning. Personal media scale; buffers won't fill. |
+| **Event versioning** | Don't worry about it. 90-day prune handles schema drift. |
+
+## Future Considerations
+
+1. **Distributed deployment**: If arrgo ever needs multiple instances, may need a real message broker. Current design uses in-process channels which don't scale horizontally. Cross that bridge when we get there.
 
 ## References
 
