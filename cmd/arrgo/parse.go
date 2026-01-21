@@ -52,6 +52,7 @@ type ParseResultJSON struct {
 	Proper           bool         `json:"proper,omitempty"`
 	Repack           bool         `json:"repack,omitempty"`
 	CleanTitle       string       `json:"clean_title"`
+	MatchConfidence  string       `json:"match_confidence,omitempty"`
 	Score            int          `json:"score,omitempty"`
 	Profile          string       `json:"profile,omitempty"`
 	Breakdown        []ScoreBonus `json:"breakdown,omitempty"`
@@ -93,6 +94,11 @@ func (r ParseResult) toJSON() ParseResultJSON {
 	// Set Audio only if present
 	if info.Audio != release.AudioUnknown {
 		result.Audio = info.Audio.String()
+	}
+
+	// Set match confidence if not none
+	if info.MatchConfidence != release.ConfidenceNone {
+		result.MatchConfidence = info.MatchConfidence.String()
 	}
 
 	return result
@@ -608,6 +614,9 @@ func printHumanReadable(result ParseResult) {
 		fmt.Printf("Repack:      yes\n")
 	}
 	fmt.Printf("CleanTitle:  %s\n", valueOrEmpty(info.CleanTitle))
+	if info.MatchConfidence != release.ConfidenceNone {
+		fmt.Printf("Confidence:  %s\n", info.MatchConfidence.String())
+	}
 
 	// Print score breakdown if available
 	if result.Profile != "" && len(result.Breakdown) > 0 {
