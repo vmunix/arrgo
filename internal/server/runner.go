@@ -127,6 +127,13 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	// Event log pruning (every 24 hours, keep 90 days)
 	g.Go(func() error {
+		// Prune on startup
+		if pruned, err := r.eventLog.Prune(90 * 24 * time.Hour); err != nil {
+			r.logger.Error("failed to prune event log on startup", "error", err)
+		} else if pruned > 0 {
+			r.logger.Info("pruned old events on startup", "count", pruned)
+		}
+
 		ticker := time.NewTicker(24 * time.Hour)
 		defer ticker.Stop()
 
