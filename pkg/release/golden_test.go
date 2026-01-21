@@ -1624,6 +1624,52 @@ var goldenCases = []struct {
 		year:       2000,
 		group:      "PTer",
 	},
+
+	// === Audio Pattern Variants (new cases) ===
+	{
+		name:       "DD.5.1 with dots",
+		input:      "Movie.Name.2024.1080p.BluRay.DD.5.1.x264-GROUP",
+		resolution: Resolution1080p,
+		source:     SourceBluRay,
+		codec:      CodecX264,
+		audio:      AudioAC3,
+		title:      "Movie Name",
+		year:       2024,
+		group:      "GROUP",
+	},
+	{
+		name:       "DD5.1 no separator",
+		input:      "Movie.Name.2024.1080p.BluRay.DD5.1.x264-GROUP",
+		resolution: Resolution1080p,
+		source:     SourceBluRay,
+		codec:      CodecX264,
+		audio:      AudioAC3,
+		title:      "Movie Name",
+		year:       2024,
+		group:      "GROUP",
+	},
+	{
+		name:       "DDP.5.1 with dots",
+		input:      "Movie.Name.2024.1080p.WEB-DL.DDP.5.1.x265-GROUP",
+		resolution: Resolution1080p,
+		source:     SourceWEBDL,
+		codec:      CodecX265,
+		audio:      AudioEAC3,
+		title:      "Movie Name",
+		year:       2024,
+		group:      "GROUP",
+	},
+	{
+		name:       "TrueHD.Atmos with dot",
+		input:      "Movie.Name.2024.2160p.UHD.BluRay.TrueHD.Atmos.x265-GROUP",
+		resolution: Resolution2160p,
+		source:     SourceBluRay,
+		codec:      CodecX265,
+		audio:      AudioAtmos,
+		title:      "Movie Name",
+		year:       2024,
+		group:      "GROUP",
+	},
 }
 
 func TestParse_Golden(t *testing.T) {
