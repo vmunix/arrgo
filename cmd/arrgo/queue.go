@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,10 +15,45 @@ var queueCmd = &cobra.Command{
 	RunE:  runQueueCmd,
 }
 
+var queueCancelCmd = &cobra.Command{
+	Use:   "cancel <id>",
+	Short: "Cancel a download",
+	Long:  "Cancels the download and removes it from the download client. Use --delete to also remove downloaded files.",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runQueueCancel,
+}
+
 func init() {
 	rootCmd.AddCommand(queueCmd)
 	queueCmd.Flags().BoolP("all", "a", false, "Include terminal states (cleaned, failed)")
 	queueCmd.Flags().StringP("state", "s", "", "Filter by state (queued, downloading, completed, importing, imported, cleaned, failed)")
+
+	queueCancelCmd.Flags().BoolP("delete", "d", false, "Also delete downloaded files")
+	queueCmd.AddCommand(queueCancelCmd)
+}
+
+func runQueueCancel(cmd *cobra.Command, args []string) error {
+	id, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid ID: %s", args[0])
+	}
+
+	deleteFiles := false
+	if cmd != nil {
+		deleteFiles, _ = cmd.Flags().GetBool("delete")
+	}
+
+	client := NewClient(serverURL)
+	if err := client.CancelDownload(id, deleteFiles); err != nil {
+		return fmt.Errorf("cancel failed: %w", err)
+	}
+
+	if deleteFiles {
+		fmt.Printf("Download %d canceled (files deleted)\n", id)
+	} else {
+		fmt.Printf("Download %d canceled\n", id)
+	}
+	return nil
 }
 
 func runQueueCmd(cmd *cobra.Command, args []string) error {

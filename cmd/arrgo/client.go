@@ -64,6 +64,26 @@ func (c *Client) post(path string, body any, result any) error {
 	return nil
 }
 
+func (c *Client) delete(path string) error {
+	req, err := http.NewRequest(http.MethodDelete, c.baseURL+path, nil)
+	if err != nil {
+		return fmt.Errorf("request creation failed: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server error %d: %s", resp.StatusCode, string(body))
+	}
+
+	return nil
+}
+
 // API response types (mirror server types)
 
 type StatusResponse struct {
@@ -392,4 +412,13 @@ func (c *Client) Verify(id *int64) (*VerifyResponse, error) {
 		return nil, err
 	}
 	return &resp, nil
+}
+
+// CancelDownload cancels a download and optionally deletes its files.
+func (c *Client) CancelDownload(id int64, deleteFiles bool) error {
+	path := fmt.Sprintf("/api/v1/downloads/%d", id)
+	if deleteFiles {
+		path += "?delete_files=true"
+	}
+	return c.delete(path)
 }
