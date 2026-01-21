@@ -74,6 +74,13 @@ func (h *ImportHandler) handleDownloadCompleted(ctx context.Context, e *events.D
 		return
 	}
 
+	// Transition to importing status
+	if err := h.store.Transition(dl, download.StatusImporting); err != nil {
+		h.Logger().Error("failed to transition to importing", "download_id", e.DownloadID, "error", err)
+		h.publishImportFailed(ctx, e.DownloadID, err.Error())
+		return
+	}
+
 	// Emit ImportStarted event
 	if err := h.Bus().Publish(ctx, &events.ImportStarted{
 		BaseEvent:  events.NewBaseEvent(events.EventImportStarted, events.EntityDownload, e.DownloadID),
@@ -94,6 +101,12 @@ func (h *ImportHandler) handleDownloadCompleted(ctx context.Context, e *events.D
 		h.Logger().Error("import failed", "download_id", e.DownloadID, "error", err)
 		h.publishImportFailed(ctx, e.DownloadID, err.Error())
 		return
+	}
+
+	// Transition to imported status
+	if err := h.store.Transition(dl, download.StatusImported); err != nil {
+		h.Logger().Error("failed to transition to imported", "download_id", e.DownloadID, "error", err)
+		// Don't return - the import succeeded, just log the transition failure
 	}
 
 	// Emit ImportCompleted event
