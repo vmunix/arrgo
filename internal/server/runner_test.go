@@ -101,9 +101,10 @@ func TestRunner_StartsAndStops(t *testing.T) {
 	mockImporter := &mockImporter{}
 
 	runner := NewRunner(db, Config{
-		PollInterval:   100 * time.Millisecond,
-		DownloadRoot:   "/tmp/downloads",
-		CleanupEnabled: false,
+		SABnzbdPollInterval: 100 * time.Millisecond,
+		PlexPollInterval:    100 * time.Millisecond,
+		DownloadRoot:        "/tmp/downloads",
+		CleanupEnabled:      false,
 	}, nil, mockDownloader, mockImporter, nil)
 
 	// Start returns the bus
@@ -143,14 +144,16 @@ func TestRunner_ConfigFields(t *testing.T) {
 	db := setupTestDB(t)
 
 	cfg := Config{
-		PollInterval:   5 * time.Second,
-		DownloadRoot:   "/downloads",
-		CleanupEnabled: true,
+		SABnzbdPollInterval: 5 * time.Second,
+		PlexPollInterval:    60 * time.Second,
+		DownloadRoot:        "/downloads",
+		CleanupEnabled:      true,
 	}
 
 	runner := NewRunner(db, cfg, nil, &mockDownloader{}, &mockImporter{}, nil)
 
-	require.Equal(t, cfg.PollInterval, runner.config.PollInterval)
+	require.Equal(t, cfg.SABnzbdPollInterval, runner.config.SABnzbdPollInterval)
+	require.Equal(t, cfg.PlexPollInterval, runner.config.PlexPollInterval)
 	require.Equal(t, cfg.DownloadRoot, runner.config.DownloadRoot)
 	require.True(t, runner.config.CleanupEnabled)
 }

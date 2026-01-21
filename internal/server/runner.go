@@ -18,7 +18,8 @@ import (
 
 // Config for the event-driven server.
 type Config struct {
-	PollInterval         time.Duration
+	SABnzbdPollInterval  time.Duration // How often to poll SABnzbd (default: 5s)
+	PlexPollInterval     time.Duration // How often to poll Plex (default: 60s)
 	DownloadRoot         string
 	DownloadRemotePath   string // Path prefix as seen by SABnzbd
 	DownloadLocalPath    string // Local path prefix
@@ -102,22 +103,22 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	// Create adapters
 	sabnzbdAdapter := sabnzbd.New(r.bus, r.downloader, downloadStore, sabnzbd.Config{
-		Interval:   r.config.PollInterval,
+		Interval:   r.config.SABnzbdPollInterval,
 		RemotePath: r.config.DownloadRemotePath,
 		LocalPath:  r.config.DownloadLocalPath,
 	}, r.logger.With("adapter", "sabnzbd"))
 
 	// Start adapters
 	g.Go(func() error {
-		r.logger.Info("starting sabnzbd adapter", "interval", r.config.PollInterval)
+		r.logger.Info("starting sabnzbd adapter", "interval", r.config.SABnzbdPollInterval)
 		return sabnzbdAdapter.Start(ctx)
 	})
 
 	// Only start Plex adapter if configured
 	if r.plexChecker != nil {
-		plexAdapter := plex.New(r.bus, r.plexChecker, r.config.PollInterval, r.logger.With("adapter", "plex"))
+		plexAdapter := plex.New(r.bus, r.plexChecker, r.config.PlexPollInterval, r.logger.With("adapter", "plex"))
 		g.Go(func() error {
-			r.logger.Info("starting plex adapter", "interval", r.config.PollInterval)
+			r.logger.Info("starting plex adapter", "interval", r.config.PlexPollInterval)
 			return plexAdapter.Start(ctx)
 		})
 	}

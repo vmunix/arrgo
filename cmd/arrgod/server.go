@@ -201,7 +201,8 @@ func runServer(configPath string) error {
 		}
 
 		runner := server.NewRunner(db, server.Config{
-			PollInterval:         30 * time.Second,
+			SABnzbdPollInterval:  sabPollInterval(cfg),
+			PlexPollInterval:     plexPollInterval(cfg),
 			DownloadRoot:         sabDownloadRoot(cfg),
 			DownloadRemotePath:   sabRemotePath(cfg),
 			DownloadLocalPath:    sabLocalPath(cfg),
@@ -377,6 +378,22 @@ func sabLocalPath(cfg *config.Config) string {
 		return cfg.Downloaders.SABnzbd.LocalPath
 	}
 	return ""
+}
+
+// sabPollInterval returns the SABnzbd poll interval, defaulting to 5 seconds.
+func sabPollInterval(cfg *config.Config) time.Duration {
+	if cfg.Downloaders.SABnzbd != nil && cfg.Downloaders.SABnzbd.PollInterval > 0 {
+		return cfg.Downloaders.SABnzbd.PollInterval
+	}
+	return 5 * time.Second
+}
+
+// plexPollInterval returns the Plex poll interval, defaulting to 60 seconds.
+func plexPollInterval(cfg *config.Config) time.Duration {
+	if cfg.Notifications.Plex != nil && cfg.Notifications.Plex.PollInterval > 0 {
+		return cfg.Notifications.Plex.PollInterval
+	}
+	return 60 * time.Second
 }
 
 // plexCheckerAdapter adapts PlexClient to the plex.Checker interface.
