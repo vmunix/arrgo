@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/vmunix/arrgo/internal/download"
+	"github.com/vmunix/arrgo/internal/events"
 	"github.com/vmunix/arrgo/internal/library"
 	"github.com/vmunix/arrgo/internal/search"
 	"github.com/vmunix/arrgo/internal/tmdb"
@@ -143,6 +144,7 @@ type Server struct {
 	searcher  *search.Searcher
 	manager   *download.Manager
 	tmdb      *tmdb.Client
+	bus       *events.Bus // Optional event bus for event-driven grabs
 	log       *slog.Logger
 }
 
@@ -169,6 +171,11 @@ func (s *Server) SetManager(manager *download.Manager) {
 // SetTMDB configures the TMDB client (optional).
 func (s *Server) SetTMDB(client *tmdb.Client) {
 	s.tmdb = client
+}
+
+// SetBus configures the event bus for event-driven grabs (optional).
+func (s *Server) SetBus(bus *events.Bus) {
+	s.bus = bus
 }
 
 // RegisterRoutes registers compatibility API routes.
@@ -970,7 +977,8 @@ func (s *Server) listLanguageProfiles(w http.ResponseWriter, r *http.Request) {
 
 // searchAndGrab performs a background search and grabs the best result.
 func (s *Server) searchAndGrab(contentID int64, title string, year int, profile string) {
-	if s.searcher == nil || s.manager == nil {
+	if s.searcher == nil {
+		s.log.Warn("no searcher configured, cannot search")
 		return
 	}
 	ctx := context.Background()
@@ -982,17 +990,37 @@ func (s *Server) searchAndGrab(contentID int64, title string, year int, profile 
 
 	result, err := s.searcher.Search(ctx, query, profile)
 	if err != nil || len(result.Releases) == 0 {
+		s.log.Warn("search failed or no results", "title", title, "year", year)
 		return
 	}
 
 	// Grab the best match (first result after scoring/sorting)
 	best := result.Releases[0]
-	_, _ = s.manager.Grab(ctx, contentID, nil, best.DownloadURL, best.Title, best.Indexer)
+
+	// Use event bus if available, otherwise fall back to manager
+	if s.bus != nil {
+		if err := s.bus.Publish(ctx, &events.GrabRequested{
+			BaseEvent:   events.NewBaseEvent(events.EventGrabRequested, events.EntityDownload, 0),
+			ContentID:   contentID,
+			DownloadURL: best.DownloadURL,
+			ReleaseName: best.Title,
+			Indexer:     best.Indexer,
+		}); err != nil {
+			s.log.Error("failed to publish GrabRequested", "error", err)
+		}
+		return
+	}
+
+	// Legacy: direct manager call
+	if s.manager != nil {
+		_, _ = s.manager.Grab(ctx, contentID, nil, best.DownloadURL, best.Title, best.Indexer)
+	}
 }
 
 // searchAndGrabSeries performs a background search for series seasons.
 func (s *Server) searchAndGrabSeries(contentID int64, title string, profile string, seasons []int) {
-	if s.searcher == nil || s.manager == nil {
+	if s.searcher == nil {
+		s.log.Warn("no searcher configured, cannot search")
 		return
 	}
 	ctx := context.Background()
@@ -1013,11 +1041,30 @@ func (s *Server) searchAndGrabSeries(contentID int64, title string, profile stri
 
 		result, err := s.searcher.Search(ctx, query, profile)
 		if err != nil || len(result.Releases) == 0 {
+			s.log.Warn("search failed or no results", "title", title, "season", season)
 			continue
 		}
 
 		// Grab the best match for this season
 		best := result.Releases[0]
-		_, _ = s.manager.Grab(ctx, contentID, nil, best.DownloadURL, best.Title, best.Indexer)
+
+		// Use event bus if available, otherwise fall back to manager
+		if s.bus != nil {
+			if err := s.bus.Publish(ctx, &events.GrabRequested{
+				BaseEvent:   events.NewBaseEvent(events.EventGrabRequested, events.EntityDownload, 0),
+				ContentID:   contentID,
+				DownloadURL: best.DownloadURL,
+				ReleaseName: best.Title,
+				Indexer:     best.Indexer,
+			}); err != nil {
+				s.log.Error("failed to publish GrabRequested", "error", err)
+			}
+			continue
+		}
+
+		// Legacy: direct manager call
+		if s.manager != nil {
+			_, _ = s.manager.Grab(ctx, contentID, nil, best.DownloadURL, best.Title, best.Indexer)
+		}
 	}
 }

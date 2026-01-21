@@ -265,6 +265,9 @@ func runServer(configPath string) error {
 		apiCompat := compat.New(compatCfg, libraryStore, downloadStore, logger.With("component", "compat"))
 		apiCompat.SetSearcher(searcher)
 		apiCompat.SetManager(downloadManager)
+		if eventBus != nil {
+			apiCompat.SetBus(eventBus)
+		}
 
 		// Wire TMDB client if configured
 		if cfg.TMDB != nil && cfg.TMDB.APIKey != "" {
