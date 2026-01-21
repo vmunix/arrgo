@@ -268,6 +268,30 @@ type plexSearchResponse struct {
 	Total int                `json:"total"`
 }
 
+// libraryCheckItem represents the check status of a single content item.
+type libraryCheckItem struct {
+	ID          int64    `json:"id"`
+	Type        string   `json:"type"`
+	Title       string   `json:"title"`
+	Year        int      `json:"year"`
+	Status      string   `json:"status"`
+	FileCount   int      `json:"file_count"`
+	Files       []string `json:"files,omitempty"`
+	FileExists  bool     `json:"file_exists"`
+	FileMissing []string `json:"file_missing,omitempty"`
+	InPlex      bool     `json:"in_plex"`
+	PlexTitle   string   `json:"plex_title,omitempty"`
+	Issues      []string `json:"issues,omitempty"`
+}
+
+// libraryCheckResponse is the response for GET /library/check.
+type libraryCheckResponse struct {
+	Items      []libraryCheckItem `json:"items"`
+	Total      int                `json:"total"`
+	Healthy    int                `json:"healthy"`
+	WithIssues int                `json:"with_issues"`
+}
+
 // DashboardResponse is the response for GET /dashboard with aggregated stats.
 type DashboardResponse struct {
 	Version     string `json:"version"`
@@ -280,6 +304,7 @@ type DashboardResponse struct {
 		Queued      int `json:"queued"`
 		Downloading int `json:"downloading"`
 		Completed   int `json:"completed"`
+		Importing   int `json:"importing"`
 		Imported    int `json:"imported"`
 		Cleaned     int `json:"cleaned"`
 		Failed      int `json:"failed"`

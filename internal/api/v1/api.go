@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -82,6 +83,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/files", s.listFiles)
 	mux.HandleFunc("DELETE /api/v1/files/{id}", s.deleteFile)
 
+	// Library check
+	mux.HandleFunc("GET /api/v1/library/check", s.checkLibrary)
+
 	// System
 	mux.HandleFunc("GET /api/v1/status", s.getStatus)
 	mux.HandleFunc("GET /api/v1/dashboard", s.getDashboard)
@@ -146,6 +150,12 @@ func queryString(r *http.Request, name string) *string {
 		return nil
 	}
 	return &val
+}
+
+// fileExists checks if a file exists at the given path.
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // Handlers (stubs)
@@ -667,6 +677,111 @@ func (s *Server) deleteFile(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) checkLibrary(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Parse filters
+	filter := library.ContentFilter{
+		Limit:  queryInt(r, "limit", 100),
+		Offset: queryInt(r, "offset", 0),
+	}
+
+	if typeStr := queryString(r, "type"); typeStr != nil {
+		t := library.ContentType(*typeStr)
+		filter.Type = &t
+	}
+	if statusStr := queryString(r, "status"); statusStr != nil {
+		st := library.ContentStatus(*statusStr)
+		filter.Status = &st
+	}
+
+	// Get content
+	contents, total, err := s.deps.Library.ListContent(filter)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	resp := libraryCheckResponse{
+		Items: make([]libraryCheckItem, 0, len(contents)),
+		Total: total,
+	}
+
+	for _, c := range contents {
+		item := libraryCheckItem{
+			ID:     c.ID,
+			Type:   string(c.Type),
+			Title:  c.Title,
+			Year:   c.Year,
+			Status: string(c.Status),
+		}
+
+		// Get files for this content
+		files, _, err := s.deps.Library.ListFiles(library.FileFilter{ContentID: &c.ID})
+		if err == nil {
+			item.FileCount = len(files)
+			allExist := true
+			for _, f := range files {
+				item.Files = append(item.Files, f.Path)
+				if !fileExists(f.Path) {
+					allExist = false
+					item.FileMissing = append(item.FileMissing, f.Path)
+					item.Issues = append(item.Issues, "File missing: "+f.Path)
+				}
+			}
+			item.FileExists = allExist && len(files) > 0
+		}
+
+		// Check content status vs file presence
+		if c.Status == library.StatusAvailable && len(files) == 0 {
+			item.Issues = append(item.Issues, "Status is 'available' but no files in database")
+		}
+		if c.Status == library.StatusWanted && len(files) > 0 {
+			item.Issues = append(item.Issues, "Status is 'wanted' but has files")
+		}
+
+		// Check Plex if available
+		if s.deps.Plex != nil {
+			results, err := s.deps.Plex.Search(ctx, c.Title)
+			if err == nil {
+				// Look for matching title + year
+				for _, result := range results {
+					if result.Year == c.Year && strings.EqualFold(result.Title, c.Title) {
+						item.InPlex = true
+						item.PlexTitle = result.Title
+						break
+					}
+				}
+				// Check for approximate match if exact not found
+				if !item.InPlex {
+					for _, result := range results {
+						if result.Year == c.Year {
+							item.InPlex = true
+							item.PlexTitle = result.Title + " (year match)"
+							break
+						}
+					}
+				}
+			}
+
+			// Check Plex consistency
+			if c.Status == library.StatusAvailable && !item.InPlex {
+				item.Issues = append(item.Issues, "Status is 'available' but not found in Plex")
+			}
+		}
+
+		if len(item.Issues) > 0 {
+			resp.WithIssues++
+		} else {
+			resp.Healthy++
+		}
+
+		resp.Items = append(resp.Items, item)
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
 func (s *Server) getStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, statusResponse{
 		Status:  "ok",
@@ -689,6 +804,7 @@ func (s *Server) getDashboard(w http.ResponseWriter, _ *http.Request) {
 		download.StatusQueued,
 		download.StatusDownloading,
 		download.StatusCompleted,
+		download.StatusImporting,
 		download.StatusImported,
 		download.StatusCleaned,
 		download.StatusFailed,
@@ -702,6 +818,8 @@ func (s *Server) getDashboard(w http.ResponseWriter, _ *http.Request) {
 			resp.Downloads.Downloading = len(downloads)
 		case download.StatusCompleted:
 			resp.Downloads.Completed = len(downloads)
+		case download.StatusImporting:
+			resp.Downloads.Importing = len(downloads)
 		case download.StatusImported:
 			resp.Downloads.Imported = len(downloads)
 		case download.StatusCleaned:
@@ -717,6 +835,7 @@ func (s *Server) getDashboard(w http.ResponseWriter, _ *http.Request) {
 		download.StatusQueued:      time.Hour,
 		download.StatusDownloading: time.Hour,
 		download.StatusCompleted:   time.Hour,
+		download.StatusImporting:   time.Hour,
 	}
 	stuck, _ := s.deps.Downloads.ListStuck(thresholds)
 	resp.Stuck.Count = len(stuck)
