@@ -24,6 +24,10 @@ func TestNormalizeRomanNumerals(t *testing.T) {
 		{"VII Days", "VII Days"},                         // Roman at start without context
 		{"Matrix", "Matrix"},                             // No roman numerals
 		{"2001 A Space Odyssey", "2001 A Space Odyssey"}, // Arabic stays
+		// X is excluded to avoid false positives
+		{"Malcolm X", "Malcolm X"},
+		{"American History X", "American History X"},
+		{"Rocky X", "Rocky X"},
 	}
 
 	for _, tt := range tests {

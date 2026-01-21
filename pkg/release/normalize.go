@@ -19,10 +19,10 @@ var romanNumeralRegex = regexp.MustCompile(`(?i) (ii|iii|iv|v|vi|vii|viii|ix)\b`
 
 var romanToArabic = map[string]string{
 	"II": "2", "III": "3", "IV": "4", "V": "5",
-	"VI": "6", "VII": "7", "VIII": "8", "IX": "9", "X": "10",
+	"VI": "6", "VII": "7", "VIII": "8", "IX": "9",
 }
 
-// NormalizeRomanNumerals converts Roman numerals (II-X) to Arabic numbers.
+// NormalizeRomanNumerals converts Roman numerals (II-IX) to Arabic numbers.
 // Does not convert standalone "I" to avoid false positives.
 // Does not convert Roman numerals at the start of the string.
 func NormalizeRomanNumerals(s string) string {
