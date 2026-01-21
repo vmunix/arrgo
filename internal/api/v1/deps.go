@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/vmunix/arrgo/internal/download"
+	"github.com/vmunix/arrgo/internal/events"
 	"github.com/vmunix/arrgo/internal/importer"
 	"github.com/vmunix/arrgo/internal/library"
 	"github.com/vmunix/arrgo/internal/search"
@@ -57,6 +58,7 @@ type ServerDeps struct {
 	Manager  DownloadManager
 	Plex     PlexClient
 	Importer FileImporter
+	Bus      *events.Bus // Optional: for event-driven mode
 }
 
 // Validate checks that all required dependencies are provided.

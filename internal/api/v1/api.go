@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/vmunix/arrgo/internal/download"
+	"github.com/vmunix/arrgo/internal/events"
 	"github.com/vmunix/arrgo/internal/importer"
 	"github.com/vmunix/arrgo/internal/library"
 	"github.com/vmunix/arrgo/internal/search"
@@ -477,6 +478,24 @@ func (s *Server) grab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// If event bus is available, emit event instead of direct call
+	if s.deps.Bus != nil {
+		if err := s.deps.Bus.Publish(r.Context(), &events.GrabRequested{
+			BaseEvent:   events.NewBaseEvent(events.EventGrabRequested, events.EntityDownload, 0),
+			ContentID:   req.ContentID,
+			EpisodeID:   req.EpisodeID,
+			DownloadURL: req.DownloadURL,
+			ReleaseName: req.Title,
+			Indexer:     req.Indexer,
+		}); err != nil {
+			writeError(w, http.StatusInternalServerError, "EVENT_ERROR", err.Error())
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
+		return
+	}
+
+	// Legacy: direct call to manager
 	d, err := s.deps.Manager.Grab(r.Context(), req.ContentID, req.EpisodeID, req.DownloadURL, req.Title, req.Indexer)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GRAB_ERROR", err.Error())
