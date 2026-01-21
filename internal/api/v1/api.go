@@ -24,6 +24,7 @@ import (
 type Config struct {
 	MovieRoot       string
 	SeriesRoot      string
+	DownloadRoot    string // Root path for completed downloads (for tracked imports)
 	QualityProfiles map[string][]string
 }
 
@@ -285,6 +286,19 @@ func (s *Server) addContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Emit ContentAdded event
+	if s.deps.Bus != nil {
+		evt := &events.ContentAdded{
+			BaseEvent:      events.NewBaseEvent(events.EventContentAdded, events.EntityContent, c.ID),
+			ContentID:      c.ID,
+			ContentType:    string(c.Type),
+			Title:          c.Title,
+			Year:           c.Year,
+			QualityProfile: c.QualityProfile,
+		}
+		_ = s.deps.Bus.Publish(r.Context(), evt)
+	}
+
 	writeJSON(w, http.StatusCreated, contentToResponse(c))
 }
 
@@ -311,6 +325,9 @@ func (s *Server) updateContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Capture old status for event
+	oldStatus := c.Status
+
 	// Apply updates
 	if req.Status != nil {
 		c.Status = library.ContentStatus(*req.Status)
@@ -322,6 +339,17 @@ func (s *Server) updateContent(w http.ResponseWriter, r *http.Request) {
 	if err := s.deps.Library.UpdateContent(c); err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
+	}
+
+	// Emit ContentStatusChanged event if status changed
+	if s.deps.Bus != nil && oldStatus != c.Status {
+		evt := &events.ContentStatusChanged{
+			BaseEvent: events.NewBaseEvent(events.EventContentStatusChanged, events.EntityContent, c.ID),
+			ContentID: c.ID,
+			OldStatus: string(oldStatus),
+			NewStatus: string(c.Status),
+		}
+		_ = s.deps.Bus.Publish(r.Context(), evt)
 	}
 
 	writeJSON(w, http.StatusOK, contentToResponse(c))
@@ -1133,10 +1161,73 @@ func (s *Server) importContent(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// importTracked handles import of a tracked download.
-func (s *Server) importTracked(w http.ResponseWriter, _ *http.Request, _ importRequest) {
-	// Not implemented yet - will be added in a future task
-	writeError(w, http.StatusNotImplemented, "NOT_IMPLEMENTED", "Tracked import not yet implemented")
+// importTracked handles import of a tracked download by ID.
+func (s *Server) importTracked(w http.ResponseWriter, r *http.Request, req importRequest) {
+	ctx := r.Context()
+
+	// Get download from store
+	dl, err := s.deps.Downloads.Get(*req.DownloadID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "download not found")
+		return
+	}
+
+	// Verify download is in importable state (completed)
+	if dl.Status != download.StatusCompleted {
+		writeError(w, http.StatusBadRequest, "INVALID_STATE",
+			fmt.Sprintf("download must be in 'completed' status, currently '%s'", dl.Status))
+		return
+	}
+
+	// Construct source path from download root + release name
+	if s.cfg.DownloadRoot == "" {
+		writeError(w, http.StatusInternalServerError, "CONFIG_ERROR", "download_root not configured")
+		return
+	}
+	sourcePath := filepath.Join(s.cfg.DownloadRoot, dl.ReleaseName)
+
+	// Verify path exists
+	if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
+		writeError(w, http.StatusNotFound, "PATH_NOT_FOUND",
+			fmt.Sprintf("source path not found: %s", sourcePath))
+		return
+	}
+
+	// Get content for response
+	content, err := s.deps.Library.GetContent(dl.ContentID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	// Call importer
+	result, err := s.deps.Importer.Import(ctx, dl.ID, sourcePath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", err.Error())
+		return
+	}
+
+	// Publish ImportCompleted event for event-driven pipeline
+	if s.deps.Bus != nil {
+		evt := &events.ImportCompleted{
+			BaseEvent:  events.NewBaseEvent(events.EventImportCompleted, events.EntityDownload, dl.ID),
+			DownloadID: dl.ID,
+			ContentID:  dl.ContentID,
+			EpisodeID:  dl.EpisodeID,
+			FilePath:   result.DestPath,
+			FileSize:   result.SizeBytes,
+		}
+		_ = s.deps.Bus.Publish(ctx, evt)
+	}
+
+	writeJSON(w, http.StatusOK, importResponse{
+		FileID:       result.FileID,
+		ContentID:    content.ID,
+		SourcePath:   result.SourcePath,
+		DestPath:     result.DestPath,
+		SizeBytes:    result.SizeBytes,
+		PlexNotified: result.PlexNotified,
+	})
 }
 
 // importManual handles manual file import with metadata.
@@ -1247,6 +1338,20 @@ func (s *Server) importManual(w http.ResponseWriter, r *http.Request, req import
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", err.Error())
 		return
+	}
+
+	// Publish ImportCompleted event for event-driven pipeline (cleanup, etc.)
+	if s.deps.Bus != nil {
+		evt := &events.ImportCompleted{
+			BaseEvent:  events.NewBaseEvent(events.EventImportCompleted, events.EntityDownload, dl.ID),
+			DownloadID: dl.ID,
+			ContentID:  content.ID,
+			EpisodeID:  episodeID,
+			FilePath:   result.DestPath,
+			FileSize:   result.SizeBytes,
+		}
+		// Best effort - don't fail the request if event publishing fails
+		_ = s.deps.Bus.Publish(ctx, evt)
 	}
 
 	writeJSON(w, http.StatusOK, importResponse{

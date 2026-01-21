@@ -16,6 +16,10 @@ arrgo/
 │   ├── arrgo/           # CLI client
 │   └── arrgod/          # Server daemon
 ├── internal/
+│   ├── events/          # Event bus + SQLite event log
+│   ├── handlers/        # Event handlers (download, import, cleanup)
+│   ├── adapters/        # External system adapters (sabnzbd, plex)
+│   ├── server/          # Runner orchestrating event-driven components
 │   ├── library/         # Content tracking (movies, series, episodes)
 │   ├── search/          # Indexer queries (direct Newznab)
 │   ├── download/        # Download clients (SABnzbd, future qBittorrent)
@@ -30,6 +34,31 @@ arrgo/
 │   └── release/         # Release name parsing
 └── migrations/          # SQLite schema migrations
 ```
+
+### Event-Driven Architecture
+
+The download pipeline uses an event-driven architecture with Go channels + SQLite persistence:
+
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Adapters  │────▶│  Event Bus  │────▶│  Handlers   │
+│ (SABnzbd,   │     │  (pub/sub)  │     │ (download,  │
+│  Plex)      │◀────│             │◀────│  import,    │
+└─────────────┘     └─────────────┘     │  cleanup)   │
+                          │             └─────────────┘
+                          ▼
+                    ┌─────────────┐
+                    │  EventLog   │
+                    │  (SQLite)   │
+                    └─────────────┘
+```
+
+**Key Components:**
+- **Event Bus** (`internal/events/bus.go`) - In-process pub/sub with typed events
+- **EventLog** (`internal/events/log.go`) - SQLite persistence for audit/replay
+- **Handlers** (`internal/handlers/`) - React to events, emit new events
+- **Adapters** (`internal/adapters/`) - Poll external systems, emit events
+- **Runner** (`internal/server/runner.go`) - Orchestrates component lifecycle
 
 ## Key Principles
 
@@ -86,6 +115,8 @@ Or use defaults syntax in config: `${VAR:-default_value}`
 ./arrgo queue            # Show active downloads
 ./arrgo queue --all      # Include terminal states (cleaned, failed)
 ./arrgo queue -s failed  # Filter by state
+./arrgo queue cancel <id>         # Cancel a download
+./arrgo queue cancel <id> --delete # Cancel and delete files
 
 # Library management
 ./arrgo library list              # List all tracked content
@@ -126,9 +157,13 @@ Note: Most commands require `arrgod` running. `parse` and `init` work standalone
 
 | Module | Purpose |
 |--------|---------|
+| events | Event bus (pub/sub), event log (SQLite), typed event definitions |
+| handlers | Event handlers: DownloadHandler (grabs), ImportHandler (imports), CleanupHandler (post-Plex cleanup) |
+| adapters | External system polling: SABnzbd (download progress), Plex (library detection) |
+| server | Runner orchestrating handlers/adapters lifecycle with errgroup |
 | library | Content CRUD, wanted/available status, file tracking |
 | search | Query indexers via Newznab, parse releases, score quality |
-| download | Send to SABnzbd, track download status, poll completion |
+| download | Send to SABnzbd, track download status, state machine transitions |
 | importer | Move files, rename, update DB, notify Plex |
 | api/v1 | Native REST endpoints |
 | api/compat | Radarr/Sonarr API translation for Overseerr |
@@ -159,7 +194,8 @@ SQLite with these core tables:
 - `content` — Movies and series (unified)
 - `episodes` — Series episodes
 - `files` — Tracked media files
-- `downloads` — Active/recent downloads
+- `downloads` — Active/recent downloads (state machine: queued → downloading → completed → importing → imported → cleaned)
+- `events` — Event log for audit/replay (auto-pruned after 90 days)
 - `history` — Audit trail
 - `quality_profiles` — Quality definitions
 

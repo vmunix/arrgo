@@ -5,26 +5,34 @@ package sabnzbd
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/events"
 )
 
+// Config for the SABnzbd adapter.
+type Config struct {
+	Interval   time.Duration
+	RemotePath string // Path prefix as seen by SABnzbd (e.g., /data/usenet)
+	LocalPath  string // Local path prefix (e.g., /srv/data/usenet)
+}
+
 // Adapter polls SABnzbd and emits events for status changes.
 type Adapter struct {
-	client   download.Downloader
-	bus      *events.Bus
-	store    *download.Store
-	interval time.Duration
-	logger   *slog.Logger
+	client download.Downloader
+	bus    *events.Bus
+	store  *download.Store
+	config Config
+	logger *slog.Logger
 
 	// Track last known status to avoid duplicate state transition events
 	lastStatus map[int64]download.Status
 }
 
 // New creates a new SABnzbd adapter.
-func New(bus *events.Bus, client download.Downloader, store *download.Store, interval time.Duration, logger *slog.Logger) *Adapter {
+func New(bus *events.Bus, client download.Downloader, store *download.Store, cfg Config, logger *slog.Logger) *Adapter {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -32,10 +40,21 @@ func New(bus *events.Bus, client download.Downloader, store *download.Store, int
 		client:     client,
 		bus:        bus,
 		store:      store,
-		interval:   interval,
+		config:     cfg,
 		logger:     logger,
 		lastStatus: make(map[int64]download.Status),
 	}
+}
+
+// remapPath converts a SABnzbd path to a local path using configured path mapping.
+func (a *Adapter) remapPath(path string) string {
+	if a.config.RemotePath == "" || a.config.LocalPath == "" {
+		return path
+	}
+	if strings.HasPrefix(path, a.config.RemotePath) {
+		return a.config.LocalPath + strings.TrimPrefix(path, a.config.RemotePath)
+	}
+	return path
 }
 
 // Name returns the adapter name.
@@ -46,7 +65,7 @@ func (a *Adapter) Name() string {
 // Start begins polling at the configured interval.
 // It runs until the context is canceled.
 func (a *Adapter) Start(ctx context.Context) error {
-	ticker := time.NewTicker(a.interval)
+	ticker := time.NewTicker(a.config.Interval)
 	defer ticker.Stop()
 
 	// Poll immediately on start
@@ -147,12 +166,23 @@ func (a *Adapter) processDisappeared(ctx context.Context, dl *download.Download)
 	a.lastStatus[dl.ID] = download.StatusFailed
 }
 
-// emitCompleted publishes a DownloadCompleted event.
+// emitCompleted transitions the download to completed and publishes a DownloadCompleted event.
 func (a *Adapter) emitCompleted(ctx context.Context, dl *download.Download, status *download.ClientStatus) {
+	// Transition status before emitting event - ImportHandler requires completed status
+	if err := a.store.Transition(dl, download.StatusCompleted); err != nil {
+		a.logger.Error("failed to transition download to completed",
+			"download_id", dl.ID,
+			"error", err)
+		return
+	}
+
+	// Remap SABnzbd path to local path
+	localPath := a.remapPath(status.Path)
+
 	evt := &events.DownloadCompleted{
 		BaseEvent:  events.NewBaseEvent(events.EventDownloadCompleted, events.EntityDownload, dl.ID),
 		DownloadID: dl.ID,
-		SourcePath: status.Path,
+		SourcePath: localPath,
 	}
 
 	if err := a.bus.Publish(ctx, evt); err != nil {
@@ -163,11 +193,19 @@ func (a *Adapter) emitCompleted(ctx context.Context, dl *download.Download, stat
 
 	a.logger.Info("download completed",
 		"download_id", dl.ID,
-		"path", status.Path)
+		"path", localPath)
 }
 
-// emitFailed publishes a DownloadFailed event.
+// emitFailed transitions the download to failed and publishes a DownloadFailed event.
 func (a *Adapter) emitFailed(ctx context.Context, dl *download.Download, reason string, retryable bool) {
+	// Transition status before emitting event
+	if err := a.store.Transition(dl, download.StatusFailed); err != nil {
+		a.logger.Error("failed to transition download to failed",
+			"download_id", dl.ID,
+			"error", err)
+		return
+	}
+
 	evt := &events.DownloadFailed{
 		BaseEvent:  events.NewBaseEvent(events.EventDownloadFailed, events.EntityDownload, dl.ID),
 		DownloadID: dl.ID,
@@ -187,8 +225,18 @@ func (a *Adapter) emitFailed(ctx context.Context, dl *download.Download, reason 
 		"retryable", retryable)
 }
 
-// emitProgressed publishes a DownloadProgressed event.
+// emitProgressed transitions to downloading if needed and publishes a DownloadProgressed event.
 func (a *Adapter) emitProgressed(ctx context.Context, dl *download.Download, status *download.ClientStatus) {
+	// Transition to downloading if SABnzbd reports downloading and we're still queued
+	if status.Status == download.StatusDownloading && dl.Status == download.StatusQueued {
+		if err := a.store.Transition(dl, download.StatusDownloading); err != nil {
+			a.logger.Error("failed to transition download to downloading",
+				"download_id", dl.ID,
+				"error", err)
+			// Continue anyway - progress event is still useful
+		}
+	}
+
 	evt := &events.DownloadProgressed{
 		BaseEvent:  events.NewBaseEvent(events.EventDownloadProgressed, events.EntityDownload, dl.ID),
 		DownloadID: dl.ID,

@@ -15,6 +15,7 @@ import (
 	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/events"
 	"github.com/vmunix/arrgo/internal/importer"
+	"github.com/vmunix/arrgo/internal/library"
 	_ "modernc.org/sqlite"
 )
 
@@ -85,7 +86,7 @@ func TestImportHandler_Name(t *testing.T) {
 	bus := events.NewBus(nil, nil)
 	defer bus.Close()
 
-	handler := NewImportHandler(bus, nil, nil, nil)
+	handler := NewImportHandler(bus, nil, nil, nil, nil)
 	assert.Equal(t, "import", handler.Name())
 }
 
@@ -117,7 +118,7 @@ func TestImportHandler_DownloadCompleted(t *testing.T) {
 		},
 	}
 
-	handler := NewImportHandler(bus, store, imp, nil)
+	handler := NewImportHandler(bus, store, nil, imp, nil)
 
 	// Subscribe to ImportStarted and ImportCompleted before starting
 	started := bus.Subscribe(events.EventImportStarted, 10)
@@ -192,7 +193,7 @@ func TestImportHandler_ImportFailed(t *testing.T) {
 		returnError: errors.New("no video file found"),
 	}
 
-	handler := NewImportHandler(bus, store, imp, nil)
+	handler := NewImportHandler(bus, store, nil, imp, nil)
 
 	// Subscribe to ImportFailed before starting
 	failed := bus.Subscribe(events.EventImportFailed, 10)
@@ -260,7 +261,7 @@ func TestImportHandler_PreventsConcurrentImport(t *testing.T) {
 		},
 	}
 
-	handler := NewImportHandler(bus, store, imp, nil)
+	handler := NewImportHandler(bus, store, nil, imp, nil)
 
 	// Subscribe to ImportCompleted to track completion
 	completed := bus.Subscribe(events.EventImportCompleted, 10)
@@ -347,7 +348,7 @@ func TestImportHandler_AllowsDifferentDownloads(t *testing.T) {
 		counter: &importCount,
 	}
 
-	handler := NewImportHandler(bus, store, wrappedImp, nil)
+	handler := NewImportHandler(bus, store, nil, wrappedImp, nil)
 
 	// Subscribe to ImportCompleted to track completion
 	completed := bus.Subscribe(events.EventImportCompleted, 10)
@@ -397,7 +398,7 @@ func TestImportHandler_DownloadNotFound(t *testing.T) {
 	store := download.NewStore(db)
 	imp := &mockImporter{}
 
-	handler := NewImportHandler(bus, store, imp, nil)
+	handler := NewImportHandler(bus, store, nil, imp, nil)
 
 	// Subscribe to ImportFailed before starting
 	failed := bus.Subscribe(events.EventImportFailed, 10)
@@ -444,4 +445,192 @@ type countingImporter struct {
 func (c *countingImporter) Import(ctx context.Context, downloadID int64, path string) (*importer.ImportResult, error) {
 	c.counter.Add(1)
 	return c.inner.Import(ctx, downloadID, path)
+}
+
+// setupImportTestDBWithLibrary creates a test DB with both download and library schemas.
+func setupImportTestDBWithLibrary(t *testing.T) *sql.DB {
+	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+
+	_, err = db.Exec(`
+		CREATE TABLE downloads (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			content_id INTEGER NOT NULL,
+			episode_id INTEGER,
+			client TEXT NOT NULL,
+			client_id TEXT NOT NULL,
+			status TEXT NOT NULL,
+			release_name TEXT NOT NULL,
+			indexer TEXT NOT NULL,
+			added_at TIMESTAMP NOT NULL,
+			completed_at TIMESTAMP,
+			last_transition_at TIMESTAMP NOT NULL
+		);
+		CREATE TABLE content (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			type TEXT NOT NULL,
+			title TEXT NOT NULL,
+			year INTEGER,
+			status TEXT NOT NULL DEFAULT 'wanted',
+			quality_profile TEXT NOT NULL DEFAULT 'hd',
+			root_path TEXT NOT NULL
+		);
+		CREATE TABLE files (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			content_id INTEGER NOT NULL,
+			episode_id INTEGER,
+			path TEXT NOT NULL UNIQUE,
+			size_bytes INTEGER,
+			quality TEXT,
+			source TEXT,
+			added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);
+	`)
+	require.NoError(t, err)
+	return db
+}
+
+func TestImportHandler_ImportSkipped_ExistingQualityEqual(t *testing.T) {
+	db := setupImportTestDBWithLibrary(t)
+	bus := events.NewBus(nil, nil)
+	defer bus.Close()
+
+	// Create content and existing file with 1080p
+	_, err := db.Exec(`INSERT INTO content (id, type, title, year, root_path) VALUES (42, 'movie', 'Test Movie', 2024, '/movies')`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO files (content_id, path, quality, size_bytes, source) VALUES (42, '/movies/test.mkv', '1080p', 5000000000, 'webdl')`)
+	require.NoError(t, err)
+
+	downloadStore := download.NewStore(db)
+	libraryStore := library.NewStore(db)
+
+	// Create download record with 1080p release (same as existing)
+	dl := &download.Download{
+		ContentID:   42,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "sab-123",
+		Status:      download.StatusCompleted,
+		ReleaseName: "Test.Movie.2024.1080p.WEB-DL",
+		Indexer:     "nzbgeek",
+	}
+	require.NoError(t, downloadStore.Add(dl))
+
+	imp := &mockImporter{
+		returnResult: &importer.ImportResult{
+			FileID:    2,
+			DestPath:  "/movies/Test.mkv",
+			SizeBytes: 5000000000,
+		},
+	}
+
+	handler := NewImportHandler(bus, downloadStore, libraryStore, imp, nil)
+
+	// Subscribe to events
+	skipped := bus.Subscribe(events.EventImportSkipped, 10)
+	completed := bus.Subscribe(events.EventImportCompleted, 10)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = handler.Start(ctx) }()
+
+	time.Sleep(10 * time.Millisecond)
+
+	// Emit DownloadCompleted
+	err = bus.Publish(ctx, &events.DownloadCompleted{
+		BaseEvent:  events.NewBaseEvent(events.EventDownloadCompleted, events.EntityDownload, dl.ID),
+		DownloadID: dl.ID,
+		SourcePath: "/downloads/Test.Movie.2024.1080p.WEB-DL",
+	})
+	require.NoError(t, err)
+
+	// Should get ImportSkipped, not ImportCompleted
+	select {
+	case e := <-skipped:
+		is := e.(*events.ImportSkipped)
+		assert.Equal(t, dl.ID, is.DownloadID)
+		assert.Equal(t, int64(42), is.ContentID)
+		assert.Equal(t, "1080p", is.ReleaseQuality)
+		assert.Equal(t, "1080p", is.ExistingQuality)
+		assert.Equal(t, "existing_quality_equal_or_better", is.Reason)
+	case <-completed:
+		t.Fatal("should not complete import when existing quality is equal")
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for event")
+	}
+
+	// Verify importer was NOT called
+	assert.False(t, imp.importCalled, "importer should not be called when import is skipped")
+
+	// Verify download status is skipped
+	time.Sleep(50 * time.Millisecond)
+	updatedDL, err := downloadStore.Get(dl.ID)
+	require.NoError(t, err)
+	assert.Equal(t, download.StatusSkipped, updatedDL.Status)
+}
+
+func TestImportHandler_ImportProceeds_QualityUpgrade(t *testing.T) {
+	db := setupImportTestDBWithLibrary(t)
+	bus := events.NewBus(nil, nil)
+	defer bus.Close()
+
+	// Create content and existing file with 720p
+	_, err := db.Exec(`INSERT INTO content (id, type, title, year, root_path) VALUES (42, 'movie', 'Test Movie', 2024, '/movies')`)
+	require.NoError(t, err)
+	_, err = db.Exec(`INSERT INTO files (content_id, path, quality, size_bytes, source) VALUES (42, '/movies/test.mkv', '720p', 3000000000, 'webdl')`)
+	require.NoError(t, err)
+
+	downloadStore := download.NewStore(db)
+	libraryStore := library.NewStore(db)
+
+	// Create download record with 1080p release (upgrade)
+	dl := &download.Download{
+		ContentID:   42,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "sab-123",
+		Status:      download.StatusCompleted,
+		ReleaseName: "Test.Movie.2024.1080p.BluRay",
+		Indexer:     "nzbgeek",
+	}
+	require.NoError(t, downloadStore.Add(dl))
+
+	imp := &mockImporter{
+		returnResult: &importer.ImportResult{
+			FileID:    2,
+			DestPath:  "/movies/Test.mkv",
+			SizeBytes: 5000000000,
+		},
+	}
+
+	handler := NewImportHandler(bus, downloadStore, libraryStore, imp, nil)
+
+	skipped := bus.Subscribe(events.EventImportSkipped, 10)
+	completed := bus.Subscribe(events.EventImportCompleted, 10)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = handler.Start(ctx) }()
+
+	time.Sleep(10 * time.Millisecond)
+
+	err = bus.Publish(ctx, &events.DownloadCompleted{
+		BaseEvent:  events.NewBaseEvent(events.EventDownloadCompleted, events.EntityDownload, dl.ID),
+		DownloadID: dl.ID,
+		SourcePath: "/downloads/Test.Movie.2024.1080p.BluRay",
+	})
+	require.NoError(t, err)
+
+	// Should get ImportCompleted (upgrade allowed)
+	select {
+	case e := <-completed:
+		ic := e.(*events.ImportCompleted)
+		assert.Equal(t, dl.ID, ic.DownloadID)
+		assert.Equal(t, int64(42), ic.ContentID)
+	case <-skipped:
+		t.Fatal("should not skip import when it's a quality upgrade")
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for event")
+	}
+
+	assert.True(t, imp.importCalled, "importer should be called for upgrade")
 }

@@ -76,11 +76,12 @@ type DownloadersConfig struct {
 }
 
 type SABnzbdConfig struct {
-	URL        string `toml:"url"`
-	APIKey     string `toml:"api_key"`
-	Category   string `toml:"category"`
-	RemotePath string `toml:"remote_path"` // Path prefix as seen by SABnzbd (e.g., /data/usenet)
-	LocalPath  string `toml:"local_path"`  // Corresponding path on this machine (e.g., /srv/data/usenet)
+	URL          string        `toml:"url"`
+	APIKey       string        `toml:"api_key"`
+	Category     string        `toml:"category"`
+	RemotePath   string        `toml:"remote_path"`   // Path prefix as seen by SABnzbd (e.g., /data/usenet)
+	LocalPath    string        `toml:"local_path"`    // Corresponding path on this machine (e.g., /srv/data/usenet)
+	PollInterval time.Duration `toml:"poll_interval"` // How often to poll for status (default: 5s)
 }
 
 type QBittorrentConfig struct {
@@ -94,11 +95,12 @@ type NotificationsConfig struct {
 }
 
 type PlexConfig struct {
-	URL        string   `toml:"url"`
-	Token      string   `toml:"token"`
-	Libraries  []string `toml:"libraries"`
-	RemotePath string   `toml:"remote_path"` // Path prefix as seen by Plex (e.g., /data/media)
-	LocalPath  string   `toml:"local_path"`  // Corresponding path on this machine (e.g., /srv/data/media)
+	URL          string        `toml:"url"`
+	Token        string        `toml:"token"`
+	Libraries    []string      `toml:"libraries"`
+	RemotePath   string        `toml:"remote_path"`   // Path prefix as seen by Plex (e.g., /data/media)
+	LocalPath    string        `toml:"local_path"`    // Corresponding path on this machine (e.g., /srv/data/media)
+	PollInterval time.Duration `toml:"poll_interval"` // How often to poll for library updates (default: 60s)
 }
 
 type OverseerrConfig struct {

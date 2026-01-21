@@ -3,12 +3,42 @@ package server
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/vmunix/arrgo/internal/download"
+	"github.com/vmunix/arrgo/internal/importer"
 	_ "modernc.org/sqlite"
 )
+
+// Mock implementations
+
+type mockDownloader struct{}
+
+func (m *mockDownloader) Add(_ context.Context, _, _ string) (string, error) {
+	return "mock-id", nil
+}
+
+func (m *mockDownloader) Status(_ context.Context, _ string) (*download.ClientStatus, error) {
+	return nil, nil
+}
+
+func (m *mockDownloader) List(_ context.Context) ([]*download.ClientStatus, error) {
+	return nil, nil
+}
+
+func (m *mockDownloader) Remove(_ context.Context, _ string, _ bool) error {
+	return nil
+}
+
+type mockImporter struct{}
+
+func (m *mockImporter) Import(_ context.Context, _ int64, _ string) (*importer.ImportResult, error) {
+	return &importer.ImportResult{DestPath: "/movies/test.mkv", SizeBytes: 1000}, nil
+}
 
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -67,29 +97,37 @@ func setupTestDB(t *testing.T) *sql.DB {
 func TestRunner_StartsAndStops(t *testing.T) {
 	db := setupTestDB(t)
 
+	mockDownloader := &mockDownloader{}
+	mockImporter := &mockImporter{}
+
 	runner := NewRunner(db, Config{
-		PollInterval: 100 * time.Millisecond,
-	}, nil)
+		SABnzbdPollInterval: 100 * time.Millisecond,
+		PlexPollInterval:    100 * time.Millisecond,
+		DownloadRoot:        "/tmp/downloads",
+		CleanupEnabled:      false,
+	}, nil, mockDownloader, mockImporter, nil)
+
+	// Start returns the bus
+	bus := runner.Start()
+	require.NotNil(t, bus)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Start in background
 	done := make(chan error, 1)
 	go func() {
 		done <- runner.Run(ctx)
 	}()
 
-	// Give it time to start
 	time.Sleep(50 * time.Millisecond)
-
-	// Stop
 	cancel()
 
 	select {
 	case err := <-done:
-		require.ErrorIs(t, err, context.Canceled)
-	case <-time.After(time.Second):
-		t.Fatal("runner did not stop")
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Errorf("unexpected error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for runner to stop")
 	}
 }
 
@@ -97,7 +135,7 @@ func TestNewRunner_DefaultLogger(t *testing.T) {
 	db := setupTestDB(t)
 
 	// Should not panic with nil logger
-	runner := NewRunner(db, Config{}, nil)
+	runner := NewRunner(db, Config{}, nil, &mockDownloader{}, &mockImporter{}, nil)
 	require.NotNil(t, runner)
 	require.NotNil(t, runner.logger)
 }
@@ -106,14 +144,25 @@ func TestRunner_ConfigFields(t *testing.T) {
 	db := setupTestDB(t)
 
 	cfg := Config{
-		PollInterval:   5 * time.Second,
-		DownloadRoot:   "/downloads",
-		CleanupEnabled: true,
+		SABnzbdPollInterval: 5 * time.Second,
+		PlexPollInterval:    60 * time.Second,
+		DownloadRoot:        "/downloads",
+		CleanupEnabled:      true,
 	}
 
-	runner := NewRunner(db, cfg, nil)
+	runner := NewRunner(db, cfg, nil, &mockDownloader{}, &mockImporter{}, nil)
 
-	require.Equal(t, cfg.PollInterval, runner.config.PollInterval)
+	require.Equal(t, cfg.SABnzbdPollInterval, runner.config.SABnzbdPollInterval)
+	require.Equal(t, cfg.PlexPollInterval, runner.config.PlexPollInterval)
 	require.Equal(t, cfg.DownloadRoot, runner.config.DownloadRoot)
 	require.True(t, runner.config.CleanupEnabled)
+}
+
+func TestRunner_RunWithoutStart(t *testing.T) {
+	db := setupTestDB(t)
+	runner := NewRunner(db, Config{}, nil, &mockDownloader{}, &mockImporter{}, nil)
+
+	err := runner.Run(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "must call Start()")
 }

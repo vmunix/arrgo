@@ -9,6 +9,8 @@ import (
 	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/events"
 	"github.com/vmunix/arrgo/internal/importer"
+	"github.com/vmunix/arrgo/internal/library"
+	"github.com/vmunix/arrgo/pkg/release"
 )
 
 // FileImporter is the interface for the importer.
@@ -20,6 +22,7 @@ type FileImporter interface {
 type ImportHandler struct {
 	*BaseHandler
 	store    *download.Store
+	library  *library.Store
 	importer FileImporter
 
 	// Per-download lock to prevent concurrent imports
@@ -27,10 +30,11 @@ type ImportHandler struct {
 }
 
 // NewImportHandler creates a new import handler.
-func NewImportHandler(bus *events.Bus, store *download.Store, imp FileImporter, logger *slog.Logger) *ImportHandler {
+func NewImportHandler(bus *events.Bus, store *download.Store, lib *library.Store, imp FileImporter, logger *slog.Logger) *ImportHandler {
 	return &ImportHandler{
 		BaseHandler: NewBaseHandler(bus, logger),
 		store:       store,
+		library:     lib,
 		importer:    imp,
 	}
 }
@@ -74,6 +78,63 @@ func (h *ImportHandler) handleDownloadCompleted(ctx context.Context, e *events.D
 		return
 	}
 
+	// Check for existing files before importing (duplicate prevention)
+	// Must happen before transitioning to importing, since completed→skipped is valid but importing→skipped is not
+	if dl.ContentID > 0 && h.library != nil {
+		files, _, err := h.library.ListFiles(library.FileFilter{ContentID: &dl.ContentID})
+		if err != nil {
+			h.Logger().Warn("failed to check existing files", "error", err)
+			// Continue with import on error - better to import than skip
+		} else if len(files) > 0 {
+			// Parse release name to get quality
+			parsed := release.Parse(dl.ReleaseName)
+			newQuality := parsed.Resolution.String()
+			bestExisting := getBestQuality(files)
+
+			// Skip if not an upgrade
+			if !isBetterQuality(newQuality, bestExisting) {
+				h.Logger().Warn("skipping import, existing quality equal or better",
+					"download_id", e.DownloadID,
+					"content_id", dl.ContentID,
+					"new_quality", newQuality,
+					"existing_quality", bestExisting,
+					"release", dl.ReleaseName)
+
+				// Transition to skipped status (from completed state)
+				if err := h.store.Transition(dl, download.StatusSkipped); err != nil {
+					h.Logger().Error("failed to transition to skipped", "download_id", e.DownloadID, "error", err)
+				}
+
+				// Emit ImportSkipped event
+				if err := h.Bus().Publish(ctx, &events.ImportSkipped{
+					BaseEvent:       events.NewBaseEvent(events.EventImportSkipped, events.EntityDownload, e.DownloadID),
+					DownloadID:      e.DownloadID,
+					ContentID:       dl.ContentID,
+					SourcePath:      e.SourcePath,
+					ReleaseQuality:  newQuality,
+					ExistingQuality: bestExisting,
+					Reason:          "existing_quality_equal_or_better",
+				}); err != nil {
+					h.Logger().Error("failed to publish ImportSkipped event", "error", err)
+				}
+				return
+			}
+
+			h.Logger().Info("proceeding with import upgrade",
+				"download_id", e.DownloadID,
+				"content_id", dl.ContentID,
+				"new_quality", newQuality,
+				"existing_quality", bestExisting)
+		}
+	}
+
+	// Transition to importing status
+	if err := h.store.Transition(dl, download.StatusImporting); err != nil {
+		h.Logger().Error("failed to transition to importing", "download_id", e.DownloadID, "error", err)
+		h.publishImportFailed(ctx, e.DownloadID, err.Error())
+		return
+	}
+
 	// Emit ImportStarted event
 	if err := h.Bus().Publish(ctx, &events.ImportStarted{
 		BaseEvent:  events.NewBaseEvent(events.EventImportStarted, events.EntityDownload, e.DownloadID),
@@ -94,6 +155,12 @@ func (h *ImportHandler) handleDownloadCompleted(ctx context.Context, e *events.D
 		h.Logger().Error("import failed", "download_id", e.DownloadID, "error", err)
 		h.publishImportFailed(ctx, e.DownloadID, err.Error())
 		return
+	}
+
+	// Transition to imported status
+	if err := h.store.Transition(dl, download.StatusImported); err != nil {
+		h.Logger().Error("failed to transition to imported", "download_id", e.DownloadID, "error", err)
+		// Don't return - the import succeeded, just log the transition failure
 	}
 
 	// Emit ImportCompleted event

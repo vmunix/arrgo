@@ -11,6 +11,7 @@ const (
 // Event type constants
 const (
 	EventGrabRequested        = "grab.requested"
+	EventGrabSkipped          = "grab.skipped"
 	EventDownloadCreated      = "download.created"
 	EventDownloadProgressed   = "download.progressed"
 	EventDownloadCompleted    = "download.completed"
@@ -18,6 +19,7 @@ const (
 	EventImportStarted        = "import.started"
 	EventImportCompleted      = "import.completed"
 	EventImportFailed         = "import.failed"
+	EventImportSkipped        = "import.skipped"
 	EventCleanupStarted       = "cleanup.started"
 	EventCleanupCompleted     = "cleanup.completed"
 	EventContentAdded         = "content.added"
@@ -68,4 +70,25 @@ type DownloadFailed struct {
 	DownloadID int64  `json:"download_id"`
 	Reason     string `json:"reason"`
 	Retryable  bool   `json:"retryable"`
+}
+
+// GrabSkipped is emitted when a grab is skipped due to existing quality.
+type GrabSkipped struct {
+	BaseEvent
+	ContentID       int64  `json:"content_id"`
+	ReleaseName     string `json:"release_name"`
+	ReleaseQuality  string `json:"release_quality"`  // e.g., "1080p"
+	ExistingQuality string `json:"existing_quality"` // e.g., "2160p"
+	Reason          string `json:"reason"`           // "existing_quality_equal_or_better"
+}
+
+// ImportSkipped is emitted when an import is skipped due to existing quality.
+type ImportSkipped struct {
+	BaseEvent
+	DownloadID      int64  `json:"download_id"`
+	ContentID       int64  `json:"content_id"`
+	SourcePath      string `json:"source_path"`
+	ReleaseQuality  string `json:"release_quality"`
+	ExistingQuality string `json:"existing_quality"`
+	Reason          string `json:"reason"`
 }

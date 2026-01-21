@@ -168,21 +168,32 @@ go test ./...
 ## Architecture
 
 ```
-┌──────────┐      ┌─────────────────────────────────────────┐
-│  arrgo   │ HTTP │                 arrgod                  │
-│  (CLI)   │─────▶│  ┌─────────┐ ┌─────────┐ ┌───────────┐  │
-└──────────┘      │  │ Library │ │ Search  │ │ Download  │  │
-                  │  └─────────┘ └─────────┘ └───────────┘  │
-                  │  ┌─────────────────────────────────────┐│
-                  │  │   REST API  +  Importer  +  SQLite  ││
-                  │  └─────────────────────────────────────┘│
-                  └─────────────────────────────────────────┘
+┌──────────┐      ┌───────────────────────────────────────────────┐
+│  arrgo   │ HTTP │                    arrgod                     │
+│  (CLI)   │─────▶│  ┌─────────┐ ┌─────────┐ ┌─────────────────┐  │
+└──────────┘      │  │ Library │ │ Search  │ │  Event-Driven   │  │
+                  │  └─────────┘ └─────────┘ │    Pipeline     │  │
+                  │                          │ ┌─────────────┐ │  │
+                  │  ┌─────────────────────┐ │ │  Handlers   │ │  │
+                  │  │      REST API       │ │ │  (download, │ │  │
+                  │  │  /api/v1 + /api/v3  │ │ │  import,    │ │  │
+                  │  └─────────────────────┘ │ │  cleanup)   │ │  │
+                  │                          │ └─────────────┘ │  │
+                  │  ┌─────────────────────┐ │ ┌─────────────┐ │  │
+                  │  │       SQLite        │ │ │  Adapters   │ │  │
+                  │  │ (content, events)   │ │ │ (SABnzbd,   │ │  │
+                  │  └─────────────────────┘ │ │  Plex)      │ │  │
+                  │                          │ └─────────────┘ │  │
+                  │                          └─────────────────┘  │
+                  └───────────────────────────────────────────────┘
                           │            │           │
                      ┌────▼────┐  ┌────▼────┐ ┌────▼────┐
                      │Indexers │  │SABnzbd  │ │  Plex   │
                      │(Newznab)│  └─────────┘ └─────────┘
                      └─────────┘
 ```
+
+The download pipeline uses an **event-driven architecture** with Go channels and SQLite persistence. Events flow through handlers (download → import → cleanup) with adapters polling external systems (SABnzbd, Plex) and emitting state change events.
 
 ## External Dependencies
 

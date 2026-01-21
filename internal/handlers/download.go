@@ -7,20 +7,24 @@ import (
 
 	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/events"
+	"github.com/vmunix/arrgo/internal/library"
+	"github.com/vmunix/arrgo/pkg/release"
 )
 
 // DownloadHandler manages download lifecycle.
 type DownloadHandler struct {
 	*BaseHandler
-	store  *download.Store
-	client download.Downloader
+	store   *download.Store
+	library *library.Store
+	client  download.Downloader
 }
 
 // NewDownloadHandler creates a new download handler.
-func NewDownloadHandler(bus *events.Bus, store *download.Store, client download.Downloader, logger *slog.Logger) *DownloadHandler {
+func NewDownloadHandler(bus *events.Bus, store *download.Store, lib *library.Store, client download.Downloader, logger *slog.Logger) *DownloadHandler {
 	return &DownloadHandler{
 		BaseHandler: NewBaseHandler(bus, logger),
 		store:       store,
+		library:     lib,
 		client:      client,
 	}
 }
@@ -52,6 +56,47 @@ func (h *DownloadHandler) handleGrabRequested(ctx context.Context, e *events.Gra
 		"content_id", e.ContentID,
 		"release", e.ReleaseName,
 		"indexer", e.Indexer)
+
+	// Check for existing files before grabbing (duplicate prevention)
+	if e.ContentID > 0 && h.library != nil {
+		files, _, err := h.library.ListFiles(library.FileFilter{ContentID: &e.ContentID})
+		if err != nil {
+			h.Logger().Warn("failed to check existing files", "error", err)
+			// Continue with grab on error - better to grab than miss content
+		} else if len(files) > 0 {
+			// Parse release name to get quality
+			parsed := release.Parse(e.ReleaseName)
+			newQuality := parsed.Resolution.String()
+			bestExisting := getBestQuality(files)
+
+			// Skip if not an upgrade
+			if !isBetterQuality(newQuality, bestExisting) {
+				h.Logger().Warn("skipping grab, existing quality equal or better",
+					"content_id", e.ContentID,
+					"new_quality", newQuality,
+					"existing_quality", bestExisting,
+					"release", e.ReleaseName)
+
+				// Emit GrabSkipped event
+				if err := h.Bus().Publish(ctx, &events.GrabSkipped{
+					BaseEvent:       events.NewBaseEvent(events.EventGrabSkipped, events.EntityContent, e.ContentID),
+					ContentID:       e.ContentID,
+					ReleaseName:     e.ReleaseName,
+					ReleaseQuality:  newQuality,
+					ExistingQuality: bestExisting,
+					Reason:          "existing_quality_equal_or_better",
+				}); err != nil {
+					h.Logger().Error("failed to publish GrabSkipped event", "error", err)
+				}
+				return
+			}
+
+			h.Logger().Info("proceeding with upgrade",
+				"content_id", e.ContentID,
+				"new_quality", newQuality,
+				"existing_quality", bestExisting)
+		}
+	}
 
 	// Send to download client
 	clientID, err := h.client.Add(ctx, e.DownloadURL, "")

@@ -71,36 +71,11 @@ func (m *integrationDownloader) Remove(_ context.Context, _ string, _ bool) erro
 	return nil
 }
 
-// integrationImporter is a mock file importer that also updates download status.
-type integrationImporter struct {
-	store *download.Store
-}
+// integrationImporter is a mock file importer.
+// Note: Status transitions (importing → imported) are now handled by ImportHandler.
+type integrationImporter struct{}
 
-func (m *integrationImporter) Import(_ context.Context, downloadID int64, _ string) (*importer.ImportResult, error) {
-	// Update download status to imported (simulating what the real importer does)
-	dl, err := m.store.Get(downloadID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Transition through the proper state machine: completed -> importing -> imported
-	// The download should already be in completed state at this point
-	if dl.Status != download.StatusCompleted {
-		// If not completed, we need to get it there first
-		if dl.Status == download.StatusQueued {
-			if err := m.store.Transition(dl, download.StatusCompleted); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	if err := m.store.Transition(dl, download.StatusImporting); err != nil {
-		return nil, err
-	}
-	if err := m.store.Transition(dl, download.StatusImported); err != nil {
-		return nil, err
-	}
-
+func (m *integrationImporter) Import(_ context.Context, _ int64, _ string) (*importer.ImportResult, error) {
 	return &importer.ImportResult{
 		FileID:    1,
 		DestPath:  "/movies/test.mkv",
@@ -119,11 +94,11 @@ func TestIntegration_GrabToImport(t *testing.T) {
 
 	store := download.NewStore(db)
 	client := &integrationDownloader{returnID: "sab-integration"}
-	imp := &integrationImporter{store: store}
+	imp := &integrationImporter{}
 
 	// Create handlers
-	downloadHandler := handlers.NewDownloadHandler(bus, store, client, nil)
-	importHandler := handlers.NewImportHandler(bus, store, imp, nil)
+	downloadHandler := handlers.NewDownloadHandler(bus, store, nil, client, nil)
+	importHandler := handlers.NewImportHandler(bus, store, nil, imp, nil)
 
 	// Subscribe to events we want to track
 	downloadCreated := bus.Subscribe(events.EventDownloadCreated, 10)
@@ -167,7 +142,11 @@ func TestIntegration_GrabToImport(t *testing.T) {
 	require.Len(t, downloads, 1, "DownloadHandler should have created a download")
 	assert.Equal(t, download.StatusQueued, downloads[0].Status)
 
-	// Step 3: Emit DownloadCompleted (simulates adapter detecting SABnzbd finished)
+	// Step 3: Transition to completed (simulates SABnzbd adapter behavior)
+	err = store.Transition(downloads[0], download.StatusCompleted)
+	require.NoError(t, err)
+
+	// Step 4: Emit DownloadCompleted (simulates adapter detecting SABnzbd finished)
 	err = bus.Publish(ctx, &events.DownloadCompleted{
 		BaseEvent:  events.NewBaseEvent(events.EventDownloadCompleted, events.EntityDownload, downloads[0].ID),
 		DownloadID: downloads[0].ID,
@@ -224,7 +203,7 @@ func TestIntegration_GrabFailure(t *testing.T) {
 	store := download.NewStore(db)
 	client := &failingDownloader{err: assert.AnError}
 
-	downloadHandler := handlers.NewDownloadHandler(bus, store, client, nil)
+	downloadHandler := handlers.NewDownloadHandler(bus, store, nil, client, nil)
 
 	// Subscribe to failure event
 	failed := bus.Subscribe(events.EventDownloadFailed, 10)
@@ -303,7 +282,7 @@ func TestIntegration_ImportFailure(t *testing.T) {
 	}
 	require.NoError(t, store.Add(dl))
 
-	importHandler := handlers.NewImportHandler(bus, store, imp, nil)
+	importHandler := handlers.NewImportHandler(bus, store, nil, imp, nil)
 
 	// Subscribe to failure event
 	failed := bus.Subscribe(events.EventImportFailed, 10)

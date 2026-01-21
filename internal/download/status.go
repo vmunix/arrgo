@@ -18,10 +18,11 @@ type TransitionHandler func(event TransitionEvent)
 var validTransitions = map[Status][]Status{
 	StatusQueued:      {StatusDownloading, StatusCompleted, StatusFailed}, // completed: can skip downloading if fast
 	StatusDownloading: {StatusCompleted, StatusFailed},
-	StatusCompleted:   {StatusImporting, StatusFailed},
+	StatusCompleted:   {StatusImporting, StatusSkipped, StatusFailed}, // skipped: duplicate detected
 	StatusImporting:   {StatusImported, StatusFailed},
 	StatusImported:    {StatusCleaned, StatusFailed},
 	StatusCleaned:     {},             // terminal - no transitions out
+	StatusSkipped:     {},             // terminal - duplicate was detected
 	StatusFailed:      {StatusQueued}, // allow retry
 }
 
@@ -42,5 +43,5 @@ func (s Status) CanTransitionTo(target Status) bool {
 // IsTerminal returns true if this status has no valid outgoing transitions
 // (except failed which can retry).
 func (s Status) IsTerminal() bool {
-	return s == StatusCleaned || s == StatusFailed
+	return s == StatusCleaned || s == StatusFailed || s == StatusSkipped
 }

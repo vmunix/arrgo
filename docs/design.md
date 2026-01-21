@@ -28,24 +28,30 @@ arrgo is a unified media automation system written in Go, designed to replace th
 ### Module Overview
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                          arrgo                                │
-│  ┌──────────────────────────────────────────────────────────┐│
-│  │                      API Layer                            ││
-│  │  /api/v1/*  (native)         /api/v3/*  (compat shim)    ││
-│  └──────────────────────────────────────────────────────────┘│
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────┐ │
-│  │ Library  │ │  Search  │ │ Download │ │     Import       │ │
-│  │ Module   │ │  Module  │ │  Module  │ │     Module       │ │
-│  │          │ │          │ │          │ │                  │ │
-│  │ -Movies  │ │ -Newznab │ │ -SABnzbd │ │ -File rename     │ │
-│  │ -Series  │ │ -Parallel│ │ -qBit    │ │ -Plex notify     │ │
-│  │ -Wanted  │ │  search  │ │  (stub)  │ │ -History         │ │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────────────┘ │
-│  ┌──────────────────────────────────────────────────────────┐│
-│  │             SQLite  +  Background Jobs                   ││
-│  └──────────────────────────────────────────────────────────┘│
-└──────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│                            arrgo                                    │
+│  ┌────────────────────────────────────────────────────────────────┐│
+│  │                        API Layer                                ││
+│  │  /api/v1/*  (native)              /api/v3/*  (compat shim)     ││
+│  └────────────────────────────────────────────────────────────────┘│
+│  ┌──────────┐ ┌──────────┐ ┌────────────────────────────────────┐  │
+│  │ Library  │ │  Search  │ │       Event-Driven Pipeline        │  │
+│  │ Module   │ │  Module  │ │  ┌─────────┐    ┌──────────────┐   │  │
+│  │          │ │          │ │  │  Event  │───▶│   Handlers   │   │  │
+│  │ -Movies  │ │ -Newznab │ │  │   Bus   │    │  -Download   │   │  │
+│  │ -Series  │ │ -Parallel│ │  │         │◀───│  -Import     │   │  │
+│  │ -Wanted  │ │  search  │ │  └────┬────┘    │  -Cleanup    │   │  │
+│  └──────────┘ └──────────┘ │       │         └──────────────┘   │  │
+│                            │       ▼         ┌──────────────┐   │  │
+│                            │  ┌─────────┐    │   Adapters   │   │  │
+│                            │  │EventLog │    │  -SABnzbd    │   │  │
+│                            │  │(SQLite) │    │  -Plex       │   │  │
+│                            │  └─────────┘    └──────────────┘   │  │
+│                            └────────────────────────────────────┘  │
+│  ┌────────────────────────────────────────────────────────────────┐│
+│  │                  SQLite  +  Runner (errgroup)                  ││
+│  └────────────────────────────────────────────────────────────────┘│
+└────────────────────────────────────────────────────────────────────┘
          │              │              │
     ┌────▼────┐   ┌─────▼─────┐  ┌────▼────┐
     │ NZBgeek │   │  SABnzbd  │  │  Plex   │
@@ -54,6 +60,25 @@ arrgo is a unified media automation system written in Go, designed to replace th
 ```
 
 ### Module Responsibilities
+
+**Event Bus & EventLog** (`internal/events/`)
+- In-process pub/sub with typed events (Go channels)
+- SQLite persistence for audit trail and replay
+- Auto-pruning of old events (90 days retention)
+
+**Handlers** (`internal/handlers/`)
+- **DownloadHandler**: Listens for `GrabRequested`, sends to SABnzbd, emits `DownloadCreated`
+- **ImportHandler**: Listens for `DownloadCompleted`, imports files, emits `ImportCompleted`
+- **CleanupHandler**: Listens for `PlexItemDetected`, cleans up source files after Plex verification
+
+**Adapters** (`internal/adapters/`)
+- **SABnzbd Adapter**: Polls SABnzbd queue, emits `DownloadProgress`/`DownloadCompleted`
+- **Plex Adapter**: Polls Plex library, emits `PlexItemDetected` when imports appear
+
+**Runner** (`internal/server/`)
+- Orchestrates handler and adapter lifecycle using errgroup
+- Exposes event bus for API access
+- Manages graceful shutdown
 
 **Library Module**
 - Tracks content: movies, series, episodes
@@ -71,11 +96,10 @@ arrgo is a unified media automation system written in Go, designed to replace th
 **Download Module**
 - Sends NZBs to download clients
 - Tracks download ID ↔ content mapping
-- Polls for completion status
+- State machine: queued → downloading → completed → importing → imported → cleaned
 - Initially SABnzbd only; qBittorrent stubbed
 
 **Import Module**
-- Detects completed downloads
 - Renames and moves files to library
 - Updates database records
 - Triggers Plex library scan
@@ -83,6 +107,7 @@ arrgo is a unified media automation system written in Go, designed to replace th
 **API Module**
 - Native REST API (`/api/v1/*`)
 - Compatibility shim for Overseerr (`/api/v3/*`)
+- Can publish events for grab requests
 - WebSocket/SSE for real-time updates (future)
 
 ## Data Model
@@ -150,6 +175,17 @@ history (
     event           TEXT NOT NULL,          -- 'grabbed' | 'imported' | 'deleted' | 'upgraded' | 'failed'
     data            TEXT,                   -- JSON
     created_at      TIMESTAMP
+)
+
+-- Events: event-driven pipeline log (auto-pruned after 90 days)
+events (
+    id              INTEGER PRIMARY KEY,
+    event_type      TEXT NOT NULL,          -- 'grab.requested' | 'download.created' | 'download.completed' | etc.
+    entity_type     TEXT NOT NULL,          -- 'download' | 'content'
+    entity_id       INTEGER NOT NULL,
+    payload         TEXT NOT NULL,          -- JSON event data
+    occurred_at     TIMESTAMP NOT NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )
 
 -- Quality profiles
@@ -334,28 +370,50 @@ Overseerr                     arrgo                          External
     │◄── 200 OK ────────────────┤                               │
 ```
 
-### Download Completion → Import
+### Download Completion → Import (Event-Driven)
 
 ```
-arrgo (poller)                 External
-    │                             │
-    ├── GET /api/queue ──────────►│ SABnzbd
-    │◄── {status: "Completed"} ───┤
-    │                             │
-    ├── Find video files          │
-    ├── Rename & move to library  │
-    ├── Update database           │
-    ├── POST /library/refresh ───►│ Plex
-    │◄── 200 OK ──────────────────┤
+SABnzbd Adapter          Event Bus              Handlers
+    │                        │                      │
+    ├─ poll SABnzbd ─────────┤                      │
+    │                        │                      │
+    ├─ DownloadCompleted ───►│                      │
+    │                        ├─ DownloadCompleted ─►│ ImportHandler
+    │                        │                      ├─ Find video files
+    │                        │                      ├─ Rename & move
+    │                        │                      ├─ Update database
+    │                        │                      ├─ Trigger Plex scan
+    │                        │◄─ ImportCompleted ───┤
+    │                        │                      │
+Plex Adapter                 │                      │
+    │                        │                      │
+    ├─ poll Plex library ────┤                      │
+    ├─ PlexItemDetected ────►│                      │
+    │                        ├─ PlexItemDetected ──►│ CleanupHandler
+    │                        │                      ├─ Delete source files
+    │                        │◄─ CleanupCompleted ──┤
 ```
+
+### Event Types
+
+| Event | Emitted By | Handled By |
+|-------|-----------|------------|
+| `GrabRequested` | API, Compat layer | DownloadHandler |
+| `DownloadCreated` | DownloadHandler | (logged) |
+| `DownloadProgress` | SABnzbd Adapter | (logged) |
+| `DownloadCompleted` | SABnzbd Adapter | ImportHandler |
+| `ImportStarted` | ImportHandler | (logged) |
+| `ImportCompleted` | ImportHandler | CleanupHandler |
+| `PlexItemDetected` | Plex Adapter | CleanupHandler |
+| `CleanupCompleted` | CleanupHandler | (logged) |
 
 ### Background Jobs
 
 | Job | Interval | Purpose |
 |-----|----------|---------|
-| Download poller | 30s | Check for completed downloads |
-| Overseerr sync | 5m | Pull new approved requests |
-| Stuck checker | 10m | Detect stalled downloads |
+| SABnzbd Adapter | 30s | Poll for download progress/completion |
+| Plex Adapter | 30s | Poll for newly imported items |
+| Event log pruning | 24h | Remove events older than 90 days |
 | Health check | 1m | Verify client connectivity |
 
 ## AI-Powered CLI (v2+)
@@ -537,6 +595,20 @@ We initially planned to use Prowlarr, but discovered its internal search API doe
 ### Why stub torrents?
 
 Usenet is simpler (download → done). Torrents have seeding lifecycle complexity. Get v1 working with usenet, add torrents in v2 with proper design for seeding state management.
+
+### Why event-driven architecture?
+
+The download pipeline (grab → download → import → cleanup) is naturally event-driven:
+- **Loose coupling** — Handlers don't know about each other, just events
+- **Testability** — Easy to test handlers in isolation by publishing test events
+- **Observability** — All events persisted to SQLite for audit/debugging
+- **Extensibility** — Add new handlers without modifying existing code
+- **Reliability** — Events can be replayed if handlers fail
+
+We use Go channels (not Kafka/Redis) because:
+- Single process, no network overhead
+- SQLite persistence sufficient for audit needs
+- Simpler deployment (no external dependencies)
 
 ### Why AI built-in?
 
