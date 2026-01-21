@@ -1,0 +1,71 @@
+// internal/events/download.go
+package events
+
+// Entity types
+const (
+	EntityDownload = "download"
+	EntityContent  = "content"
+	EntityEpisode  = "episode"
+)
+
+// Event type constants
+const (
+	EventGrabRequested        = "grab.requested"
+	EventDownloadCreated      = "download.created"
+	EventDownloadProgressed   = "download.progressed"
+	EventDownloadCompleted    = "download.completed"
+	EventDownloadFailed       = "download.failed"
+	EventImportStarted        = "import.started"
+	EventImportCompleted      = "import.completed"
+	EventImportFailed         = "import.failed"
+	EventCleanupStarted       = "cleanup.started"
+	EventCleanupCompleted     = "cleanup.completed"
+	EventContentAdded         = "content.added"
+	EventContentStatusChanged = "content.status.changed"
+	EventPlexItemDetected     = "plex.item.detected"
+)
+
+// GrabRequested is emitted when a user/API requests a download.
+type GrabRequested struct {
+	BaseEvent
+	ContentID   int64  `json:"content_id"`
+	EpisodeID   *int64 `json:"episode_id,omitempty"`
+	DownloadURL string `json:"download_url"`
+	ReleaseName string `json:"release_name"`
+	Indexer     string `json:"indexer"`
+}
+
+// DownloadCreated is emitted when a download record is created.
+type DownloadCreated struct {
+	BaseEvent
+	DownloadID  int64  `json:"download_id"`
+	ContentID   int64  `json:"content_id"`
+	EpisodeID   *int64 `json:"episode_id,omitempty"`
+	ClientID    string `json:"client_id"` // SABnzbd nzo_id
+	ReleaseName string `json:"release_name"`
+}
+
+// DownloadProgressed is emitted periodically with download progress.
+type DownloadProgressed struct {
+	BaseEvent
+	DownloadID int64   `json:"download_id"`
+	Progress   float64 `json:"progress"`  // 0.0 - 100.0
+	Speed      int64   `json:"speed_bps"` // bytes per second
+	ETA        int     `json:"eta_seconds"`
+	Size       int64   `json:"size_bytes"`
+}
+
+// DownloadCompleted is emitted when a download finishes.
+type DownloadCompleted struct {
+	BaseEvent
+	DownloadID int64  `json:"download_id"`
+	SourcePath string `json:"source_path"` // Where client put files
+}
+
+// DownloadFailed is emitted when a download fails.
+type DownloadFailed struct {
+	BaseEvent
+	DownloadID int64  `json:"download_id"`
+	Reason     string `json:"reason"`
+	Retryable  bool   `json:"retryable"`
+}
