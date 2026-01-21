@@ -49,8 +49,8 @@ type DownloadCreated struct {
 type DownloadProgressed struct {
 	BaseEvent
 	DownloadID int64   `json:"download_id"`
-	Progress   float64 `json:"progress"`    // 0.0 - 100.0
-	Speed      int64   `json:"speed_bps"`   // bytes per second
+	Progress   float64 `json:"progress"`  // 0.0 - 100.0
+	Speed      int64   `json:"speed_bps"` // bytes per second
 	ETA        int     `json:"eta_seconds"`
 	Size       int64   `json:"size_bytes"`
 }
