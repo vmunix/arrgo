@@ -178,4 +178,7 @@ type Info struct {
 
 	// Normalized title for matching
 	CleanTitle string
+
+	// Match confidence (set during title matching, not parsing)
+	MatchConfidence MatchConfidence `json:"match_confidence,omitempty"`
 }
