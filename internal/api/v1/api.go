@@ -1249,6 +1249,20 @@ func (s *Server) importManual(w http.ResponseWriter, r *http.Request, req import
 		return
 	}
 
+	// Publish ImportCompleted event for event-driven pipeline (cleanup, etc.)
+	if s.deps.Bus != nil {
+		evt := &events.ImportCompleted{
+			BaseEvent:  events.NewBaseEvent(events.EventImportCompleted, events.EntityDownload, dl.ID),
+			DownloadID: dl.ID,
+			ContentID:  content.ID,
+			EpisodeID:  episodeID,
+			FilePath:   result.DestPath,
+			FileSize:   result.SizeBytes,
+		}
+		// Best effort - don't fail the request if event publishing fails
+		_ = s.deps.Bus.Publish(ctx, evt)
+	}
+
 	writeJSON(w, http.StatusOK, importResponse{
 		FileID:       result.FileID,
 		ContentID:    content.ID,
