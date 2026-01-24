@@ -273,20 +273,22 @@ func (c *PlexClient) RefreshLibrary(ctx context.Context, sectionKey string) erro
 
 // PlexItem represents a media item in Plex.
 type PlexItem struct {
-	Title    string
-	Year     int
-	Type     string // movie, show
-	AddedAt  int64
-	FilePath string
+	RatingKey string // Plex's unique identifier for the item
+	Title     string
+	Year      int
+	Type      string // movie, show
+	AddedAt   int64
+	FilePath  string
 }
 
 // plexItemXML is the XML representation of a Plex item.
 type plexItemXML struct {
-	Title   string `xml:"title,attr"`
-	Year    int    `xml:"year,attr"`
-	Type    string `xml:"type,attr"`
-	AddedAt int64  `xml:"addedAt,attr"`
-	Media   []struct {
+	RatingKey string `xml:"ratingKey,attr"`
+	Title     string `xml:"title,attr"`
+	Year      int    `xml:"year,attr"`
+	Type      string `xml:"type,attr"`
+	AddedAt   int64  `xml:"addedAt,attr"`
+	Media     []struct {
 		Part []struct {
 			File string `xml:"file,attr"`
 		} `xml:"Part"`
@@ -362,11 +364,12 @@ func (c *PlexClient) ListLibraryItems(ctx context.Context, sectionKey string) ([
 			filePath = item.Media[0].Part[0].File
 		}
 		items[i] = PlexItem{
-			Title:    item.Title,
-			Year:     item.Year,
-			Type:     item.Type,
-			AddedAt:  item.AddedAt,
-			FilePath: filePath,
+			RatingKey: item.RatingKey,
+			Title:     item.Title,
+			Year:      item.Year,
+			Type:      item.Type,
+			AddedAt:   item.AddedAt,
+			FilePath:  filePath,
 		}
 	}
 
@@ -412,11 +415,12 @@ func (c *PlexClient) Search(ctx context.Context, query string) ([]PlexItem, erro
 			filePath = item.Media[0].Part[0].File
 		}
 		items[i] = PlexItem{
-			Title:    item.Title,
-			Year:     item.Year,
-			Type:     item.Type,
-			AddedAt:  item.AddedAt,
-			FilePath: filePath,
+			RatingKey: item.RatingKey,
+			Title:     item.Title,
+			Year:      item.Year,
+			Type:      item.Type,
+			AddedAt:   item.AddedAt,
+			FilePath:  filePath,
 		}
 	}
 
@@ -443,4 +447,182 @@ func (c *PlexClient) HasMovie(ctx context.Context, title string, year int) (bool
 // It checks if Plex has content with the given title and year.
 func (c *PlexClient) HasContent(ctx context.Context, title string, year int) (bool, error) {
 	return c.HasMovie(ctx, title, year)
+}
+
+// FindMovie searches for a movie in Plex with fuzzy title matching and year tolerance.
+// Returns (found, ratingKey, error). The ratingKey is Plex's unique identifier.
+//
+// Matching strategy:
+//  1. Exact title match (case-insensitive) with exact year
+//  2. Exact title match with ±1 year tolerance
+//  3. Fuzzy title match (Jaro-Winkler ≥ 0.85) with year in title variations
+//
+// This handles common mismatches:
+//   - Year off by one (release year vs theatrical year)
+//   - Title includes year ("Blade Runner 2049" vs "Blade Runner" + year=2049)
+func (c *PlexClient) FindMovie(ctx context.Context, title string, year int) (bool, string, error) {
+	items, err := c.Search(ctx, title)
+	if err != nil {
+		return false, "", err
+	}
+
+	// Filter to movies only
+	var movies []PlexItem
+	for _, item := range items {
+		if item.Type == "movie" {
+			movies = append(movies, item)
+		}
+	}
+
+	if len(movies) == 0 {
+		return false, "", nil
+	}
+
+	// Strategy 1: Exact title match with exact year
+	for _, item := range movies {
+		if item.Year == year && strings.EqualFold(item.Title, title) {
+			return true, item.RatingKey, nil
+		}
+	}
+
+	// Strategy 2: Exact title match with ±1 year tolerance
+	for _, item := range movies {
+		yearDiff := item.Year - year
+		if yearDiff >= -1 && yearDiff <= 1 && strings.EqualFold(item.Title, title) {
+			return true, item.RatingKey, nil
+		}
+	}
+
+	// Strategy 3: Fuzzy title matching for year-in-title variations
+	// e.g., searching for "Blade Runner" year=2049 should match "Blade Runner 2049"
+	// Only applies when the Plex title contains the search year.
+	normalizedSearch := normalizeForMatch(title)
+
+	for _, item := range movies {
+		// Only consider items where the Plex title contains the year we're looking for
+		// This handles "Blade Runner 2049" matching search for "Blade Runner" year=2049
+		if containsYear(item.Title, year) {
+			// Compare the title portion (without the year) against our search title
+			plexTitleWithoutYear := removeYear(item.Title, year)
+			similarity := jaroWinkler(normalizedSearch, normalizeForMatch(plexTitleWithoutYear))
+			if similarity >= 0.85 {
+				return true, item.RatingKey, nil
+			}
+		}
+	}
+
+	return false, "", nil
+}
+
+// normalizeForMatch normalizes a string for fuzzy comparison.
+// Lowercases, removes punctuation, collapses whitespace.
+func normalizeForMatch(s string) string {
+	s = strings.ToLower(s)
+	// Replace common punctuation with space
+	s = strings.ReplaceAll(s, "-", " ")
+	s = strings.ReplaceAll(s, "'", "")
+	s = strings.ReplaceAll(s, ":", " ")
+	s = strings.ReplaceAll(s, ".", " ")
+
+	// Remove other punctuation
+	var b strings.Builder
+	for _, r := range s {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == ' ' {
+			b.WriteRune(r)
+		}
+	}
+
+	// Collapse whitespace
+	fields := strings.Fields(b.String())
+	return strings.Join(fields, " ")
+}
+
+// containsYear checks if the title contains the given year.
+func containsYear(title string, year int) bool {
+	return strings.Contains(title, fmt.Sprintf("%d", year))
+}
+
+// removeYear removes a year from a title string.
+func removeYear(title string, year int) string {
+	yearStr := fmt.Sprintf("%d", year)
+	result := strings.ReplaceAll(title, yearStr, "")
+	// Clean up extra spaces
+	fields := strings.Fields(result)
+	return strings.Join(fields, " ")
+}
+
+// jaroWinkler calculates the Jaro-Winkler similarity between two strings.
+// Returns a value between 0.0 (no similarity) and 1.0 (identical).
+func jaroWinkler(s1, s2 string) float64 {
+	if s1 == s2 {
+		return 1.0
+	}
+
+	len1, len2 := len(s1), len(s2)
+	if len1 == 0 || len2 == 0 {
+		return 0.0
+	}
+
+	// Calculate match window
+	matchWindow := max(len1, len2)/2 - 1
+	if matchWindow < 0 {
+		matchWindow = 0
+	}
+
+	s1Matches := make([]bool, len1)
+	s2Matches := make([]bool, len2)
+
+	matches := 0
+	transpositions := 0
+
+	// Find matches
+	for i := 0; i < len1; i++ {
+		start := max(0, i-matchWindow)
+		end := min(len2, i+matchWindow+1)
+
+		for j := start; j < end; j++ {
+			if s2Matches[j] || s1[i] != s2[j] {
+				continue
+			}
+			s1Matches[i] = true
+			s2Matches[j] = true
+			matches++
+			break
+		}
+	}
+
+	if matches == 0 {
+		return 0.0
+	}
+
+	// Count transpositions
+	k := 0
+	for i := 0; i < len1; i++ {
+		if !s1Matches[i] {
+			continue
+		}
+		for !s2Matches[k] {
+			k++
+		}
+		if s1[i] != s2[k] {
+			transpositions++
+		}
+		k++
+	}
+
+	// Jaro similarity
+	m := float64(matches)
+	jaro := (m/float64(len1) + m/float64(len2) + (m-float64(transpositions)/2)/m) / 3
+
+	// Winkler modification: boost for common prefix
+	prefixLen := 0
+	for i := 0; i < min(4, min(len1, len2)); i++ {
+		if s1[i] == s2[i] {
+			prefixLen++
+		} else {
+			break
+		}
+	}
+
+	return jaro + float64(prefixLen)*0.1*(1-jaro)
 }

@@ -408,10 +408,6 @@ func (a *plexCheckerAdapter) HasContentByID(ctx context.Context, contentID int64
 	if err != nil {
 		return false, "", err
 	}
-	found, err := a.client.HasMovie(ctx, content.Title, content.Year)
-	if err != nil {
-		return false, "", err
-	}
-	// PlexClient.HasMovie doesn't return the plex key, return empty for now
-	return found, "", nil
+	// Use FindMovie with fuzzy matching and year tolerance
+	return a.client.FindMovie(ctx, content.Title, content.Year)
 }

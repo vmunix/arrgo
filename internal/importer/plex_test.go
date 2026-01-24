@@ -205,3 +205,87 @@ func TestPlexClient_HasMovie(t *testing.T) {
 	require.NoError(t, err, "HasMovie")
 	assert.False(t, found, "should not find Nonexistent")
 }
+
+func TestPlexClient_HasMovie_YearTolerance(t *testing.T) {
+	// Bug #48: Plex detection fails when release year differs from metadata year
+	// Example: "Ex Machina" - release parsed year 2015, Plex metadata year 2014
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/search" {
+			w.Header().Set("Content-Type", "application/xml")
+			fmt.Fprint(w, `<?xml version="1.0"?>
+<MediaContainer>
+  <Video ratingKey="12345" title="Ex Machina" year="2014" type="movie"/>
+</MediaContainer>`)
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer server.Close()
+
+	client := NewPlexClient(server.URL, "test-token", nil)
+
+	// Should find with ±1 year tolerance
+	found, key, err := client.FindMovie(context.Background(), "Ex Machina", 2015)
+	require.NoError(t, err)
+	assert.True(t, found, "should find Ex Machina with year 2015 when Plex has 2014")
+	assert.Equal(t, "12345", key, "should return Plex rating key")
+
+	// Should NOT find with 2-year difference
+	found, _, err = client.FindMovie(context.Background(), "Ex Machina", 2017)
+	require.NoError(t, err)
+	assert.False(t, found, "should not find with 2+ year difference")
+}
+
+func TestPlexClient_HasMovie_TitleVariations(t *testing.T) {
+	// Bug #49: Plex detection fails when title format differs from Plex metadata
+	// Example: Library has "Blade Runner" (year 2049), Plex has "Blade Runner 2049"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/search" {
+			w.Header().Set("Content-Type", "application/xml")
+			fmt.Fprint(w, `<?xml version="1.0"?>
+<MediaContainer>
+  <Video ratingKey="67890" title="Blade Runner 2049" year="2017" type="movie"/>
+</MediaContainer>`)
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer server.Close()
+
+	client := NewPlexClient(server.URL, "test-token", nil)
+
+	// Should find when our title lacks year but Plex title includes it
+	found, key, err := client.FindMovie(context.Background(), "Blade Runner", 2049)
+	require.NoError(t, err)
+	assert.True(t, found, "should find 'Blade Runner' when Plex has 'Blade Runner 2049'")
+	assert.Equal(t, "67890", key)
+
+	// Should also find with exact title match
+	found, key, err = client.FindMovie(context.Background(), "Blade Runner 2049", 2017)
+	require.NoError(t, err)
+	assert.True(t, found, "should find exact match")
+	assert.Equal(t, "67890", key)
+}
+
+func TestPlexClient_FindMovie_ReturnsRatingKey(t *testing.T) {
+	// Bug #41: PlexCheckerAdapter returns empty PlexKey
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/search" {
+			w.Header().Set("Content-Type", "application/xml")
+			fmt.Fprint(w, `<?xml version="1.0"?>
+<MediaContainer>
+  <Video ratingKey="99999" title="Test Movie" year="2024" type="movie"/>
+</MediaContainer>`)
+			return
+		}
+		w.WriteHeader(404)
+	}))
+	defer server.Close()
+
+	client := NewPlexClient(server.URL, "test-token", nil)
+
+	found, key, err := client.FindMovie(context.Background(), "Test Movie", 2024)
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, "99999", key, "should return the Plex ratingKey")
+}
