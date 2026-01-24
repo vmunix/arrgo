@@ -1,7 +1,11 @@
 // pkg/release/scoring/scoring_test.go
 package scoring
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/vmunix/arrgo/pkg/release"
+)
 
 func TestScoreConstants(t *testing.T) {
 	if ScoreResolution2160p != 100 {
@@ -30,5 +34,26 @@ func TestScoreConstants(t *testing.T) {
 	}
 	if BonusRemux != 20 {
 		t.Errorf("BonusRemux = %d, want 20", BonusRemux)
+	}
+}
+
+func TestResolutionBaseScore(t *testing.T) {
+	tests := []struct {
+		resolution release.Resolution
+		want       int
+	}{
+		{release.Resolution2160p, 100},
+		{release.Resolution1080p, 80},
+		{release.Resolution720p, 60},
+		{release.ResolutionUnknown, 40},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.resolution.String(), func(t *testing.T) {
+			got := ResolutionBaseScore(tt.resolution)
+			if got != tt.want {
+				t.Errorf("ResolutionBaseScore(%v) = %d, want %d", tt.resolution, got, tt.want)
+			}
+		})
 	}
 }
