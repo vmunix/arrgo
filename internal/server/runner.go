@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/vmunix/arrgo/internal/adapters/plex"
@@ -39,8 +40,9 @@ type Runner struct {
 	plexChecker plex.Checker // Can be nil if Plex not configured
 
 	// Runtime state
-	bus      *events.Bus
-	eventLog *events.EventLog
+	startOnce sync.Once
+	bus       *events.Bus
+	eventLog  *events.EventLog
 }
 
 // NewRunner creates a new runner.
@@ -60,9 +62,12 @@ func NewRunner(db *sql.DB, cfg Config, logger *slog.Logger, downloader download.
 
 // Start initializes the runner and returns the event bus.
 // Call Run() after Start() to begin processing.
+// Safe to call from multiple goroutines; initialization happens only once.
 func (r *Runner) Start() *events.Bus {
-	r.eventLog = events.NewEventLog(r.db)
-	r.bus = events.NewBus(r.eventLog, r.logger.With("component", "bus"))
+	r.startOnce.Do(func() {
+		r.eventLog = events.NewEventLog(r.db)
+		r.bus = events.NewBus(r.eventLog, r.logger.With("component", "bus"))
+	})
 	return r.bus
 }
 

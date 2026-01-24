@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/vmunix/arrgo/internal/download"
+	"github.com/vmunix/arrgo/internal/events"
 	"github.com/vmunix/arrgo/internal/importer"
 	_ "modernc.org/sqlite"
 )
@@ -165,4 +166,44 @@ func TestRunner_RunWithoutStart(t *testing.T) {
 	err := runner.Run(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "must call Start()")
+}
+
+func TestRunner_StartIsIdempotent(t *testing.T) {
+	db := setupTestDB(t)
+	runner := NewRunner(db, Config{}, nil, &mockDownloader{}, &mockImporter{}, nil)
+
+	// Calling Start() multiple times should return the same bus
+	bus1 := runner.Start()
+	bus2 := runner.Start()
+	bus3 := runner.Start()
+
+	require.NotNil(t, bus1)
+	assert.Same(t, bus1, bus2, "second call should return same bus")
+	assert.Same(t, bus1, bus3, "third call should return same bus")
+}
+
+func TestRunner_StartIsConcurrentSafe(t *testing.T) {
+	db := setupTestDB(t)
+	runner := NewRunner(db, Config{}, nil, &mockDownloader{}, &mockImporter{}, nil)
+
+	const goroutines = 10
+	results := make(chan *events.Bus, goroutines)
+
+	// Start multiple goroutines that all call Start() concurrently
+	for range goroutines {
+		go func() {
+			results <- runner.Start()
+		}()
+	}
+
+	// Collect all results
+	var first *events.Bus
+	for range goroutines {
+		bus := <-results
+		if first == nil {
+			first = bus
+		} else {
+			assert.Same(t, first, bus, "all goroutines should get same bus")
+		}
+	}
 }
