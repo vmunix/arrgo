@@ -2,7 +2,6 @@ package download
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 )
@@ -13,7 +12,12 @@ type ActiveDownload struct {
 	Live     *ClientStatus
 }
 
-// Manager orchestrates download operations.
+// Manager provides download client operations for API endpoints.
+// Note: Grab and status polling are handled by the event-driven architecture
+// (DownloadHandler and SABnzbd adapter). Manager is retained for:
+// - Cancel: removing downloads from client and database
+// - Client: accessing the download client for live status queries
+// - GetActive: listing active downloads with live status
 type Manager struct {
 	client Downloader
 	store  *Store
@@ -27,78 +31,6 @@ func NewManager(client Downloader, store *Store, log *slog.Logger) *Manager {
 		store:  store,
 		log:    log,
 	}
-}
-
-// Grab sends a release to the download client and records it in the database.
-func (m *Manager) Grab(ctx context.Context, contentID int64, episodeID *int64,
-	downloadURL, releaseName, indexer string) (*Download, error) {
-
-	// Send to download client first
-	clientID, err := m.client.Add(ctx, downloadURL, "")
-	if err != nil {
-		m.log.Error("grab failed", "content_id", contentID, "error", err)
-		return nil, fmt.Errorf("add to client: %w", err)
-	}
-
-	// Record in database (idempotent)
-	d := &Download{
-		ContentID:   contentID,
-		EpisodeID:   episodeID,
-		Client:      ClientSABnzbd, // TODO: make configurable when adding other clients
-		ClientID:    clientID,
-		Status:      StatusQueued,
-		ReleaseName: releaseName,
-		Indexer:     indexer,
-	}
-
-	if err := m.store.Add(d); err != nil {
-		// Orphan in client is acceptable - Refresh will find it
-		return nil, fmt.Errorf("save download: %w", err)
-	}
-
-	m.log.Info("grab sent", "content_id", contentID, "release", releaseName, "client_id", clientID)
-	return d, nil
-}
-
-// Refresh polls the download client for status updates and syncs to the database.
-func (m *Manager) Refresh(ctx context.Context) error {
-	downloads, err := m.store.List(Filter{Active: true})
-	if err != nil {
-		return fmt.Errorf("list active: %w", err)
-	}
-
-	m.log.Debug("refresh started", "active_downloads", len(downloads))
-
-	var lastErr error
-	for _, d := range downloads {
-		status, err := m.client.Status(ctx, d.ClientID)
-		if err != nil {
-			if errors.Is(err, ErrDownloadNotFound) {
-				// Download disappeared from client - mark as failed (allows retry)
-				m.log.Warn("download orphaned", "download_id", d.ID, "client_id", d.ClientID)
-				if transErr := m.store.Transition(d, StatusFailed); transErr != nil {
-					m.log.Error("failed to mark orphan as failed", "download_id", d.ID, "error", transErr)
-					lastErr = transErr
-				}
-				continue
-			}
-			m.log.Error("refresh error", "download_id", d.ID, "error", err)
-			lastErr = err
-			continue
-		}
-
-		// Only update if client reports a different status AND transition is valid
-		// This prevents overwriting terminal states (imported, cleaned) with client status
-		if status.Status != d.Status && d.Status.CanTransitionTo(status.Status) {
-			m.log.Info("download status changed", "download_id", d.ID, "status", status.Status, "prev", d.Status)
-			if err := m.store.Transition(d, status.Status); err != nil {
-				m.log.Error("refresh update failed", "download_id", d.ID, "error", err)
-				lastErr = err
-			}
-		}
-	}
-
-	return lastErr
 }
 
 // Cancel removes a download from the client and database.

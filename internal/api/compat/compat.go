@@ -450,7 +450,7 @@ func (s *Server) addMovie(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Auto-search if requested and searcher available
-	if req.AddOptions.SearchForMovie && s.searcher != nil && (s.manager != nil || s.bus != nil) {
+	if req.AddOptions.SearchForMovie && s.searcher != nil && s.bus != nil {
 		go s.searchAndGrab(content.ID, req.Title, req.Year, profileName)
 	}
 
@@ -501,7 +501,7 @@ func (s *Server) updateMovie(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Trigger search if requested
-	if req.AddOptions.SearchForMovie && req.Monitored && s.searcher != nil && (s.manager != nil || s.bus != nil) {
+	if req.AddOptions.SearchForMovie && req.Monitored && s.searcher != nil && s.bus != nil {
 		title := req.Title
 		if title == "" {
 			title = content.Title
@@ -641,7 +641,7 @@ func (s *Server) executeCommand(w http.ResponseWriter, r *http.Request) {
 	// Dispatch based on command name
 	switch req.Name {
 	case "MoviesSearch":
-		if s.searcher != nil && (s.manager != nil || s.bus != nil) && len(req.MovieIDs) > 0 {
+		if s.searcher != nil && s.bus != nil && len(req.MovieIDs) > 0 {
 			for _, movieID := range req.MovieIDs {
 				content, err := s.library.GetContent(movieID)
 				if err != nil {
@@ -651,7 +651,7 @@ func (s *Server) executeCommand(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "SeriesSearch":
-		if s.searcher != nil && (s.manager != nil || s.bus != nil) && req.SeriesID > 0 {
+		if s.searcher != nil && s.bus != nil && req.SeriesID > 0 {
 			content, err := s.library.GetContent(req.SeriesID)
 			if err == nil {
 				// Search for season 1 by default (full series search not supported yet)
@@ -888,7 +888,7 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Auto-search if requested
-	if req.AddOptions.SearchForMissingEpisodes && s.searcher != nil && (s.manager != nil || s.bus != nil) {
+	if req.AddOptions.SearchForMissingEpisodes && s.searcher != nil && s.bus != nil {
 		// Extract monitored season numbers
 		var monitoredSeasons []int
 		for _, season := range req.Seasons {
@@ -939,7 +939,7 @@ func (s *Server) updateSeries(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Track if we need to trigger search
-	shouldSearch := req.Monitored && content.Status == library.StatusWanted && s.searcher != nil && (s.manager != nil || s.bus != nil)
+	shouldSearch := req.Monitored && content.Status == library.StatusWanted && s.searcher != nil && s.bus != nil
 
 	// Update monitoring status
 	if req.Monitored {
@@ -1007,6 +1007,10 @@ func (s *Server) searchAndGrab(contentID int64, title string, year int, profile 
 		s.log.Warn("no searcher configured, cannot search")
 		return
 	}
+	if s.bus == nil {
+		s.log.Warn("no event bus configured, cannot grab")
+		return
+	}
 	ctx := context.Background()
 
 	query := search.Query{
@@ -1023,25 +1027,14 @@ func (s *Server) searchAndGrab(contentID int64, title string, year int, profile 
 	// Grab the best match (first result after scoring/sorting)
 	best := result.Releases[0]
 
-	// Use event bus if available, otherwise fall back to manager
-	if s.bus != nil {
-		if err := s.bus.Publish(ctx, &events.GrabRequested{
-			BaseEvent:   events.NewBaseEvent(events.EventGrabRequested, events.EntityDownload, 0),
-			ContentID:   contentID,
-			DownloadURL: best.DownloadURL,
-			ReleaseName: best.Title,
-			Indexer:     best.Indexer,
-		}); err != nil {
-			s.log.Error("failed to publish GrabRequested", "error", err)
-		}
-		return
-	}
-
-	// Legacy: direct manager call
-	if s.manager != nil {
-		if _, err := s.manager.Grab(ctx, contentID, nil, best.DownloadURL, best.Title, best.Indexer); err != nil {
-			s.log.Error("failed to grab release", "error", err, "release", best.Title)
-		}
+	if err := s.bus.Publish(ctx, &events.GrabRequested{
+		BaseEvent:   events.NewBaseEvent(events.EventGrabRequested, events.EntityDownload, 0),
+		ContentID:   contentID,
+		DownloadURL: best.DownloadURL,
+		ReleaseName: best.Title,
+		Indexer:     best.Indexer,
+	}); err != nil {
+		s.log.Error("failed to publish GrabRequested", "error", err)
 	}
 }
 
@@ -1049,6 +1042,10 @@ func (s *Server) searchAndGrab(contentID int64, title string, year int, profile 
 func (s *Server) searchAndGrabSeries(contentID int64, title string, profile string, seasons []int) {
 	if s.searcher == nil {
 		s.log.Warn("no searcher configured, cannot search")
+		return
+	}
+	if s.bus == nil {
+		s.log.Warn("no event bus configured, cannot grab")
 		return
 	}
 	ctx := context.Background()
@@ -1076,25 +1073,14 @@ func (s *Server) searchAndGrabSeries(contentID int64, title string, profile stri
 		// Grab the best match for this season
 		best := result.Releases[0]
 
-		// Use event bus if available, otherwise fall back to manager
-		if s.bus != nil {
-			if err := s.bus.Publish(ctx, &events.GrabRequested{
-				BaseEvent:   events.NewBaseEvent(events.EventGrabRequested, events.EntityDownload, 0),
-				ContentID:   contentID,
-				DownloadURL: best.DownloadURL,
-				ReleaseName: best.Title,
-				Indexer:     best.Indexer,
-			}); err != nil {
-				s.log.Error("failed to publish GrabRequested", "error", err)
-			}
-			continue
-		}
-
-		// Legacy: direct manager call
-		if s.manager != nil {
-			if _, err := s.manager.Grab(ctx, contentID, nil, best.DownloadURL, best.Title, best.Indexer); err != nil {
-				s.log.Error("failed to grab release", "error", err, "release", best.Title, "season", season)
-			}
+		if err := s.bus.Publish(ctx, &events.GrabRequested{
+			BaseEvent:   events.NewBaseEvent(events.EventGrabRequested, events.EntityDownload, 0),
+			ContentID:   contentID,
+			DownloadURL: best.DownloadURL,
+			ReleaseName: best.Title,
+			Indexer:     best.Indexer,
+		}); err != nil {
+			s.log.Error("failed to publish GrabRequested", "error", err)
 		}
 	}
 }

@@ -125,21 +125,6 @@ func (mr *MockDownloadManagerMockRecorder) GetActive(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetActive", reflect.TypeOf((*MockDownloadManager)(nil).GetActive), ctx)
 }
 
-// Grab mocks base method.
-func (m *MockDownloadManager) Grab(ctx context.Context, contentID int64, episodeID *int64, downloadURL, title, indexer string) (*download.Download, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Grab", ctx, contentID, episodeID, downloadURL, title, indexer)
-	ret0, _ := ret[0].(*download.Download)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Grab indicates an expected call of Grab.
-func (mr *MockDownloadManagerMockRecorder) Grab(ctx, contentID, episodeID, downloadURL, title, indexer any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Grab", reflect.TypeOf((*MockDownloadManager)(nil).Grab), ctx, contentID, episodeID, downloadURL, title, indexer)
-}
-
 // MockPlexClient is a mock of PlexClient interface.
 type MockPlexClient struct {
 	ctrl     *gomock.Controller

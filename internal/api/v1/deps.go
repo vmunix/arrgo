@@ -20,8 +20,8 @@ type Searcher interface {
 }
 
 // DownloadManager defines the interface for download management.
+// Note: Grab is handled via the event bus (GrabRequested event).
 type DownloadManager interface {
-	Grab(ctx context.Context, contentID int64, episodeID *int64, downloadURL, title, indexer string) (*download.Download, error)
 	Cancel(ctx context.Context, downloadID int64, deleteFiles bool) error
 	Client() download.Downloader
 	GetActive(ctx context.Context) ([]*download.ActiveDownload, error)

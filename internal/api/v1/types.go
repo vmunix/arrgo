@@ -102,12 +102,6 @@ type grabRequest struct {
 	Indexer     string `json:"indexer"`
 }
 
-// grabResponse is the response for POST /grab.
-type grabResponse struct {
-	DownloadID int64  `json:"download_id"`
-	Status     string `json:"status"`
-}
-
 // downloadResponse is the API representation of a download.
 type downloadResponse struct {
 	ID          int64      `json:"id"`
