@@ -57,3 +57,30 @@ func HDRMatches(hdr release.HDRFormat, pref string) bool {
 		return false
 	}
 }
+
+// AudioMatches checks if an audio codec matches a preference string.
+func AudioMatches(audio release.AudioCodec, pref string) bool {
+	prefLower := strings.ToLower(pref)
+	switch audio {
+	case release.AudioAtmos:
+		return prefLower == "atmos"
+	case release.AudioTrueHD:
+		return prefLower == "truehd"
+	case release.AudioDTSHD:
+		return prefLower == "dtshd" || prefLower == "dts-hd" || prefLower == "dts-hd ma"
+	case release.AudioDTS:
+		return prefLower == "dts"
+	case release.AudioEAC3:
+		return prefLower == "dd+" || prefLower == "ddp" || prefLower == "eac3"
+	case release.AudioAC3:
+		return prefLower == "dd" || prefLower == "ac3"
+	case release.AudioAAC:
+		return prefLower == "aac"
+	case release.AudioFLAC:
+		return prefLower == "flac"
+	case release.AudioOpus:
+		return prefLower == "opus"
+	default:
+		return false
+	}
+}

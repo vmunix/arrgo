@@ -98,3 +98,52 @@ func TestHDRMatches(t *testing.T) {
 		})
 	}
 }
+
+func TestAudioMatches(t *testing.T) {
+	tests := []struct {
+		audio release.AudioCodec
+		pref  string
+		want  bool
+	}{
+		// Atmos
+		{release.AudioAtmos, "atmos", true},
+		{release.AudioAtmos, "ATMOS", true},
+		{release.AudioAtmos, "truehd", false},
+		// TrueHD
+		{release.AudioTrueHD, "truehd", true},
+		{release.AudioTrueHD, "TrueHD", true},
+		// DTS-HD
+		{release.AudioDTSHD, "dtshd", true},
+		{release.AudioDTSHD, "dts-hd", true},
+		{release.AudioDTSHD, "dts-hd ma", true},
+		{release.AudioDTSHD, "dts", false},
+		// DTS
+		{release.AudioDTS, "dts", true},
+		{release.AudioDTS, "dtshd", false},
+		// EAC3 (DD+)
+		{release.AudioEAC3, "dd+", true},
+		{release.AudioEAC3, "ddp", true},
+		{release.AudioEAC3, "eac3", true},
+		// AC3 (DD)
+		{release.AudioAC3, "dd", true},
+		{release.AudioAC3, "ac3", true},
+		// AAC
+		{release.AudioAAC, "aac", true},
+		// FLAC
+		{release.AudioFLAC, "flac", true},
+		// Opus
+		{release.AudioOpus, "opus", true},
+		// Unknown
+		{release.AudioUnknown, "aac", false},
+	}
+
+	for _, tt := range tests {
+		name := tt.audio.String() + "_" + tt.pref
+		t.Run(name, func(t *testing.T) {
+			got := AudioMatches(tt.audio, tt.pref)
+			if got != tt.want {
+				t.Errorf("AudioMatches(%v, %q) = %v, want %v", tt.audio, tt.pref, got, tt.want)
+			}
+		})
+	}
+}
