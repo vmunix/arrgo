@@ -156,16 +156,24 @@ func (c *SABnzbdClient) getQueue(ctx context.Context) ([]*ClientStatus, error) {
 		return nil, err
 	}
 
+	// Parse queue-level speed (applies to active download)
+	queueSpeed := parseSpeed(resp.Queue.Speed)
+
 	items := make([]*ClientStatus, 0, len(resp.Queue.Slots))
 	for i := range resp.Queue.Slots {
 		slot := &resp.Queue.Slots[i]
+		// Only the first (active) slot gets the speed; others are queued
+		speed := int64(0)
+		if i == 0 {
+			speed = queueSpeed
+		}
 		items = append(items, &ClientStatus{
 			ID:       slot.NzoID,
 			Name:     slot.Filename,
 			Status:   mapQueueStatus(slot.Status),
 			Progress: parseFloat(slot.Percentage),
 			Size:     int64(parseFloat(slot.MB) * 1024 * 1024),
-			Speed:    parseSpeed(slot.Speed),
+			Speed:    speed,
 			ETA:      parseTimeLeft(slot.TimeLeft),
 		})
 	}
@@ -245,6 +253,7 @@ type statusResponse struct {
 
 type queueResponse struct {
 	Queue struct {
+		Speed string      `json:"speed"` // Queue-level speed (e.g., "5.2 M")
 		Slots []queueSlot `json:"slots"`
 	} `json:"queue"`
 }
@@ -257,7 +266,6 @@ type queueSlot struct {
 	MB         string `json:"mb"`
 	MBLeft     string `json:"mbleft"`
 	TimeLeft   string `json:"timeleft"`
-	Speed      string `json:"speed"`
 }
 
 type historyResponse struct {

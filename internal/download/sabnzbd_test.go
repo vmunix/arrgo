@@ -79,6 +79,7 @@ func TestSABnzbdClient_Status(t *testing.T) {
 		if mode == modeQueue {
 			resp := map[string]any{
 				"queue": map[string]any{
+					"speed": "5.2 M", // Speed is at queue level, not slot level
 					"slots": []map[string]any{
 						{
 							"nzo_id":     "nzo_abc123",
@@ -88,7 +89,6 @@ func TestSABnzbdClient_Status(t *testing.T) {
 							"mb":         "1500",
 							"mbleft":     "825",
 							"timeleft":   "0:05:30",
-							"speed":      "5.2 M",
 						},
 					},
 				},
@@ -109,6 +109,7 @@ func TestSABnzbdClient_Status(t *testing.T) {
 	assert.Equal(t, "Test.Movie.2024.1080p", status.Name)
 	assert.Equal(t, StatusDownloading, status.Status)
 	assert.InDelta(t, 45, status.Progress, 0.001)
+	assert.Equal(t, int64(5452595), status.Speed) // 5.2 M = 5.2 * 1024 * 1024
 }
 
 func TestSABnzbdClient_Status_Completed(t *testing.T) {
