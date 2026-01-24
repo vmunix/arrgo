@@ -1,27 +1,14 @@
 # Backlog
 
-Future work items, organized by category.
-
-## v2 Features
-
-- AI chat CLI (get core flows working first)
-- Torrent support (Torznab + qBittorrent)
-- RSS monitoring and auto-grab
-- Quality upgrades
-- Web UI
-
-## Tech Debt
-
-_(Moved to GitHub issues: #13)_
+Ideas not yet tracked in GitHub issues.
 
 ## Nice-to-Haves
-
-_(Ideas that aren't blocking v1)_
 
 - **Mock server improvements** - Add API key validation and HTTP method checks to mock Prowlarr/SABnzbd for more realistic testing
 
 ---
 
-_Moved to GitHub issues:_
-- Subprocess smoke test → #31
-- Integration test improvements → #51
+_See GitHub issues for tracked work:_
+- v1 tech debt: #13
+- v1 testing: #31, #51
+- v2 features: #52, #53, #54, #55, #56
