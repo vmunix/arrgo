@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const plexSearchPath = "/search"
+
 func TestPlexClient_GetSections(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/library/sections", r.URL.Path)
@@ -168,7 +170,7 @@ func TestPlexClient_GetLibraryCount(t *testing.T) {
 
 func TestPlexClient_HasMovie(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/search" && strings.Contains(r.URL.RawQuery, "Test+Movie") {
+		if r.URL.Path == plexSearchPath && strings.Contains(r.URL.RawQuery, "Test+Movie") {
 			w.Header().Set("Content-Type", "application/xml")
 			fmt.Fprint(w, `<?xml version="1.0"?>
 <MediaContainer>
@@ -177,7 +179,7 @@ func TestPlexClient_HasMovie(t *testing.T) {
 			return
 		}
 		// Return empty result for non-matching queries
-		if r.URL.Path == "/search" {
+		if r.URL.Path == plexSearchPath {
 			w.Header().Set("Content-Type", "application/xml")
 			fmt.Fprint(w, `<?xml version="1.0"?>
 <MediaContainer>
@@ -210,7 +212,7 @@ func TestPlexClient_HasMovie_YearTolerance(t *testing.T) {
 	// Bug #48: Plex detection fails when release year differs from metadata year
 	// Example: "Ex Machina" - release parsed year 2015, Plex metadata year 2014
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/search" {
+		if r.URL.Path == plexSearchPath {
 			w.Header().Set("Content-Type", "application/xml")
 			fmt.Fprint(w, `<?xml version="1.0"?>
 <MediaContainer>
@@ -240,7 +242,7 @@ func TestPlexClient_HasMovie_TitleVariations(t *testing.T) {
 	// Bug #49: Plex detection fails when title format differs from Plex metadata
 	// Example: Library has "Blade Runner" (year 2049), Plex has "Blade Runner 2049"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/search" {
+		if r.URL.Path == plexSearchPath {
 			w.Header().Set("Content-Type", "application/xml")
 			fmt.Fprint(w, `<?xml version="1.0"?>
 <MediaContainer>
@@ -270,7 +272,7 @@ func TestPlexClient_HasMovie_TitleVariations(t *testing.T) {
 func TestPlexClient_FindMovie_ReturnsRatingKey(t *testing.T) {
 	// Bug #41: PlexCheckerAdapter returns empty PlexKey
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/search" {
+		if r.URL.Path == plexSearchPath {
 			w.Header().Set("Content-Type", "application/xml")
 			fmt.Fprint(w, `<?xml version="1.0"?>
 <MediaContainer>
