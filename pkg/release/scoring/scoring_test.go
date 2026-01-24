@@ -57,3 +57,44 @@ func TestResolutionBaseScore(t *testing.T) {
 		})
 	}
 }
+
+func TestHDRMatches(t *testing.T) {
+	tests := []struct {
+		hdr  release.HDRFormat
+		pref string
+		want bool
+	}{
+		// Dolby Vision variations
+		{release.DolbyVision, "dolby-vision", true},
+		{release.DolbyVision, "dv", true},
+		{release.DolbyVision, "dolbyvision", true},
+		{release.DolbyVision, "DV", true}, // case insensitive
+		{release.DolbyVision, "hdr10", false},
+		// HDR10+
+		{release.HDR10Plus, "hdr10+", true},
+		{release.HDR10Plus, "hdr10plus", true},
+		{release.HDR10Plus, "hdr10", false},
+		// HDR10
+		{release.HDR10, "hdr10", true},
+		{release.HDR10, "HDR10", true},
+		{release.HDR10, "hdr", false},
+		// Generic HDR
+		{release.HDRGeneric, "hdr", true},
+		{release.HDRGeneric, "hdr10", false},
+		// HLG
+		{release.HLG, "hlg", true},
+		{release.HLG, "HLG", true},
+		// None
+		{release.HDRNone, "hdr", false},
+	}
+
+	for _, tt := range tests {
+		name := tt.hdr.String() + "_" + tt.pref
+		t.Run(name, func(t *testing.T) {
+			got := HDRMatches(tt.hdr, tt.pref)
+			if got != tt.want {
+				t.Errorf("HDRMatches(%v, %q) = %v, want %v", tt.hdr, tt.pref, got, tt.want)
+			}
+		})
+	}
+}

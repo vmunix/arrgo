@@ -2,7 +2,11 @@
 // for quality profile evaluation.
 package scoring
 
-import "github.com/vmunix/arrgo/pkg/release"
+import (
+	"strings"
+
+	"github.com/vmunix/arrgo/pkg/release"
+)
 
 // Base scores for resolutions.
 const (
@@ -32,5 +36,24 @@ func ResolutionBaseScore(r release.Resolution) int {
 		return ScoreResolution720p
 	default:
 		return ScoreResolutionOther
+	}
+}
+
+// HDRMatches checks if an HDR format matches a preference string.
+func HDRMatches(hdr release.HDRFormat, pref string) bool {
+	prefLower := strings.ToLower(pref)
+	switch hdr {
+	case release.DolbyVision:
+		return prefLower == "dolby-vision" || prefLower == "dv" || prefLower == "dolbyvision"
+	case release.HDR10Plus:
+		return prefLower == "hdr10+" || prefLower == "hdr10plus"
+	case release.HDR10:
+		return prefLower == "hdr10"
+	case release.HDRGeneric:
+		return prefLower == "hdr"
+	case release.HLG:
+		return prefLower == "hlg"
+	default:
+		return false
 	}
 }
