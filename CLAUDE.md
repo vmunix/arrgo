@@ -72,7 +72,7 @@ The download pipeline uses an event-driven architecture with Go channels + SQLit
 
 ### Required Tools
 
-- Go 1.25+
+- Go 1.24+
 - golangci-lint (linting)
 - task (task runner, recommended)
 - mockgen (mock generation for tests)
@@ -275,10 +275,20 @@ Follow Eskil Steenberg's black-box architecture:
 
 ## GitHub Issues
 
-When code quality reviewers identify issues that aren't immediately addressed:
-- Create GitHub issues to track them
-- Use appropriate labels: `tech-debt`, `testing`, `refactor`, `bug`, `enhancement`, `docs`
+GitHub issues is the primary work tracking system. All bugs, features, and tech debt are tracked there.
 
-When creating any GitHub issue:
-- Always add relevant labels via `gh issue create --label "label-name"` or `gh issue edit N --add-label "label-name"`
+**Workflow:**
+- Check open issues with `gh issue list`
+- Reference issues in commits (e.g., "fix: resolve search bug (#42)")
+- Close issues when work is complete with `gh issue close N --comment "reason"`
+
+**Labels:**
+- `bug` — Something isn't working
+- `enhancement` — New feature or improvement
+- `tech-debt` — Code quality, refactoring
+- `testing` — Test coverage, test infrastructure
+- `v2` — Deferred to v2 (torrents, RSS, web UI, AI chat)
+
+**Creating issues:**
+- Always add relevant labels: `gh issue create --label "bug"`
 - Reference related issues/commits where applicable

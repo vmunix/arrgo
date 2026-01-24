@@ -124,7 +124,7 @@ arrgo init               # Interactive setup wizard
 
 ### Requirements
 
-- **Go 1.25+** — [golang.org/dl](https://golang.org/dl/)
+- **Go 1.24+** — [golang.org/dl](https://golang.org/dl/)
 
 ### Optional Tools
 
