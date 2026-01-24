@@ -84,3 +84,64 @@ func AudioMatches(audio release.AudioCodec, pref string) bool {
 		return false
 	}
 }
+
+// MatchesRejectList checks if a release matches any reject criteria.
+func MatchesRejectList(info release.Info, rejectList []string) bool {
+	if len(rejectList) == 0 {
+		return false
+	}
+
+	// Build lowercase set of release attributes
+	attrs := []string{
+		strings.ToLower(info.Resolution.String()),
+		strings.ToLower(info.Source.String()),
+		strings.ToLower(info.Codec.String()),
+	}
+
+	// Add HDR format if present
+	if info.HDR != release.HDRNone {
+		attrs = append(attrs, strings.ToLower(info.HDR.String()))
+	}
+
+	// Add audio codec if present
+	if info.Audio != release.AudioUnknown {
+		attrs = append(attrs, strings.ToLower(info.Audio.String()))
+	}
+
+	// Check each reject term
+	for _, reject := range rejectList {
+		rejectLower := strings.ToLower(reject)
+		for _, attr := range attrs {
+			if attr == rejectLower {
+				return true
+			}
+		}
+		// Also check special cases for reject list
+		if rejectMatchesSpecial(info, rejectLower) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// rejectMatchesSpecial handles special reject list matching.
+func rejectMatchesSpecial(info release.Info, reject string) bool {
+	switch reject {
+	case "cam", "camrip", "hdcam":
+		return info.Source == release.SourceCAM
+	case "ts", "telesync", "hdts":
+		return info.Source == release.SourceTelesync
+	case "hdtv":
+		return info.Source == release.SourceHDTV
+	case "webrip":
+		return info.Source == release.SourceWEBRip
+	case "remux":
+		return info.IsRemux
+	case "x264", "h264":
+		return info.Codec == release.CodecX264
+	case "x265", "h265", "hevc":
+		return info.Codec == release.CodecX265
+	}
+	return false
+}

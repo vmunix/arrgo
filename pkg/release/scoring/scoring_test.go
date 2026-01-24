@@ -147,3 +147,88 @@ func TestAudioMatches(t *testing.T) {
 		})
 	}
 }
+
+func TestMatchesRejectList(t *testing.T) {
+	tests := []struct {
+		name       string
+		info       release.Info
+		rejectList []string
+		want       bool
+	}{
+		{
+			name:       "empty reject list",
+			info:       release.Info{Resolution: release.Resolution1080p},
+			rejectList: nil,
+			want:       false,
+		},
+		{
+			name:       "resolution rejected",
+			info:       release.Info{Resolution: release.Resolution720p},
+			rejectList: []string{"720p"},
+			want:       true,
+		},
+		{
+			name:       "source rejected",
+			info:       release.Info{Source: release.SourceCAM},
+			rejectList: []string{"cam"},
+			want:       true,
+		},
+		{
+			name:       "codec rejected",
+			info:       release.Info{Codec: release.CodecX264},
+			rejectList: []string{"x264"},
+			want:       true,
+		},
+		{
+			name:       "hdr rejected",
+			info:       release.Info{HDR: release.DolbyVision},
+			rejectList: []string{"dv"},
+			want:       true,
+		},
+		{
+			name:       "audio rejected",
+			info:       release.Info{Audio: release.AudioAAC},
+			rejectList: []string{"aac"},
+			want:       true,
+		},
+		{
+			name:       "remux special case",
+			info:       release.Info{IsRemux: true},
+			rejectList: []string{"remux"},
+			want:       true,
+		},
+		{
+			name:       "cam alias",
+			info:       release.Info{Source: release.SourceCAM},
+			rejectList: []string{"camrip"},
+			want:       true,
+		},
+		{
+			name:       "telesync alias",
+			info:       release.Info{Source: release.SourceTelesync},
+			rejectList: []string{"ts"},
+			want:       true,
+		},
+		{
+			name:       "no match",
+			info:       release.Info{Resolution: release.Resolution1080p, Source: release.SourceBluRay},
+			rejectList: []string{"720p", "cam"},
+			want:       false,
+		},
+		{
+			name:       "case insensitive",
+			info:       release.Info{Resolution: release.Resolution720p},
+			rejectList: []string{"720P"},
+			want:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MatchesRejectList(tt.info, tt.rejectList)
+			if got != tt.want {
+				t.Errorf("MatchesRejectList() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
