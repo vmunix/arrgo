@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/vmunix/arrgo/internal/config"
 	"github.com/vmunix/arrgo/pkg/release"
+	"github.com/vmunix/arrgo/pkg/release/scoring"
 )
 
 // ScoreBonus represents a single bonus in the score breakdown.
@@ -218,19 +219,6 @@ func getProfileNames(cfg *config.Config) []string {
 	return names
 }
 
-// Score constants (matching internal/search/scorer.go)
-const (
-	scoreResolution2160p = 100
-	scoreResolution1080p = 80
-	scoreResolution720p  = 60
-	scoreResolutionOther = 40
-	bonusSource          = 10
-	bonusCodec           = 10
-	bonusHDR             = 15
-	bonusAudio           = 15
-	bonusRemux           = 20
-)
-
 // String constants to avoid duplication
 const (
 	valueUnknown      = "unknown"
@@ -240,7 +228,7 @@ const (
 // scoreWithBreakdown calculates the score and returns a detailed breakdown.
 func scoreWithBreakdown(info release.Info, profile config.QualityProfile) (int, []ScoreBonus) {
 	// Check reject list first
-	if matchesRejectList(info, profile.Reject) {
+	if scoring.MatchesRejectList(info, profile.Reject) {
 		return 0, []ScoreBonus{{
 			Attribute: "Reject",
 			Value:     "matched reject list",
@@ -271,7 +259,7 @@ func scoreWithBreakdown(info release.Info, profile config.QualityProfile) (int, 
 	}
 
 	// Source bonus
-	if bonus := scoreAttribute(info.Source.String(), profile.Sources, bonusSource, "Source"); bonus.Bonus > 0 || info.Source != release.SourceUnknown {
+	if bonus := scoreAttribute(info.Source.String(), profile.Sources, scoring.BonusSource, "Source"); bonus.Bonus > 0 || info.Source != release.SourceUnknown {
 		if bonus.Value != valueUnknown {
 			breakdown = append(breakdown, bonus)
 			totalScore += bonus.Bonus
@@ -279,7 +267,7 @@ func scoreWithBreakdown(info release.Info, profile config.QualityProfile) (int, 
 	}
 
 	// Codec bonus
-	if bonus := scoreAttribute(info.Codec.String(), profile.Codecs, bonusCodec, "Codec"); bonus.Bonus > 0 || info.Codec != release.CodecUnknown {
+	if bonus := scoreAttribute(info.Codec.String(), profile.Codecs, scoring.BonusCodec, "Codec"); bonus.Bonus > 0 || info.Codec != release.CodecUnknown {
 		if bonus.Value != valueUnknown {
 			breakdown = append(breakdown, bonus)
 			totalScore += bonus.Bonus
@@ -306,10 +294,10 @@ func scoreWithBreakdown(info release.Info, profile config.QualityProfile) (int, 
 			Attribute: "Remux",
 			Value:     "yes",
 			Position:  -1,
-			Bonus:     bonusRemux,
+			Bonus:     scoring.BonusRemux,
 			Note:      "preferred",
 		})
-		totalScore += bonusRemux
+		totalScore += scoring.BonusRemux
 	}
 
 	return totalScore, breakdown
@@ -318,7 +306,7 @@ func scoreWithBreakdown(info release.Info, profile config.QualityProfile) (int, 
 // scoreResolution returns the base resolution score and breakdown entry.
 func scoreResolution(res release.Resolution, preferences []string) (int, ScoreBonus) {
 	resStr := res.String()
-	baseScore := resolutionBaseScore(res)
+	baseScore := scoring.ResolutionBaseScore(res)
 
 	bonus := ScoreBonus{
 		Attribute: "Resolution",
@@ -346,20 +334,6 @@ func scoreResolution(res release.Resolution, preferences []string) (int, ScoreBo
 	bonus.Bonus = 0
 	bonus.Note = "not in allowed list"
 	return 0, bonus
-}
-
-// resolutionBaseScore returns the base score for a resolution.
-func resolutionBaseScore(r release.Resolution) int {
-	switch r {
-	case release.Resolution2160p:
-		return scoreResolution2160p
-	case release.Resolution1080p:
-		return scoreResolution1080p
-	case release.Resolution720p:
-		return scoreResolution720p
-	default:
-		return scoreResolutionOther
-	}
 }
 
 // scoreAttribute calculates position-based bonus for a generic attribute.
@@ -411,13 +385,13 @@ func scoreHDR(hdr release.HDRFormat, preferences []string) ScoreBonus {
 	}
 
 	for i, pref := range preferences {
-		if hdrMatches(hdr, pref) {
+		if scoring.HDRMatches(hdr, pref) {
 			multiplier := 1.0 - 0.2*float64(i)
 			if multiplier < 0 {
 				multiplier = 0
 			}
 			bonus.Position = i
-			bonus.Bonus = int(float64(bonusHDR) * multiplier)
+			bonus.Bonus = int(float64(scoring.BonusHDR) * multiplier)
 			bonus.Note = fmt.Sprintf("#%d choice", i+1)
 			return bonus
 		}
@@ -425,25 +399,6 @@ func scoreHDR(hdr release.HDRFormat, preferences []string) ScoreBonus {
 
 	bonus.Note = noteNotInPrefList
 	return bonus
-}
-
-// hdrMatches checks if an HDR format matches a preference string.
-func hdrMatches(hdr release.HDRFormat, pref string) bool {
-	prefLower := strings.ToLower(pref)
-	switch hdr {
-	case release.DolbyVision:
-		return prefLower == "dolby-vision" || prefLower == "dv" || prefLower == "dolbyvision"
-	case release.HDR10Plus:
-		return prefLower == "hdr10+" || prefLower == "hdr10plus"
-	case release.HDR10:
-		return prefLower == "hdr10"
-	case release.HDRGeneric:
-		return prefLower == "hdr"
-	case release.HLG:
-		return prefLower == "hlg"
-	default:
-		return false
-	}
 }
 
 // scoreAudioCodec calculates audio bonus with position awareness.
@@ -460,13 +415,13 @@ func scoreAudioCodec(audio release.AudioCodec, preferences []string) ScoreBonus 
 	}
 
 	for i, pref := range preferences {
-		if audioMatches(audio, pref) {
+		if scoring.AudioMatches(audio, pref) {
 			multiplier := 1.0 - 0.2*float64(i)
 			if multiplier < 0 {
 				multiplier = 0
 			}
 			bonus.Position = i
-			bonus.Bonus = int(float64(bonusAudio) * multiplier)
+			bonus.Bonus = int(float64(scoring.BonusAudio) * multiplier)
 			bonus.Note = fmt.Sprintf("#%d choice", i+1)
 			return bonus
 		}
@@ -474,94 +429,6 @@ func scoreAudioCodec(audio release.AudioCodec, preferences []string) ScoreBonus 
 
 	bonus.Note = noteNotInPrefList
 	return bonus
-}
-
-// audioMatches checks if an audio codec matches a preference string.
-func audioMatches(audio release.AudioCodec, pref string) bool {
-	prefLower := strings.ToLower(pref)
-	switch audio {
-	case release.AudioAtmos:
-		return prefLower == "atmos"
-	case release.AudioTrueHD:
-		return prefLower == "truehd"
-	case release.AudioDTSHD:
-		return prefLower == "dtshd" || prefLower == "dts-hd" || prefLower == "dts-hd ma"
-	case release.AudioDTS:
-		return prefLower == "dts"
-	case release.AudioEAC3:
-		return prefLower == "dd+" || prefLower == "ddp" || prefLower == "eac3"
-	case release.AudioAC3:
-		return prefLower == "dd" || prefLower == "ac3"
-	case release.AudioAAC:
-		return prefLower == "aac"
-	case release.AudioFLAC:
-		return prefLower == "flac"
-	case release.AudioOpus:
-		return prefLower == "opus"
-	default:
-		return false
-	}
-}
-
-// matchesRejectList checks if a release matches any reject criteria.
-func matchesRejectList(info release.Info, rejectList []string) bool {
-	if len(rejectList) == 0 {
-		return false
-	}
-
-	// Build lowercase set of release attributes
-	attrs := []string{
-		strings.ToLower(info.Resolution.String()),
-		strings.ToLower(info.Source.String()),
-		strings.ToLower(info.Codec.String()),
-	}
-
-	// Add HDR format if present
-	if info.HDR != release.HDRNone {
-		attrs = append(attrs, strings.ToLower(info.HDR.String()))
-	}
-
-	// Add audio codec if present
-	if info.Audio != release.AudioUnknown {
-		attrs = append(attrs, strings.ToLower(info.Audio.String()))
-	}
-
-	// Check each reject term
-	for _, reject := range rejectList {
-		rejectLower := strings.ToLower(reject)
-		for _, attr := range attrs {
-			if attr == rejectLower {
-				return true
-			}
-		}
-		// Also check special cases for reject list
-		if rejectMatchesSpecial(info, rejectLower) {
-			return true
-		}
-	}
-
-	return false
-}
-
-// rejectMatchesSpecial handles special reject list matching.
-func rejectMatchesSpecial(info release.Info, reject string) bool {
-	switch reject {
-	case "cam", "camrip", "hdcam":
-		return info.Source == release.SourceCAM
-	case "ts", "telesync", "hdts":
-		return info.Source == release.SourceTelesync
-	case "hdtv":
-		return info.Source == release.SourceHDTV
-	case "webrip":
-		return info.Source == release.SourceWEBRip
-	case "remux":
-		return info.IsRemux
-	case "x264", "h264":
-		return info.Codec == release.CodecX264
-	case "x265", "h265", "hevc":
-		return info.Codec == release.CodecX265
-	}
-	return false
 }
 
 // printHumanReadable outputs the parse result in a human-readable format.

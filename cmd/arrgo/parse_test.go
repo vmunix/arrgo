@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/vmunix/arrgo/internal/config"
 	"github.com/vmunix/arrgo/pkg/release"
+	"github.com/vmunix/arrgo/pkg/release/scoring"
 )
 
 func TestReadReleaseFile(t *testing.T) {
@@ -392,8 +393,8 @@ func TestHdrMatches(t *testing.T) {
 	for _, tt := range tests {
 		name := tt.hdr.String() + "_" + tt.pref
 		t.Run(name, func(t *testing.T) {
-			got := hdrMatches(tt.hdr, tt.pref)
-			assert.Equal(t, tt.match, got, "hdrMatches(%v, %q)", tt.hdr, tt.pref)
+			got := scoring.HDRMatches(tt.hdr, tt.pref)
+			assert.Equal(t, tt.match, got, "HDRMatches(%v, %q)", tt.hdr, tt.pref)
 		})
 	}
 }
@@ -423,8 +424,8 @@ func TestAudioMatches(t *testing.T) {
 	for _, tt := range tests {
 		name := tt.audio.String() + "_" + tt.pref
 		t.Run(name, func(t *testing.T) {
-			got := audioMatches(tt.audio, tt.pref)
-			assert.Equal(t, tt.match, got, "audioMatches(%v, %q)", tt.audio, tt.pref)
+			got := scoring.AudioMatches(tt.audio, tt.pref)
+			assert.Equal(t, tt.match, got, "AudioMatches(%v, %q)", tt.audio, tt.pref)
 		})
 	}
 }
@@ -488,7 +489,7 @@ func TestMatchesRejectList(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := matchesRejectList(tt.info, tt.rejectList)
+			got := scoring.MatchesRejectList(tt.info, tt.rejectList)
 			assert.Equal(t, tt.want, got)
 		})
 	}
