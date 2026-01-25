@@ -16,6 +16,8 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/vmunix/arrgo/internal/api/v1/mocks"
+	"github.com/vmunix/arrgo/internal/download"
+	"github.com/vmunix/arrgo/internal/events"
 	"github.com/vmunix/arrgo/internal/library"
 	"github.com/vmunix/arrgo/internal/search"
 	"go.uber.org/mock/gomock"
@@ -578,4 +580,122 @@ func TestSearch_WithMockSearcher(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Len(t, resp.Releases, 1)
 	assert.Equal(t, "Test Movie", resp.Releases[0].Title)
+}
+
+func TestListEvents_Success(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	// Create event log and attach to server
+	eventLog := events.NewEventLog(db)
+	srv.deps.EventLog = eventLog
+
+	// Insert a test event using EventLog.Append
+	testEvent := events.NewBaseEvent("test.event", "content", 1)
+	_, err := eventLog.Append(testEvent)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	w := httptest.NewRecorder()
+
+	srv.listEvents(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp listEventsResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Len(t, resp.Items, 1)
+	assert.Equal(t, 1, resp.Total)
+	assert.Equal(t, "test.event", resp.Items[0].EventType)
+	assert.Equal(t, "content", resp.Items[0].EntityType)
+	assert.Equal(t, int64(1), resp.Items[0].EntityID)
+}
+
+func TestListEvents_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	// Create event log with no events
+	eventLog := events.NewEventLog(db)
+	srv.deps.EventLog = eventLog
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	w := httptest.NewRecorder()
+
+	srv.listEvents(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp listEventsResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Empty(t, resp.Items)
+	assert.Zero(t, resp.Total)
+}
+
+func TestListDownloadEvents_Success(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	// Create event log and attach to server
+	eventLog := events.NewEventLog(db)
+	srv.deps.EventLog = eventLog
+
+	// Add content first (required for download foreign key)
+	c := &library.Content{
+		Type:           library.ContentTypeMovie,
+		Title:          "Test Movie",
+		Year:           2024,
+		Status:         library.StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/movies",
+	}
+	require.NoError(t, srv.deps.Library.AddContent(c))
+
+	// Add a download
+	d := &download.Download{
+		ContentID:   c.ID,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "test-client-id",
+		Status:      download.StatusDownloading,
+		ReleaseName: "Test.Movie.2024.1080p",
+		Indexer:     "TestIndexer",
+	}
+	require.NoError(t, srv.deps.Downloads.Add(d))
+
+	// Insert event for this download
+	testEvent := events.NewBaseEvent("download.started", "download", d.ID)
+	_, err := eventLog.Append(testEvent)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/downloads/1/events", nil)
+	req.SetPathValue("id", "1")
+	w := httptest.NewRecorder()
+
+	srv.listDownloadEvents(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp listEventsResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Len(t, resp.Items, 1)
+	assert.Equal(t, 1, resp.Total)
+	assert.Equal(t, "download.started", resp.Items[0].EventType)
+	assert.Equal(t, "download", resp.Items[0].EntityType)
+}
+
+func TestListDownloadEvents_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	// Create event log
+	eventLog := events.NewEventLog(db)
+	srv.deps.EventLog = eventLog
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/downloads/999/events", nil)
+	req.SetPathValue("id", "999")
+	w := httptest.NewRecorder()
+
+	srv.listDownloadEvents(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
