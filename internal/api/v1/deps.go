@@ -45,6 +45,13 @@ type FileImporter interface {
 	Import(ctx context.Context, downloadID int64, downloadPath string) (*importer.ImportResult, error)
 }
 
+// IndexerAPI represents an indexer that can be queried.
+type IndexerAPI interface {
+	Name() string
+	URL() string
+	Caps(ctx context.Context) error // Simple connectivity test
+}
+
 // ServerDeps contains all dependencies for the API server.
 // Required dependencies must be non-nil; optional dependencies may be nil.
 type ServerDeps struct {
@@ -60,6 +67,7 @@ type ServerDeps struct {
 	Importer FileImporter
 	Bus      *events.Bus      // Optional: for event-driven mode
 	EventLog *events.EventLog // Optional: for event audit log
+	Indexers []IndexerAPI     // Optional: configured indexers
 }
 
 // Validate checks that all required dependencies are provided.

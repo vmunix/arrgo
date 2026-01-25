@@ -308,6 +308,20 @@ type retryResponse struct {
 	Message       string `json:"message"`
 }
 
+// indexerResponse is the API representation of an indexer's status.
+type indexerResponse struct {
+	Name       string `json:"name"`
+	URL        string `json:"url"`
+	Status     string `json:"status,omitempty"`
+	Error      string `json:"error,omitempty"`
+	ResponseMs int64  `json:"response_ms,omitempty"`
+}
+
+// listIndexersResponse is the response for GET /indexers.
+type listIndexersResponse struct {
+	Indexers []indexerResponse `json:"indexers"`
+}
+
 // DashboardResponse is the response for GET /dashboard with aggregated stats.
 type DashboardResponse struct {
 	Version     string `json:"version"`
