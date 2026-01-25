@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -95,9 +96,29 @@ func init() {
 		RunE:  runLibraryDelete,
 	}
 
+	addCmd := &cobra.Command{
+		Use:   "add",
+		Short: "Add content to library",
+		Long:  "Adds a new movie or series to the library for tracking.",
+		RunE:  runLibraryAdd,
+	}
+
+	addCmd.Flags().String("title", "", "Title of the content (required)")
+	addCmd.Flags().Int("year", 0, "Release year (required)")
+	addCmd.Flags().String("type", "", "Content type: movie or series (required)")
+	addCmd.Flags().Int64("tmdb-id", 0, "The Movie Database ID")
+	addCmd.Flags().Int64("tvdb-id", 0, "TheTVDB ID")
+	addCmd.Flags().String("quality", "", "Quality profile (e.g., hd, uhd)")
+	addCmd.Flags().Bool("json", false, "Output as JSON")
+
+	_ = addCmd.MarkFlagRequired("title")
+	_ = addCmd.MarkFlagRequired("year")
+	_ = addCmd.MarkFlagRequired("type")
+
 	libraryCmd.AddCommand(listCmd)
 	libraryCmd.AddCommand(checkCmd)
 	libraryCmd.AddCommand(deleteCmd)
+	libraryCmd.AddCommand(addCmd)
 	rootCmd.AddCommand(libraryCmd)
 }
 
@@ -326,5 +347,88 @@ func runLibraryDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Deleted: %s (%d)\n", content.Title, content.Year)
+	return nil
+}
+
+// addContentRequest is the request body for POST /api/v1/content.
+type addContentRequest struct {
+	Type           string `json:"type"`
+	TMDBID         *int64 `json:"tmdb_id,omitempty"`
+	TVDBID         *int64 `json:"tvdb_id,omitempty"`
+	Title          string `json:"title"`
+	Year           int    `json:"year"`
+	QualityProfile string `json:"quality_profile,omitempty"`
+}
+
+func runLibraryAdd(cmd *cobra.Command, args []string) error {
+	title, _ := cmd.Flags().GetString("title")
+	year, _ := cmd.Flags().GetInt("year")
+	contentType, _ := cmd.Flags().GetString("type")
+	tmdbID, _ := cmd.Flags().GetInt64("tmdb-id")
+	tvdbID, _ := cmd.Flags().GetInt64("tvdb-id")
+	quality, _ := cmd.Flags().GetString("quality")
+	jsonOutput, _ := cmd.Flags().GetBool("json")
+
+	// Validate type
+	if contentType != "movie" && contentType != "series" {
+		return fmt.Errorf("--type must be 'movie' or 'series', got: %s", contentType)
+	}
+
+	// Build request body
+	reqBody := addContentRequest{
+		Type:           contentType,
+		Title:          title,
+		Year:           year,
+		QualityProfile: quality,
+	}
+
+	if tmdbID != 0 {
+		reqBody.TMDBID = &tmdbID
+	}
+	if tvdbID != 0 {
+		reqBody.TVDBID = &tvdbID
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("encode request: %w", err)
+	}
+
+	urlStr := fmt.Sprintf("%s/api/v1/content", serverURL)
+	req, err := http.NewRequest(http.MethodPost, urlStr, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+		// Try to read error message
+		var errResp struct {
+			Error string `json:"error"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&errResp); err == nil && errResp.Error != "" {
+			return fmt.Errorf("server error: %s", errResp.Error)
+		}
+		return fmt.Errorf("server returned %d", resp.StatusCode)
+	}
+
+	var content LibraryContentResponse
+	if err := json.NewDecoder(resp.Body).Decode(&content); err != nil {
+		return fmt.Errorf("decode response: %w", err)
+	}
+
+	if jsonOutput {
+		enc := json.NewEncoder(cmd.OutOrStdout())
+		enc.SetIndent("", "  ")
+		return enc.Encode(content)
+	}
+
+	fmt.Printf("Added: %s (%d) [ID: %d, status: %s]\n", content.Title, content.Year, content.ID, content.Status)
 	return nil
 }
