@@ -301,6 +301,13 @@ type listEventsResponse struct {
 	Total int             `json:"total"`
 }
 
+// retryResponse is the response for POST /downloads/{id}/retry.
+type retryResponse struct {
+	NewDownloadID int64  `json:"new_download_id,omitempty"`
+	ReleaseName   string `json:"release_name"`
+	Message       string `json:"message"`
+}
+
 // DashboardResponse is the response for GET /dashboard with aggregated stats.
 type DashboardResponse struct {
 	Version     string `json:"version"`

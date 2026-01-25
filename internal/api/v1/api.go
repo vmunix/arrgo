@@ -78,6 +78,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/downloads/{id}", s.getDownload)
 	mux.HandleFunc("GET /api/v1/downloads/{id}/events", s.listDownloadEvents)
 	mux.HandleFunc("DELETE /api/v1/downloads/{id}", s.requireManager(s.deleteDownload))
+	mux.HandleFunc("POST /api/v1/downloads/{id}/retry", s.requireManager(s.requireSearcher(s.retryDownload)))
 
 	// History
 	mux.HandleFunc("GET /api/v1/history", s.listHistory)
@@ -633,6 +634,94 @@ func (s *Server) deleteDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) retryDownload(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
+		return
+	}
+
+	// Get the failed download
+	dl, err := s.deps.Downloads.Get(id)
+	if err != nil {
+		if errors.Is(err, download.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "Download not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	// Only allow retry on failed downloads
+	if dl.Status != download.StatusFailed {
+		writeError(w, http.StatusBadRequest, "INVALID_STATE",
+			fmt.Sprintf("Can only retry failed downloads, current status: %s", dl.Status))
+		return
+	}
+
+	// Require event bus for retry operations (grabs go through event bus)
+	if s.deps.Bus == nil {
+		writeError(w, http.StatusServiceUnavailable, "NO_EVENT_BUS", "event bus not configured")
+		return
+	}
+
+	// Get content to search for
+	content, err := s.deps.Library.GetContent(dl.ContentID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "CONTENT_ERROR", err.Error())
+		return
+	}
+
+	// Build search query
+	query := content.Title
+	if content.Year > 0 {
+		query = fmt.Sprintf("%s %d", content.Title, content.Year)
+	}
+
+	// Search indexers
+	q := search.Query{
+		Text:      query,
+		ContentID: dl.ContentID,
+		Type:      string(content.Type),
+	}
+	profile := content.QualityProfile
+	if profile == "" {
+		profile = "hd"
+	}
+
+	result, err := s.deps.Searcher.Search(r.Context(), q, profile)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "SEARCH_ERROR", err.Error())
+		return
+	}
+
+	if len(result.Releases) == 0 {
+		writeError(w, http.StatusNotFound, "NO_RESULTS", "No releases found")
+		return
+	}
+
+	// Grab best result (first one, already sorted by score)
+	best := result.Releases[0]
+
+	// Publish grab request via event bus (same pattern as grab handler)
+	if err := s.deps.Bus.Publish(r.Context(), &events.GrabRequested{
+		BaseEvent:   events.NewBaseEvent(events.EventGrabRequested, events.EntityDownload, 0),
+		ContentID:   dl.ContentID,
+		EpisodeID:   dl.EpisodeID,
+		DownloadURL: best.DownloadURL,
+		ReleaseName: best.Title,
+		Indexer:     best.Indexer,
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "EVENT_ERROR", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, retryResponse{
+		ReleaseName: best.Title,
+		Message:     "Retry queued",
+	})
 }
 
 func (s *Server) listHistory(w http.ResponseWriter, r *http.Request) {
