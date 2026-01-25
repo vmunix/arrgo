@@ -114,10 +114,22 @@ func init() {
 	_ = addCmd.MarkFlagRequired("year")
 	_ = addCmd.MarkFlagRequired("type")
 
+	importCmd := &cobra.Command{
+		Use:   "import",
+		Short: "Import existing media library",
+		Long:  "Import untracked items from Plex into arrgo for tracking.",
+		RunE:  runLibraryImport,
+	}
+
+	importCmd.Flags().String("from-plex", "", "Import from Plex library by name (required)")
+	importCmd.Flags().String("quality", "", "Override quality profile for all imports")
+	importCmd.Flags().Bool("dry-run", false, "Preview import without making changes")
+
 	libraryCmd.AddCommand(listCmd)
 	libraryCmd.AddCommand(checkCmd)
 	libraryCmd.AddCommand(deleteCmd)
 	libraryCmd.AddCommand(addCmd)
+	libraryCmd.AddCommand(importCmd)
 	rootCmd.AddCommand(libraryCmd)
 }
 
@@ -429,4 +441,64 @@ func runLibraryAdd(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Added: %s (%d) [ID: %d, status: %s]\n", content.Title, content.Year, content.ID, content.Status)
 	return nil
+}
+
+func runLibraryImport(cmd *cobra.Command, args []string) error {
+	plexLibrary, _ := cmd.Flags().GetString("from-plex")
+	quality, _ := cmd.Flags().GetString("quality")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+
+	if plexLibrary == "" {
+		return fmt.Errorf("--from-plex is required")
+	}
+
+	client := NewClient(serverURL)
+	resp, err := client.LibraryImport(&LibraryImportRequest{
+		Source:          "plex",
+		Library:         plexLibrary,
+		QualityOverride: quality,
+		DryRun:          dryRun,
+	})
+	if err != nil {
+		return err
+	}
+
+	if jsonOutput {
+		printJSON(resp)
+		return nil
+	}
+
+	printLibraryImport(resp, plexLibrary, dryRun)
+	return nil
+}
+
+func printLibraryImport(r *LibraryImportResponse, library string, dryRun bool) {
+	action := "Importing"
+	if dryRun {
+		action = "Would import"
+	}
+	fmt.Printf("%s from Plex library %q...\n\n", action, library)
+
+	for _, item := range r.Imported {
+		quality := item.Quality
+		if quality == "" {
+			quality = "unknown"
+		}
+		fmt.Printf("  + %s (%d) - %s\n", item.Title, item.Year, quality)
+	}
+	for _, item := range r.Skipped {
+		fmt.Printf("  - %s (%d) - %s\n", item.Title, item.Year, item.Reason)
+	}
+	for _, item := range r.Errors {
+		fmt.Printf("  ! %s (%d) - %s\n", item.Title, item.Year, item.Error)
+	}
+
+	fmt.Println()
+	if dryRun {
+		fmt.Printf("Would import: %d new, %d skipped, %d errors\n",
+			r.Summary.Imported, r.Summary.Skipped, r.Summary.Errors)
+	} else {
+		fmt.Printf("Imported: %d new, %d skipped, %d errors\n",
+			r.Summary.Imported, r.Summary.Skipped, r.Summary.Errors)
+	}
 }

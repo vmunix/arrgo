@@ -538,3 +538,43 @@ func (c *Client) Files(contentID *int64) (*ListFilesResponse, error) {
 	}
 	return &resp, nil
 }
+
+// LibraryImportRequest is the request for library import.
+type LibraryImportRequest struct {
+	Source          string `json:"source"`
+	Library         string `json:"library"`
+	QualityOverride string `json:"quality_override,omitempty"`
+	DryRun          bool   `json:"dry_run,omitempty"`
+}
+
+// LibraryImportItem represents a single imported/skipped/errored item.
+type LibraryImportItem struct {
+	Title     string `json:"title"`
+	Year      int    `json:"year"`
+	Type      string `json:"type"`
+	Quality   string `json:"quality,omitempty"`
+	ContentID int64  `json:"content_id,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+// LibraryImportResponse is the response from library import.
+type LibraryImportResponse struct {
+	Imported []LibraryImportItem `json:"imported"`
+	Skipped  []LibraryImportItem `json:"skipped"`
+	Errors   []LibraryImportItem `json:"errors"`
+	Summary  struct {
+		Imported int `json:"imported"`
+		Skipped  int `json:"skipped"`
+		Errors   int `json:"errors"`
+	} `json:"summary"`
+}
+
+// LibraryImport imports a Plex library.
+func (c *Client) LibraryImport(req *LibraryImportRequest) (*LibraryImportResponse, error) {
+	var resp LibraryImportResponse
+	if err := c.post("/api/v1/library/import", req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
