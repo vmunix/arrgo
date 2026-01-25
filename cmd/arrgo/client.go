@@ -507,3 +507,22 @@ func (c *Client) Indexers(test bool) (*ListIndexersResponse, error) {
 	}
 	return &resp, nil
 }
+
+// Profile types
+
+type ProfileResponse struct {
+	Name   string   `json:"name"`
+	Accept []string `json:"accept"`
+}
+
+type ListProfilesResponse struct {
+	Profiles []ProfileResponse `json:"profiles"`
+}
+
+func (c *Client) Profiles() (*ListProfilesResponse, error) {
+	var resp ListProfilesResponse
+	if err := c.get("/api/v1/profiles", &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
