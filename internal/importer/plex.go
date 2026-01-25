@@ -297,8 +297,9 @@ type plexItemXML struct {
 
 // libraryItemsResponse is the XML response from /library/sections/{key}/all.
 type libraryItemsResponse struct {
-	XMLName xml.Name      `xml:"MediaContainer"`
-	Items   []plexItemXML `xml:"Video"`
+	XMLName     xml.Name      `xml:"MediaContainer"`
+	Videos      []plexItemXML `xml:"Video"`     // Movies, episodes
+	Directories []plexItemXML `xml:"Directory"` // TV shows, seasons
 }
 
 // GetLibraryCount returns the number of items in a library section.
@@ -357,8 +358,10 @@ func (c *PlexClient) ListLibraryItems(ctx context.Context, sectionKey string) ([
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
-	items := make([]PlexItem, len(result.Items))
-	for i, item := range result.Items {
+	// Combine videos (movies) and directories (TV shows)
+	allItems := append(result.Videos, result.Directories...)
+	items := make([]PlexItem, len(allItems))
+	for i, item := range allItems {
 		filePath := ""
 		if len(item.Media) > 0 && len(item.Media[0].Part) > 0 {
 			filePath = item.Media[0].Part[0].File
@@ -378,8 +381,9 @@ func (c *PlexClient) ListLibraryItems(ctx context.Context, sectionKey string) ([
 
 // searchResponse is the XML response from /search.
 type searchResponse struct {
-	XMLName xml.Name      `xml:"MediaContainer"`
-	Items   []plexItemXML `xml:"Video"`
+	XMLName     xml.Name      `xml:"MediaContainer"`
+	Videos      []plexItemXML `xml:"Video"`     // Movies, episodes
+	Directories []plexItemXML `xml:"Directory"` // TV shows
 }
 
 // Search searches for items across all libraries.
@@ -408,8 +412,10 @@ func (c *PlexClient) Search(ctx context.Context, query string) ([]PlexItem, erro
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 
-	items := make([]PlexItem, len(result.Items))
-	for i, item := range result.Items {
+	// Combine videos (movies) and directories (TV shows)
+	allItems := append(result.Videos, result.Directories...)
+	items := make([]PlexItem, len(allItems))
+	for i, item := range allItems {
 		filePath := ""
 		if len(item.Media) > 0 && len(item.Media[0].Part) > 0 {
 			filePath = item.Media[0].Part[0].File
