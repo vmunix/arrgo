@@ -620,8 +620,8 @@ func TestListEvents_Success(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Len(t, resp.Items, 1)
 	assert.Equal(t, 1, resp.Total)
-	assert.Equal(t, 50, resp.Limit)  // default limit
-	assert.Equal(t, 0, resp.Offset)  // default offset
+	assert.Equal(t, 50, resp.Limit) // default limit
+	assert.Equal(t, 0, resp.Offset) // default offset
 	assert.Equal(t, "test.event", resp.Items[0].EventType)
 	assert.Equal(t, "content", resp.Items[0].EntityType)
 	assert.Equal(t, int64(1), resp.Items[0].EntityID)
@@ -646,8 +646,8 @@ func TestListEvents_Empty(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Empty(t, resp.Items)
 	assert.Zero(t, resp.Total)
-	assert.Equal(t, 50, resp.Limit)  // default limit
-	assert.Equal(t, 0, resp.Offset)  // default offset
+	assert.Equal(t, 50, resp.Limit) // default limit
+	assert.Equal(t, 0, resp.Offset) // default offset
 }
 
 func TestListDownloadEvents_Success(t *testing.T) {
@@ -1939,4 +1939,402 @@ func TestGrab_MissingRequiredFields(t *testing.T) {
 			assert.Contains(t, w.Body.String(), tt.wantErr)
 		})
 	}
+}
+
+func TestGrab_SeriesWithEpisodeDetection(t *testing.T) {
+	db := setupTestDB(t)
+	mockManager := mocks.NewMockDownloadManager(gomock.NewController(t))
+
+	// Create event bus to capture published events
+	bus := events.NewBus(nil, nil)
+	defer bus.Close()
+
+	// Subscribe to capture events
+	eventCh := bus.Subscribe(events.EventGrabRequested, 10)
+
+	// Add series content
+	store := library.NewStore(db)
+	series := &library.Content{
+		Type:           library.ContentTypeSeries,
+		Title:          "Breaking Bad",
+		Year:           2008,
+		Status:         library.StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, store.AddContent(series))
+
+	deps := ServerDeps{
+		Library:   store,
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Manager:   mockManager,
+		Bus:       bus,
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	// Grab with release name that contains episode info
+	body := fmt.Sprintf(`{
+		"content_id": %d,
+		"download_url": "http://example.com/nzb",
+		"title": "Breaking.Bad.S05E12.1080p.BluRay.x264-DEMAND",
+		"indexer": "NZBgeek"
+	}`, series.ID)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/grab", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusAccepted, w.Code, "response body: %s", w.Body.String())
+
+	// Verify the event was published
+	select {
+	case evt := <-eventCh:
+		grabEvt, ok := evt.(*events.GrabRequested)
+		require.True(t, ok, "expected GrabRequested event")
+		assert.Equal(t, series.ID, grabEvt.ContentID)
+		assert.NotNil(t, grabEvt.Season)
+		assert.Equal(t, 5, *grabEvt.Season)
+		assert.Len(t, grabEvt.EpisodeIDs, 1)
+		assert.NotNil(t, grabEvt.EpisodeID) // Backward compatibility
+		assert.False(t, grabEvt.IsCompleteSeason)
+	default:
+		t.Fatal("expected event to be published")
+	}
+
+	// Verify episode was created in database
+	episodes, _, err := store.ListEpisodes(library.EpisodeFilter{ContentID: &series.ID})
+	require.NoError(t, err)
+	assert.Len(t, episodes, 1)
+	assert.Equal(t, 5, episodes[0].Season)
+	assert.Equal(t, 12, episodes[0].Episode)
+}
+
+func TestGrab_SeasonPack(t *testing.T) {
+	db := setupTestDB(t)
+	mockManager := mocks.NewMockDownloadManager(gomock.NewController(t))
+
+	// Create event bus
+	bus := events.NewBus(nil, nil)
+	defer bus.Close()
+
+	eventCh := bus.Subscribe(events.EventGrabRequested, 10)
+
+	// Add series content
+	store := library.NewStore(db)
+	series := &library.Content{
+		Type:           library.ContentTypeSeries,
+		Title:          "Peaky Blinders",
+		Year:           2013,
+		Status:         library.StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, store.AddContent(series))
+
+	deps := ServerDeps{
+		Library:   store,
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Manager:   mockManager,
+		Bus:       bus,
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	// Grab a season pack
+	body := fmt.Sprintf(`{
+		"content_id": %d,
+		"download_url": "http://example.com/nzb",
+		"title": "Peaky.Blinders.S01.1080p.BluRay.x264-DEMAND",
+		"indexer": "NZBgeek"
+	}`, series.ID)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/grab", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusAccepted, w.Code, "response body: %s", w.Body.String())
+
+	// Verify the event
+	select {
+	case evt := <-eventCh:
+		grabEvt, ok := evt.(*events.GrabRequested)
+		require.True(t, ok, "expected GrabRequested event")
+		assert.Equal(t, series.ID, grabEvt.ContentID)
+		assert.NotNil(t, grabEvt.Season)
+		assert.Equal(t, 1, *grabEvt.Season)
+		assert.True(t, grabEvt.IsCompleteSeason)
+		assert.Empty(t, grabEvt.EpisodeIDs, "season pack should not have episode IDs yet")
+	default:
+		t.Fatal("expected event to be published")
+	}
+}
+
+func TestGrab_SeriesNoEpisodeInfo(t *testing.T) {
+	db := setupTestDB(t)
+	mockManager := mocks.NewMockDownloadManager(gomock.NewController(t))
+
+	// Create event bus
+	bus := events.NewBus(nil, nil)
+	defer bus.Close()
+
+	// Add series content
+	store := library.NewStore(db)
+	series := &library.Content{
+		Type:           library.ContentTypeSeries,
+		Title:          "Game of Thrones",
+		Year:           2011,
+		Status:         library.StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, store.AddContent(series))
+
+	deps := ServerDeps{
+		Library:   store,
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Manager:   mockManager,
+		Bus:       bus,
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	// Grab without season/episode info (should fail)
+	body := fmt.Sprintf(`{
+		"content_id": %d,
+		"download_url": "http://example.com/nzb",
+		"title": "Game.of.Thrones.1080p.BluRay.x264-DEMAND",
+		"indexer": "NZBgeek"
+	}`, series.ID)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/grab", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp errorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "INVALID_RELEASE", resp.Code)
+	assert.Contains(t, resp.Error, "cannot determine season")
+}
+
+func TestGrab_SeriesWithOverrides(t *testing.T) {
+	db := setupTestDB(t)
+	mockManager := mocks.NewMockDownloadManager(gomock.NewController(t))
+
+	// Create event bus
+	bus := events.NewBus(nil, nil)
+	defer bus.Close()
+
+	eventCh := bus.Subscribe(events.EventGrabRequested, 10)
+
+	// Add series content
+	store := library.NewStore(db)
+	series := &library.Content{
+		Type:           library.ContentTypeSeries,
+		Title:          "The Mandalorian",
+		Year:           2019,
+		Status:         library.StatusWanted,
+		QualityProfile: "uhd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, store.AddContent(series))
+
+	deps := ServerDeps{
+		Library:   store,
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Manager:   mockManager,
+		Bus:       bus,
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	// Grab with overrides (ignoring the release name parsing)
+	body := fmt.Sprintf(`{
+		"content_id": %d,
+		"download_url": "http://example.com/nzb",
+		"title": "The.Mandalorian.2160p.WEB-DL.DDP5.1.Atmos.HDR.x265",
+		"indexer": "NZBgeek",
+		"season": 2,
+		"episodes": [1, 2, 3]
+	}`, series.ID)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/grab", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusAccepted, w.Code, "response body: %s", w.Body.String())
+
+	// Verify the event uses overrides
+	select {
+	case evt := <-eventCh:
+		grabEvt, ok := evt.(*events.GrabRequested)
+		require.True(t, ok, "expected GrabRequested event")
+		assert.NotNil(t, grabEvt.Season)
+		assert.Equal(t, 2, *grabEvt.Season)
+		assert.Len(t, grabEvt.EpisodeIDs, 3)
+		assert.False(t, grabEvt.IsCompleteSeason)
+	default:
+		t.Fatal("expected event to be published")
+	}
+
+	// Verify episodes were created
+	episodes, _, err := store.ListEpisodes(library.EpisodeFilter{ContentID: &series.ID})
+	require.NoError(t, err)
+	assert.Len(t, episodes, 3)
+}
+
+func TestGrab_MovieIgnoresEpisodeDetection(t *testing.T) {
+	db := setupTestDB(t)
+	mockManager := mocks.NewMockDownloadManager(gomock.NewController(t))
+
+	// Create event bus
+	bus := events.NewBus(nil, nil)
+	defer bus.Close()
+
+	eventCh := bus.Subscribe(events.EventGrabRequested, 10)
+
+	// Add movie content
+	store := library.NewStore(db)
+	movie := &library.Content{
+		Type:           library.ContentTypeMovie,
+		Title:          "Inception",
+		Year:           2010,
+		Status:         library.StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/movies",
+	}
+	require.NoError(t, store.AddContent(movie))
+
+	deps := ServerDeps{
+		Library:   store,
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Manager:   mockManager,
+		Bus:       bus,
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	// Grab movie (should not trigger episode detection)
+	body := fmt.Sprintf(`{
+		"content_id": %d,
+		"download_url": "http://example.com/nzb",
+		"title": "Inception.2010.1080p.BluRay.x264-DEMAND",
+		"indexer": "NZBgeek"
+	}`, movie.ID)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/grab", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusAccepted, w.Code, "response body: %s", w.Body.String())
+
+	// Verify the event has no episode info
+	select {
+	case evt := <-eventCh:
+		grabEvt, ok := evt.(*events.GrabRequested)
+		require.True(t, ok, "expected GrabRequested event")
+		assert.Nil(t, grabEvt.Season)
+		assert.Nil(t, grabEvt.EpisodeID)
+		assert.Empty(t, grabEvt.EpisodeIDs)
+		assert.False(t, grabEvt.IsCompleteSeason)
+	default:
+		t.Fatal("expected event to be published")
+	}
+}
+
+func TestGrab_MultiEpisodeRelease(t *testing.T) {
+	db := setupTestDB(t)
+	mockManager := mocks.NewMockDownloadManager(gomock.NewController(t))
+
+	// Create event bus
+	bus := events.NewBus(nil, nil)
+	defer bus.Close()
+
+	eventCh := bus.Subscribe(events.EventGrabRequested, 10)
+
+	// Add series content
+	store := library.NewStore(db)
+	series := &library.Content{
+		Type:           library.ContentTypeSeries,
+		Title:          "House of the Dragon",
+		Year:           2022,
+		Status:         library.StatusWanted,
+		QualityProfile: "uhd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, store.AddContent(series))
+
+	deps := ServerDeps{
+		Library:   store,
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Manager:   mockManager,
+		Bus:       bus,
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	// Grab multi-episode release (e.g., S01E01-E03)
+	body := fmt.Sprintf(`{
+		"content_id": %d,
+		"download_url": "http://example.com/nzb",
+		"title": "House.of.the.Dragon.S01E01-E03.2160p.HMAX.WEB-DL.x265",
+		"indexer": "NZBgeek"
+	}`, series.ID)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/grab", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusAccepted, w.Code, "response body: %s", w.Body.String())
+
+	// Verify the event
+	select {
+	case evt := <-eventCh:
+		grabEvt, ok := evt.(*events.GrabRequested)
+		require.True(t, ok, "expected GrabRequested event")
+		assert.NotNil(t, grabEvt.Season)
+		assert.Equal(t, 1, *grabEvt.Season)
+		assert.Len(t, grabEvt.EpisodeIDs, 3, "should have 3 episode IDs for E01-E03")
+		assert.Nil(t, grabEvt.EpisodeID, "EpisodeID should be nil for multi-episode")
+		assert.False(t, grabEvt.IsCompleteSeason)
+	default:
+		t.Fatal("expected event to be published")
+	}
+
+	// Verify episodes were created
+	episodes, _, err := store.ListEpisodes(library.EpisodeFilter{ContentID: &series.ID})
+	require.NoError(t, err)
+	assert.Len(t, episodes, 3)
 }

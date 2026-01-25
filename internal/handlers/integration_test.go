@@ -4,6 +4,7 @@ package handlers_test
 import (
 	"context"
 	"database/sql"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/vmunix/arrgo/internal/events"
 	"github.com/vmunix/arrgo/internal/handlers"
 	"github.com/vmunix/arrgo/internal/importer"
+	"github.com/vmunix/arrgo/internal/library"
 	_ "modernc.org/sqlite"
 )
 
@@ -34,7 +36,14 @@ func setupIntegrationDB(t *testing.T) *sql.DB {
 			indexer TEXT NOT NULL,
 			added_at TIMESTAMP NOT NULL,
 			completed_at TIMESTAMP,
-			last_transition_at TIMESTAMP NOT NULL
+			last_transition_at TIMESTAMP NOT NULL,
+			season INTEGER,
+			is_complete_season INTEGER DEFAULT 0
+		);
+		CREATE TABLE download_episodes (
+			download_id INTEGER NOT NULL,
+			episode_id  INTEGER NOT NULL,
+			PRIMARY KEY (download_id, episode_id)
 		);
 		CREATE TABLE events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,6 +53,82 @@ func setupIntegrationDB(t *testing.T) *sql.DB {
 			payload TEXT NOT NULL,
 			occurred_at TIMESTAMP NOT NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);
+	`)
+	require.NoError(t, err)
+	return db
+}
+
+// setupIntegrationDBWithContent creates a test database with all tables needed for
+// full integration tests including content, episodes, and files.
+func setupIntegrationDBWithContent(t *testing.T) *sql.DB {
+	// Use shared cache mode to allow concurrent access from goroutines
+	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
+	require.NoError(t, err)
+	t.Cleanup(func() { db.Close() })
+
+	_, err = db.Exec(`
+		CREATE TABLE downloads (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			content_id INTEGER NOT NULL,
+			episode_id INTEGER,
+			client TEXT NOT NULL,
+			client_id TEXT NOT NULL,
+			status TEXT NOT NULL,
+			release_name TEXT NOT NULL,
+			indexer TEXT NOT NULL,
+			added_at TIMESTAMP NOT NULL,
+			completed_at TIMESTAMP,
+			last_transition_at TIMESTAMP NOT NULL,
+			season INTEGER,
+			is_complete_season INTEGER DEFAULT 0
+		);
+		CREATE TABLE download_episodes (
+			download_id INTEGER NOT NULL,
+			episode_id  INTEGER NOT NULL,
+			PRIMARY KEY (download_id, episode_id)
+		);
+		CREATE TABLE events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			event_type TEXT NOT NULL,
+			entity_type TEXT NOT NULL,
+			entity_id INTEGER NOT NULL,
+			payload TEXT NOT NULL,
+			occurred_at TIMESTAMP NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE content (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			type TEXT NOT NULL,
+			tmdb_id INTEGER,
+			tvdb_id INTEGER,
+			title TEXT NOT NULL,
+			year INTEGER,
+			status TEXT NOT NULL DEFAULT 'wanted',
+			quality_profile TEXT NOT NULL DEFAULT 'hd',
+			root_path TEXT NOT NULL,
+			added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE episodes (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			content_id INTEGER NOT NULL REFERENCES content(id) ON DELETE CASCADE,
+			season INTEGER NOT NULL,
+			episode INTEGER NOT NULL,
+			title TEXT,
+			status TEXT NOT NULL DEFAULT 'wanted',
+			air_date DATE,
+			UNIQUE(content_id, season, episode)
+		);
+		CREATE TABLE files (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			content_id INTEGER NOT NULL,
+			episode_id INTEGER,
+			path TEXT NOT NULL UNIQUE,
+			size_bytes INTEGER,
+			quality TEXT,
+			source TEXT,
+			added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		);
 	`)
 	require.NoError(t, err)
@@ -72,7 +157,7 @@ func (m *integrationDownloader) Remove(_ context.Context, _ string, _ bool) erro
 }
 
 // integrationImporter is a mock file importer.
-// Note: Status transitions (importing → imported) are now handled by ImportHandler.
+// Note: Status transitions (importing -> imported) are now handled by ImportHandler.
 type integrationImporter struct{}
 
 func (m *integrationImporter) Import(_ context.Context, _ int64, _ string) (*importer.ImportResult, error) {
@@ -80,6 +165,13 @@ func (m *integrationImporter) Import(_ context.Context, _ int64, _ string) (*imp
 		FileID:    1,
 		DestPath:  "/movies/test.mkv",
 		SizeBytes: 1000,
+	}, nil
+}
+
+func (m *integrationImporter) ImportSeasonPack(_ context.Context, _ int64, _ string) (*importer.SeasonPackResult, error) {
+	return &importer.SeasonPackResult{
+		TotalSize: 5000,
+		Episodes:  []importer.EpisodeResult{},
 	}, nil
 }
 
@@ -334,6 +426,10 @@ func (m *failingImporter) Import(_ context.Context, _ int64, _ string) (*importe
 	return nil, m.err
 }
 
+func (m *failingImporter) ImportSeasonPack(_ context.Context, _ int64, _ string) (*importer.SeasonPackResult, error) {
+	return nil, m.err
+}
+
 // TestIntegration_EventPersistence verifies that all events are persisted to the event log.
 func TestIntegration_EventPersistence(t *testing.T) {
 	db := setupIntegrationDB(t)
@@ -381,4 +477,130 @@ func TestIntegration_EventPersistence(t *testing.T) {
 	assert.Equal(t, events.EventGrabRequested, persistedEvents[0].EventType)
 	assert.Equal(t, events.EventDownloadCreated, persistedEvents[1].EventType)
 	assert.Equal(t, events.EventDownloadCompleted, persistedEvents[2].EventType)
+}
+
+// TestIntegration_SeasonPackGrabAndImport tests the complete event-driven flow for season packs:
+// GrabRequested (with IsCompleteSeason) -> DownloadHandler -> DownloadCreated
+// DownloadCompleted -> ImportHandler (season pack import) -> ImportCompleted
+func TestIntegration_SeasonPackGrabAndImport(t *testing.T) {
+	db := setupIntegrationDBWithContent(t)
+	eventLog := events.NewEventLog(db)
+	bus := events.NewBus(eventLog, nil)
+	defer bus.Close()
+
+	dlStore := download.NewStore(db)
+	lib := library.NewStore(db)
+	client := &integrationDownloader{returnID: "sab-seasonpack"}
+	logger := slog.Default()
+
+	// Create series content
+	tvdbID := int64(270915)
+	content := &library.Content{
+		Type:           library.ContentTypeSeries,
+		Title:          "Peaky Blinders",
+		Year:           2013,
+		TVDBID:         &tvdbID,
+		Status:         library.StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, lib.AddContent(content))
+
+	// Create download handler
+	dlHandler := handlers.NewDownloadHandler(bus, dlStore, lib, client, logger)
+
+	// Create a mock importer for season packs
+	imp := &integrationImporter{}
+	impHandler := handlers.NewImportHandler(bus, dlStore, lib, imp, logger)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() { _ = dlHandler.Start(ctx) }()
+	go func() { _ = impHandler.Start(ctx) }()
+	time.Sleep(50 * time.Millisecond)
+
+	// Subscribe to events
+	createdCh := bus.Subscribe(events.EventDownloadCreated, 10)
+	completedCh := bus.Subscribe(events.EventImportCompleted, 10)
+
+	// Emit grab request for season pack
+	season := 1
+	err := bus.Publish(ctx, &events.GrabRequested{
+		BaseEvent:        events.NewBaseEvent(events.EventGrabRequested, events.EntityDownload, 0),
+		ContentID:        content.ID,
+		Season:           &season,
+		IsCompleteSeason: true,
+		DownloadURL:      "http://test.com/peaky.s01.nzb",
+		ReleaseName:      "Peaky.Blinders.S01.1080p.BluRay.x264",
+		Indexer:          "TestIndexer",
+	})
+	require.NoError(t, err)
+
+	// Wait for download created
+	select {
+	case e := <-createdCh:
+		created := e.(*events.DownloadCreated)
+		assert.True(t, created.IsCompleteSeason)
+		assert.Equal(t, 1, *created.Season)
+		assert.Empty(t, created.EpisodeIDs) // No episodes yet for season pack
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for DownloadCreated")
+	}
+
+	// Verify download record
+	downloads, _, err := dlStore.List(download.Filter{ContentID: &content.ID})
+	require.NoError(t, err)
+	require.Len(t, downloads, 1)
+
+	dl := downloads[0]
+	assert.True(t, dl.IsCompleteSeason)
+	assert.Equal(t, 1, *dl.Season)
+	assert.Equal(t, download.StatusQueued, dl.Status)
+
+	// Simulate download completion (transition through downloading first for realism)
+	require.NoError(t, dlStore.Transition(dl, download.StatusDownloading))
+	require.NoError(t, dlStore.Transition(dl, download.StatusCompleted))
+
+	// Emit download completed (in real system, SABnzbd adapter does this)
+	err = bus.Publish(ctx, &events.DownloadCompleted{
+		BaseEvent:  events.NewBaseEvent(events.EventDownloadCompleted, events.EntityDownload, dl.ID),
+		DownloadID: dl.ID,
+		SourcePath: "/downloads/Peaky.Blinders.S01.1080p",
+	})
+	require.NoError(t, err)
+
+	// Wait for import completed
+	select {
+	case e := <-completedCh:
+		completed := e.(*events.ImportCompleted)
+		assert.Equal(t, dl.ID, completed.DownloadID)
+		assert.Equal(t, content.ID, completed.ContentID)
+		// integrationImporter returns empty EpisodeResults, but event should be emitted
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for ImportCompleted")
+	}
+
+	// Allow time for status update to complete
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify download transitioned to imported
+	dl, err = dlStore.Get(dl.ID)
+	require.NoError(t, err)
+	assert.Equal(t, download.StatusImported, dl.Status)
+
+	// Verify events were persisted
+	persistedEvents, err := eventLog.Since(time.Now().Add(-time.Minute))
+	require.NoError(t, err)
+
+	eventTypes := make([]string, len(persistedEvents))
+	for i, e := range persistedEvents {
+		eventTypes[i] = e.EventType
+	}
+
+	assert.Contains(t, eventTypes, events.EventGrabRequested)
+	assert.Contains(t, eventTypes, events.EventDownloadCreated)
+	assert.Contains(t, eventTypes, events.EventDownloadCompleted)
+	assert.Contains(t, eventTypes, events.EventImportStarted)
+	assert.Contains(t, eventTypes, events.EventImportCompleted)
 }

@@ -27,6 +27,7 @@ type EpisodeFilter struct {
 type FileFilter struct {
 	ContentID *int64
 	EpisodeID *int64
+	Season    *int // Filter by episode season (requires join with episodes table)
 	Quality   *string
 	Limit     int
 	Offset    int

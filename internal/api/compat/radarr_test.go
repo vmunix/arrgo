@@ -2,6 +2,7 @@
 package compat
 
 import (
+	"context"
 	"database/sql"
 	_ "embed"
 	"encoding/json"
@@ -11,13 +12,19 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	_ "modernc.org/sqlite"
 
+	"github.com/vmunix/arrgo/internal/config"
 	"github.com/vmunix/arrgo/internal/download"
+	"github.com/vmunix/arrgo/internal/events"
 	"github.com/vmunix/arrgo/internal/library"
+	"github.com/vmunix/arrgo/internal/search"
+	"github.com/vmunix/arrgo/internal/search/mocks"
 	"github.com/vmunix/arrgo/internal/tmdb"
 )
 
@@ -674,4 +681,217 @@ func TestGetSeries_NotFound(t *testing.T) {
 	mux.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestSonarrAddSeries_WithAutoSearch(t *testing.T) {
+	// Set up database and stores
+	db := setupTestDB(t)
+	lib := library.NewStore(db)
+	dlStore := download.NewStore(db)
+
+	// Set up event bus
+	testLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	bus := events.NewBus(nil, testLogger)
+	t.Cleanup(func() { bus.Close() })
+
+	// Subscribe to GrabRequested events BEFORE setting up the server
+	grabChan := bus.Subscribe(events.EventGrabRequested, 10)
+
+	// Set up mock indexer
+	ctrl := gomock.NewController(t)
+	mockIndexer := mocks.NewMockIndexerAPI(ctrl)
+
+	// Mock returns a season pack release
+	mockIndexer.EXPECT().
+		Search(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, q search.Query) ([]search.Release, []error) {
+			return []search.Release{{
+				Title:       "Test.Show.S01.1080p.BluRay.x264",
+				Indexer:     "TestIndexer",
+				GUID:        "test-guid-123",
+				DownloadURL: "https://indexer.test/download/123",
+				Size:        5000000000,
+				PublishDate: time.Now(),
+			}}, nil
+		}).
+		AnyTimes()
+
+	// Create scorer with minimal profile
+	profiles := map[string]config.QualityProfile{
+		"hd": {
+			Resolution: []string{"1080p", "720p"},
+			Sources:    []string{"bluray", "web"},
+			Codecs:     []string{"x264", "x265"},
+		},
+	}
+	scorer := search.NewScorer(profiles)
+	searcher := search.NewSearcher(mockIndexer, scorer, testLogger)
+
+	// Create compat server with all dependencies
+	cfg := Config{
+		APIKey:          testAPIKey,
+		MovieRoot:       testMovieRoot,
+		SeriesRoot:      testSeriesRoot,
+		QualityProfiles: map[string]int{"hd": 1, "uhd": 2},
+	}
+	srv := New(cfg, lib, dlStore, testLogger)
+	srv.SetSearcher(searcher)
+	srv.SetBus(bus)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	// Make addSeries request with auto-search enabled
+	body := `{
+		"tvdbId": 99999,
+		"title": "Test Show",
+		"year": 2024,
+		"qualityProfileId": 1,
+		"languageProfileId": 1,
+		"rootFolderPath": "/series",
+		"seriesType": "standard",
+		"monitored": true,
+		"seasons": [
+			{"seasonNumber": 1, "monitored": true},
+			{"seasonNumber": 2, "monitored": false}
+		],
+		"addOptions": {"searchForMissingEpisodes": true}
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v3/series", strings.NewReader(body))
+	req.Header.Set("X-Api-Key", testAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code, "response body: %s", w.Body.String())
+
+	// Wait for GrabRequested event (with timeout)
+	select {
+	case evt := <-grabChan:
+		grabEvt, ok := evt.(*events.GrabRequested)
+		require.True(t, ok, "event should be GrabRequested")
+
+		// Verify season info is set correctly
+		require.NotNil(t, grabEvt.Season, "Season should be set for season pack grab")
+		assert.Equal(t, 1, *grabEvt.Season, "Should grab season 1 (the monitored season)")
+		assert.True(t, grabEvt.IsCompleteSeason, "IsCompleteSeason should be true for season pack")
+		assert.Equal(t, "Test.Show.S01.1080p.BluRay.x264", grabEvt.ReleaseName)
+		assert.Equal(t, "TestIndexer", grabEvt.Indexer)
+
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for GrabRequested event")
+	}
+}
+
+func TestSonarrAddSeries_WithAutoSearch_MultipleSeasons(t *testing.T) {
+	// Set up database and stores
+	db := setupTestDB(t)
+	lib := library.NewStore(db)
+	dlStore := download.NewStore(db)
+
+	// Set up event bus
+	testLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	bus := events.NewBus(nil, testLogger)
+	t.Cleanup(func() { bus.Close() })
+
+	// Subscribe to GrabRequested events
+	grabChan := bus.Subscribe(events.EventGrabRequested, 10)
+
+	// Set up mock indexer
+	ctrl := gomock.NewController(t)
+	mockIndexer := mocks.NewMockIndexerAPI(ctrl)
+
+	// Track which seasons are searched for
+	var searchedSeasons []int
+	mockIndexer.EXPECT().
+		Search(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(ctx context.Context, q search.Query) ([]search.Release, []error) {
+			if q.Season != nil {
+				searchedSeasons = append(searchedSeasons, *q.Season)
+			}
+			seasonNum := 1
+			if q.Season != nil {
+				seasonNum = *q.Season
+			}
+			return []search.Release{{
+				Title:       "Test.Show.S0" + string(rune('0'+seasonNum)) + ".1080p.BluRay.x264",
+				Indexer:     "TestIndexer",
+				GUID:        "test-guid",
+				DownloadURL: "https://indexer.test/download",
+				Size:        5000000000,
+				PublishDate: time.Now(),
+			}}, nil
+		}).
+		AnyTimes()
+
+	// Create scorer and searcher
+	profiles := map[string]config.QualityProfile{
+		"hd": {Resolution: []string{"1080p"}, Sources: []string{"bluray"}},
+	}
+	scorer := search.NewScorer(profiles)
+	searcher := search.NewSearcher(mockIndexer, scorer, testLogger)
+
+	// Create server
+	cfg := Config{
+		APIKey:          testAPIKey,
+		SeriesRoot:      testSeriesRoot,
+		QualityProfiles: map[string]int{"hd": 1},
+	}
+	srv := New(cfg, lib, dlStore, testLogger)
+	srv.SetSearcher(searcher)
+	srv.SetBus(bus)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	// Request with multiple monitored seasons
+	body := `{
+		"tvdbId": 88888,
+		"title": "Multi Season Show",
+		"year": 2020,
+		"qualityProfileId": 1,
+		"languageProfileId": 1,
+		"rootFolderPath": "/series",
+		"seriesType": "standard",
+		"monitored": true,
+		"seasons": [
+			{"seasonNumber": 1, "monitored": true},
+			{"seasonNumber": 2, "monitored": true},
+			{"seasonNumber": 3, "monitored": false}
+		],
+		"addOptions": {"searchForMissingEpisodes": true}
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v3/series", strings.NewReader(body))
+	req.Header.Set("X-Api-Key", testAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	// Wait for both GrabRequested events
+	receivedSeasons := make(map[int]bool)
+	timeout := time.After(3 * time.Second)
+
+	for len(receivedSeasons) < 2 {
+		select {
+		case evt := <-grabChan:
+			grabEvt, ok := evt.(*events.GrabRequested)
+			require.True(t, ok)
+			require.NotNil(t, grabEvt.Season)
+			receivedSeasons[*grabEvt.Season] = true
+			assert.True(t, grabEvt.IsCompleteSeason)
+		case <-timeout:
+			t.Fatalf("timed out waiting for events, got seasons: %v", receivedSeasons)
+		}
+	}
+
+	// Should have received grabs for seasons 1 and 2, not 3
+	assert.True(t, receivedSeasons[1], "should grab season 1")
+	assert.True(t, receivedSeasons[2], "should grab season 2")
+	assert.False(t, receivedSeasons[3], "should NOT grab season 3 (not monitored)")
 }

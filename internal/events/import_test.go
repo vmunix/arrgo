@@ -126,3 +126,51 @@ func TestCleanupCompleted_JSON(t *testing.T) {
 
 	assert.Equal(t, int64(123), decoded.DownloadID)
 }
+
+func TestImportCompleted_AllSucceeded(t *testing.T) {
+	tests := []struct {
+		name     string
+		results  []EpisodeImportResult
+		expected bool
+	}{
+		{
+			name:     "empty results",
+			results:  nil,
+			expected: true,
+		},
+		{
+			name: "all succeeded",
+			results: []EpisodeImportResult{
+				{EpisodeID: 1, Success: true},
+				{EpisodeID: 2, Success: true},
+			},
+			expected: true,
+		},
+		{
+			name: "one failed",
+			results: []EpisodeImportResult{
+				{EpisodeID: 1, Success: true},
+				{EpisodeID: 2, Success: false, Error: "disk full"},
+			},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := &ImportCompleted{EpisodeResults: tt.results}
+			assert.Equal(t, tt.expected, e.AllSucceeded())
+		})
+	}
+}
+
+func TestImportCompleted_SuccessCount(t *testing.T) {
+	e := &ImportCompleted{
+		EpisodeResults: []EpisodeImportResult{
+			{EpisodeID: 1, Success: true},
+			{EpisodeID: 2, Success: false},
+			{EpisodeID: 3, Success: true},
+		},
+	}
+	assert.Equal(t, 2, e.SuccessCount())
+}

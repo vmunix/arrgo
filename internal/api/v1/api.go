@@ -207,6 +207,17 @@ func (s *Server) listContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Collect series IDs to batch-fetch stats
+	var seriesIDs []int64
+	for _, c := range items {
+		if c.Type == library.ContentTypeSeries {
+			seriesIDs = append(seriesIDs, c.ID)
+		}
+	}
+
+	// Fetch stats for all series in one query
+	seriesStats, _ := s.deps.Library.GetSeriesStatsBatch(seriesIDs)
+
 	resp := listContentResponse{
 		Items:  make([]contentResponse, len(items)),
 		Total:  total,
@@ -215,7 +226,7 @@ func (s *Server) listContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for i, c := range items {
-		resp.Items[i] = contentToResponse(c)
+		resp.Items[i] = contentToResponse(c, seriesStats[c.ID])
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -238,11 +249,17 @@ func (s *Server) getContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, contentToResponse(c))
+	// Fetch stats for series
+	var stats *library.SeriesStats
+	if c.Type == library.ContentTypeSeries {
+		stats, _ = s.deps.Library.GetSeriesStats(c.ID)
+	}
+
+	writeJSON(w, http.StatusOK, contentToResponse(c, stats))
 }
 
-func contentToResponse(c *library.Content) contentResponse {
-	return contentResponse{
+func contentToResponse(c *library.Content, stats *library.SeriesStats) contentResponse {
+	resp := contentResponse{
 		ID:             c.ID,
 		Type:           string(c.Type),
 		TMDBID:         c.TMDBID,
@@ -255,6 +272,27 @@ func contentToResponse(c *library.Content) contentResponse {
 		AddedAt:        c.AddedAt,
 		UpdatedAt:      c.UpdatedAt,
 	}
+
+	// For series, compute status from episode stats and include stats in response
+	if c.Type == library.ContentTypeSeries && stats != nil {
+		resp.EpisodeStats = &episodeStatsResponse{
+			TotalEpisodes:     stats.TotalEpisodes,
+			AvailableEpisodes: stats.AvailableEpisodes,
+			SeasonCount:       stats.SeasonCount,
+		}
+
+		// Compute display status based on episode availability
+		switch {
+		case stats.AvailableEpisodes == 0:
+			resp.Status = "wanted"
+		case stats.AvailableEpisodes < stats.TotalEpisodes:
+			resp.Status = "partial"
+		default:
+			resp.Status = "available"
+		}
+	}
+
+	return resp
 }
 
 func (s *Server) addContent(w http.ResponseWriter, r *http.Request) {
@@ -314,7 +352,7 @@ func (s *Server) addContent(w http.ResponseWriter, r *http.Request) {
 		_ = s.deps.Bus.Publish(r.Context(), evt)
 	}
 
-	writeJSON(w, http.StatusCreated, contentToResponse(c))
+	writeJSON(w, http.StatusCreated, contentToResponse(c, nil))
 }
 
 func (s *Server) updateContent(w http.ResponseWriter, r *http.Request) {
@@ -367,7 +405,13 @@ func (s *Server) updateContent(w http.ResponseWriter, r *http.Request) {
 		_ = s.deps.Bus.Publish(r.Context(), evt)
 	}
 
-	writeJSON(w, http.StatusOK, contentToResponse(c))
+	// Fetch stats for series
+	var stats *library.SeriesStats
+	if c.Type == library.ContentTypeSeries {
+		stats, _ = s.deps.Library.GetSeriesStats(c.ID)
+	}
+
+	writeJSON(w, http.StatusOK, contentToResponse(c, stats))
 }
 
 func (s *Server) deleteContent(w http.ResponseWriter, r *http.Request) {
@@ -549,8 +593,9 @@ func (s *Server) grab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify content exists
-	if _, err := s.deps.Library.GetContent(req.ContentID); err != nil {
+	// Verify content exists and get type
+	content, err := s.deps.Library.GetContent(req.ContentID)
+	if err != nil {
 		if errors.Is(err, library.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "Content not found")
 			return
@@ -565,14 +610,68 @@ func (s *Server) grab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.deps.Bus.Publish(r.Context(), &events.GrabRequested{
+	// Build the event
+	event := &events.GrabRequested{
 		BaseEvent:   events.NewBaseEvent(events.EventGrabRequested, events.EntityDownload, 0),
 		ContentID:   req.ContentID,
-		EpisodeID:   req.EpisodeID,
 		DownloadURL: req.DownloadURL,
 		ReleaseName: req.Title,
 		Indexer:     req.Indexer,
-	}); err != nil {
+	}
+
+	// For series, parse release name to detect episodes
+	if content.Type == library.ContentTypeSeries {
+		parsed := release.Parse(req.Title)
+
+		// Use overrides if provided, otherwise use parsed values
+		season := parsed.Season
+		if req.Season != nil {
+			season = *req.Season
+		}
+
+		episodes := parsed.Episodes
+		if len(req.Episodes) > 0 {
+			episodes = req.Episodes
+		}
+
+		// Season is required for series
+		if season == 0 {
+			writeError(w, http.StatusBadRequest, "INVALID_RELEASE", "cannot determine season from release title")
+			return
+		}
+
+		event.Season = &season
+
+		// Handle season packs vs specific episodes
+		switch {
+		case parsed.IsCompleteSeason && len(episodes) == 0:
+			// Season pack: set IsCompleteSeason, no EpisodeIDs yet
+			event.IsCompleteSeason = true
+		case len(episodes) > 0:
+			// Specific episodes: find or create episode records
+			eps, err := s.deps.Library.FindOrCreateEpisodes(req.ContentID, season, episodes)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+				return
+			}
+			for _, ep := range eps {
+				event.EpisodeIDs = append(event.EpisodeIDs, ep.ID)
+			}
+			// Backward compatibility: set EpisodeID for single-episode grabs
+			if len(event.EpisodeIDs) == 1 {
+				event.EpisodeID = &event.EpisodeIDs[0]
+			}
+		default:
+			// No episode info and not a season pack
+			writeError(w, http.StatusBadRequest, "INVALID_RELEASE", "cannot determine episodes from release title")
+			return
+		}
+	} else {
+		// For movies, preserve legacy EpisodeID if provided (shouldn't happen, but handle gracefully)
+		event.EpisodeID = req.EpisodeID
+	}
+
+	if err := s.deps.Bus.Publish(r.Context(), event); err != nil {
 		writeError(w, http.StatusInternalServerError, "EVENT_ERROR", err.Error())
 		return
 	}
@@ -635,16 +734,18 @@ func (s *Server) listDownloads(w http.ResponseWriter, r *http.Request) {
 
 func downloadToResponse(d *download.Download, live *download.ClientStatus) downloadResponse {
 	resp := downloadResponse{
-		ID:          d.ID,
-		ContentID:   d.ContentID,
-		EpisodeID:   d.EpisodeID,
-		Client:      string(d.Client),
-		ClientID:    d.ClientID,
-		Status:      string(d.Status),
-		ReleaseName: d.ReleaseName,
-		Indexer:     d.Indexer,
-		AddedAt:     d.AddedAt,
-		CompletedAt: d.CompletedAt,
+		ID:               d.ID,
+		ContentID:        d.ContentID,
+		EpisodeID:        d.EpisodeID,
+		Season:           d.Season,
+		IsCompleteSeason: d.IsCompleteSeason,
+		Client:           string(d.Client),
+		ClientID:         d.ClientID,
+		Status:           string(d.Status),
+		ReleaseName:      d.ReleaseName,
+		Indexer:          d.Indexer,
+		AddedAt:          d.AddedAt,
+		CompletedAt:      d.CompletedAt,
 	}
 	if live != nil {
 		resp.Progress = &live.Progress
@@ -1370,10 +1471,74 @@ func (s *Server) importTracked(w http.ResponseWriter, r *http.Request, req impor
 		return
 	}
 
-	// Call importer
+	// Transition to importing status
+	if err := s.deps.Downloads.Transition(dl, download.StatusImporting); err != nil {
+		writeError(w, http.StatusInternalServerError, "TRANSITION_ERROR", err.Error())
+		return
+	}
+
+	// Call appropriate importer method based on download type
+	if dl.IsCompleteSeason {
+		// Season pack import
+		packResult, err := s.deps.Importer.ImportSeasonPack(ctx, dl.ID, sourcePath)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", err.Error())
+			return
+		}
+
+		// Transition to imported status
+		if err := s.deps.Downloads.Transition(dl, download.StatusImported); err != nil {
+			writeError(w, http.StatusInternalServerError, "TRANSITION_ERROR", err.Error())
+			return
+		}
+
+		// Publish ImportCompleted event for event-driven pipeline
+		if s.deps.Bus != nil {
+			episodeResults := make([]events.EpisodeImportResult, 0, len(packResult.Episodes))
+			for _, ep := range packResult.Episodes {
+				var errStr string
+				if ep.Error != nil {
+					errStr = ep.Error.Error()
+				}
+				episodeResults = append(episodeResults, events.EpisodeImportResult{
+					EpisodeID: ep.EpisodeID,
+					Season:    ep.Season,
+					Episode:   ep.Episode,
+					Success:   ep.Error == nil,
+					FilePath:  ep.FilePath,
+					Error:     errStr,
+				})
+			}
+			evt := &events.ImportCompleted{
+				BaseEvent:      events.NewBaseEvent(events.EventImportCompleted, events.EntityDownload, dl.ID),
+				DownloadID:     dl.ID,
+				ContentID:      dl.ContentID,
+				FileSize:       packResult.TotalSize,
+				EpisodeResults: episodeResults,
+			}
+			_ = s.deps.Bus.Publish(ctx, evt)
+		}
+
+		writeJSON(w, http.StatusOK, importResponse{
+			ContentID:    content.ID,
+			SourcePath:   sourcePath,
+			SizeBytes:    packResult.TotalSize,
+			PlexNotified: packResult.PlexNotified,
+			EpisodeCount: len(packResult.Episodes),
+		})
+		return
+	}
+
+	// Single file import
 	result, err := s.deps.Importer.Import(ctx, dl.ID, sourcePath)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", err.Error())
+		return
+	}
+
+	// Transition to imported status
+	if err := s.deps.Downloads.Transition(dl, download.StatusImported); err != nil {
+		writeError(w, http.StatusInternalServerError, "TRANSITION_ERROR", err.Error())
 		return
 	}
 

@@ -59,8 +59,9 @@ func (r *Renamer) EpisodePath(title string, season, episode int, quality, ext st
 	return applyTemplate(r.seriesTemplate, vars)
 }
 
-// formatPattern matches {name} or {name:02} style placeholders.
-var formatPattern = regexp.MustCompile(`\{(\w+)(?::(\d+))?\}`)
+// formatPattern matches {name}, {name:02}, or {name:02d} style placeholders.
+// The optional 'd' suffix (or other type specifier) is ignored.
+var formatPattern = regexp.MustCompile(`\{(\w+)(?::(\d+)\w?)?\}`)
 
 // applyTemplate substitutes variables into a template string.
 // Supports {name} for simple substitution and {name:02} for zero-padded integers.

@@ -291,3 +291,260 @@ func extractQuality(releaseName string) string {
 		return "unknown"
 	}
 }
+
+// EpisodeResult represents the outcome of importing a single episode.
+type EpisodeResult struct {
+	EpisodeID int64
+	Season    int
+	Episode   int
+	Success   bool
+	FilePath  string // Destination path (empty if failed)
+	SizeBytes int64
+	Error     error // nil if success
+}
+
+// SeasonPackResult is the result of importing a season pack.
+type SeasonPackResult struct {
+	TotalSize    int64           // Total bytes imported
+	Episodes     []EpisodeResult // Per-episode outcomes
+	PlexNotified bool
+	PlexError    error
+}
+
+// SuccessCount returns the number of successfully imported episodes.
+func (r *SeasonPackResult) SuccessCount() int {
+	count := 0
+	for _, ep := range r.Episodes {
+		if ep.Success {
+			count++
+		}
+	}
+	return count
+}
+
+// ImportSeasonPack processes a season pack download with multiple video files.
+// It matches each video file to an episode and imports them.
+func (i *Importer) ImportSeasonPack(ctx context.Context, downloadID int64, downloadPath string) (*SeasonPackResult, error) {
+	i.log.Info("season pack import started", "download_id", downloadID, "path", downloadPath)
+
+	// Get download record
+	dl, err := i.downloads.Get(downloadID)
+	if err != nil {
+		if errors.Is(err, download.ErrNotFound) {
+			return nil, fmt.Errorf("%w: %w", ErrDownloadNotFound, err)
+		}
+		return nil, fmt.Errorf("get download: %w", err)
+	}
+
+	// Verify download is ready for import
+	if dl.Status != download.StatusCompleted && dl.Status != download.StatusImporting {
+		return nil, fmt.Errorf("%w: status is %s", ErrDownloadNotReady, dl.Status)
+	}
+
+	// Get content record
+	content, err := i.library.GetContent(dl.ContentID)
+	if err != nil {
+		return nil, fmt.Errorf("get content: %w", err)
+	}
+
+	// Must be a series
+	if content.Type != library.ContentTypeSeries {
+		return nil, fmt.Errorf("season pack import requires series content, got %s", content.Type)
+	}
+
+	// Find all video files
+	videos, err := FindAllVideos(downloadPath)
+	if err != nil {
+		return nil, fmt.Errorf("find videos: %w", err)
+	}
+	if len(videos) == 0 {
+		return nil, ErrNoVideoFile
+	}
+
+	i.log.Info("found video files", "download_id", downloadID, "count", len(videos))
+
+	// Extract quality from release name
+	quality := extractQuality(dl.ReleaseName)
+
+	result := &SeasonPackResult{
+		Episodes: make([]EpisodeResult, 0, len(videos)),
+	}
+
+	// Process each video file
+	for _, srcPath := range videos {
+		epResult := i.importEpisodeFile(ctx, dl, content, srcPath, quality)
+		result.Episodes = append(result.Episodes, epResult)
+		if epResult.Success {
+			result.TotalSize += epResult.SizeBytes
+		}
+	}
+
+	// Notify media server once for the series folder (best effort)
+	if i.mediaServer != nil {
+		// Scan the series root folder
+		seriesPath := filepath.Join(i.seriesRoot, SanitizeFilename(content.Title))
+		if err := i.mediaServer.ScanPath(ctx, seriesPath); err != nil {
+			result.PlexError = err
+			i.log.Warn("plex notification failed", "error", err)
+		} else {
+			result.PlexNotified = true
+			i.log.Debug("plex notified", "path", seriesPath)
+		}
+	}
+
+	i.log.Info("season pack import complete",
+		"download_id", downloadID,
+		"episodes", len(result.Episodes),
+		"success", result.SuccessCount(),
+		"total_size", result.TotalSize)
+
+	return result, nil
+}
+
+// importEpisodeFile imports a single episode file from a season pack.
+func (i *Importer) importEpisodeFile(_ context.Context, dl *download.Download, content *library.Content, srcPath, quality string) EpisodeResult {
+	// Parse filename to get season/episode
+	season, epNum, err := MatchFileToSeason(srcPath)
+	if err != nil {
+		i.log.Warn("failed to match file to season", "path", srcPath, "error", err)
+		return EpisodeResult{
+			Season:  0,
+			Episode: 0,
+			Success: false,
+			Error:   fmt.Errorf("match file to season: %w", err),
+		}
+	}
+
+	// Find or create episode record
+	episode, created, err := i.library.FindOrCreateEpisode(content.ID, season, epNum)
+	if err != nil {
+		i.log.Warn("failed to find/create episode", "season", season, "episode", epNum, "error", err)
+		return EpisodeResult{
+			Season:  season,
+			Episode: epNum,
+			Success: false,
+			Error:   fmt.Errorf("find/create episode: %w", err),
+		}
+	}
+	if created {
+		i.log.Debug("created episode record", "episode_id", episode.ID, "season", season, "episode", epNum)
+	}
+
+	// Build destination path
+	ext := strings.TrimPrefix(filepath.Ext(srcPath), ".")
+	relPath := i.renamer.EpisodePath(content.Title, season, epNum, quality, ext)
+	destPath := filepath.Join(i.seriesRoot, relPath)
+
+	// Validate path is within root (security check)
+	if err := ValidatePath(destPath, i.seriesRoot); err != nil {
+		i.log.Warn("path validation failed", "path", destPath, "error", err)
+		return EpisodeResult{
+			EpisodeID: episode.ID,
+			Season:    season,
+			Episode:   epNum,
+			Success:   false,
+			Error:     err,
+		}
+	}
+
+	// Copy file
+	size, err := CopyFile(srcPath, destPath)
+	if err != nil {
+		i.log.Warn("failed to copy file", "src", srcPath, "dest", destPath, "error", err)
+		return EpisodeResult{
+			EpisodeID: episode.ID,
+			Season:    season,
+			Episode:   epNum,
+			Success:   false,
+			Error:     fmt.Errorf("copy file: %w", err),
+		}
+	}
+
+	i.log.Debug("copied episode file", "src", srcPath, "dest", destPath, "size", size)
+
+	// Update database in transaction
+	tx, err := i.library.Begin()
+	if err != nil {
+		i.log.Warn("failed to begin transaction", "error", err)
+		return EpisodeResult{
+			EpisodeID: episode.ID,
+			Season:    season,
+			Episode:   epNum,
+			Success:   false,
+			Error:     fmt.Errorf("begin transaction: %w", err),
+		}
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Insert file record
+	file := &library.File{
+		ContentID: content.ID,
+		EpisodeID: &episode.ID,
+		Path:      destPath,
+		SizeBytes: size,
+		Quality:   quality,
+		Source:    dl.Indexer,
+	}
+	if err := tx.AddFile(file); err != nil {
+		i.log.Warn("failed to add file record", "error", err)
+		return EpisodeResult{
+			EpisodeID: episode.ID,
+			Season:    season,
+			Episode:   epNum,
+			Success:   false,
+			Error:     fmt.Errorf("add file: %w", err),
+		}
+	}
+
+	// Update episode status to available
+	episode.Status = library.StatusAvailable
+	if err := tx.UpdateEpisode(episode); err != nil {
+		i.log.Warn("failed to update episode status", "error", err)
+		return EpisodeResult{
+			EpisodeID: episode.ID,
+			Season:    season,
+			Episode:   epNum,
+			Success:   false,
+			Error:     fmt.Errorf("update episode: %w", err),
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		i.log.Warn("failed to commit transaction", "error", err)
+		return EpisodeResult{
+			EpisodeID: episode.ID,
+			Season:    season,
+			Episode:   epNum,
+			Success:   false,
+			Error:     fmt.Errorf("commit: %w", err),
+		}
+	}
+
+	// Add history entry
+	historyMap := map[string]any{
+		"source_path":  srcPath,
+		"dest_path":    destPath,
+		"size_bytes":   size,
+		"quality":      quality,
+		"indexer":      dl.Indexer,
+		"release_name": dl.ReleaseName,
+		"season":       season,
+		"episode":      epNum,
+	}
+	historyData, _ := json.Marshal(historyMap)
+	_ = i.history.Add(&HistoryEntry{
+		ContentID: content.ID,
+		EpisodeID: &episode.ID,
+		Event:     EventImported,
+		Data:      string(historyData),
+	})
+
+	return EpisodeResult{
+		EpisodeID: episode.ID,
+		Season:    season,
+		Episode:   epNum,
+		Success:   true,
+		FilePath:  destPath,
+		SizeBytes: size,
+	}
+}

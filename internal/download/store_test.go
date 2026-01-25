@@ -702,3 +702,180 @@ func TestStore_CountByStatus_Empty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, counts, "should return empty map when no downloads exist")
 }
+
+func TestStore_AddWithEpisodeIDs(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	// Create series content
+	result, err := db.Exec(`
+		INSERT INTO content (type, title, year, status, quality_profile, root_path)
+		VALUES ('series', 'Breaking Bad', 2008, 'wanted', 'hd', '/tv')`)
+	require.NoError(t, err)
+	contentID, _ := result.LastInsertId()
+
+	// Create multiple episodes
+	result, _ = db.Exec(`INSERT INTO episodes (content_id, season, episode, title, status) VALUES (?, 1, 1, 'Pilot', 'wanted')`, contentID)
+	ep1ID, _ := result.LastInsertId()
+	result, _ = db.Exec(`INSERT INTO episodes (content_id, season, episode, title, status) VALUES (?, 1, 2, 'Cat in the Bag', 'wanted')`, contentID)
+	ep2ID, _ := result.LastInsertId()
+	result, _ = db.Exec(`INSERT INTO episodes (content_id, season, episode, title, status) VALUES (?, 1, 3, 'And the Bag in the River', 'wanted')`, contentID)
+	ep3ID, _ := result.LastInsertId()
+
+	// Create download
+	d := &Download{
+		ContentID:   contentID,
+		Client:      ClientSABnzbd,
+		ClientID:    "SABnzbd_nzo_multiep",
+		Status:      StatusQueued,
+		ReleaseName: "Breaking.Bad.S01E01-E03.1080p.BluRay.x264",
+		Indexer:     "nzbgeek",
+	}
+	require.NoError(t, store.Add(d))
+
+	// Set episode IDs using junction table
+	episodeIDs := []int64{ep1ID, ep2ID, ep3ID}
+	require.NoError(t, store.SetEpisodeIDs(d.ID, episodeIDs))
+
+	// Retrieve and verify
+	retrieved, err := store.Get(d.ID)
+	require.NoError(t, err)
+
+	assert.Equal(t, episodeIDs, retrieved.EpisodeIDs, "EpisodeIDs should match")
+	assert.Len(t, retrieved.EpisodeIDs, 3)
+}
+
+func TestStore_AddWithSeasonPack(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	// Create series content
+	result, err := db.Exec(`
+		INSERT INTO content (type, title, year, status, quality_profile, root_path)
+		VALUES ('series', 'Breaking Bad', 2008, 'wanted', 'hd', '/tv')`)
+	require.NoError(t, err)
+	contentID, _ := result.LastInsertId()
+
+	// Create episodes for season 1
+	var episodeIDs []int64
+	for i := 1; i <= 7; i++ {
+		result, _ = db.Exec(`INSERT INTO episodes (content_id, season, episode, title, status) VALUES (?, 1, ?, ?, 'wanted')`,
+			contentID, i, fmt.Sprintf("Episode %d", i))
+		epID, _ := result.LastInsertId()
+		episodeIDs = append(episodeIDs, epID)
+	}
+
+	// Create season pack download
+	season := 1
+	d := &Download{
+		ContentID:        contentID,
+		Season:           &season,
+		IsCompleteSeason: true,
+		Client:           ClientSABnzbd,
+		ClientID:         "SABnzbd_nzo_season",
+		Status:           StatusQueued,
+		ReleaseName:      "Breaking.Bad.S01.1080p.BluRay.x264",
+		Indexer:          "nzbgeek",
+	}
+	require.NoError(t, store.Add(d))
+
+	// Set all episode IDs for the season
+	require.NoError(t, store.SetEpisodeIDs(d.ID, episodeIDs))
+
+	// Retrieve and verify
+	retrieved, err := store.Get(d.ID)
+	require.NoError(t, err)
+
+	require.NotNil(t, retrieved.Season)
+	assert.Equal(t, 1, *retrieved.Season)
+	assert.True(t, retrieved.IsCompleteSeason)
+	assert.Equal(t, episodeIDs, retrieved.EpisodeIDs)
+	assert.Len(t, retrieved.EpisodeIDs, 7)
+
+	// Also verify via GetByClientID
+	retrievedByClient, err := store.GetByClientID(ClientSABnzbd, "SABnzbd_nzo_season")
+	require.NoError(t, err)
+	assert.Equal(t, episodeIDs, retrievedByClient.EpisodeIDs)
+	assert.True(t, retrievedByClient.IsCompleteSeason)
+}
+
+func TestStore_SetEpisodeIDs_Replace(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	// Create series content
+	result, err := db.Exec(`
+		INSERT INTO content (type, title, year, status, quality_profile, root_path)
+		VALUES ('series', 'Breaking Bad', 2008, 'wanted', 'hd', '/tv')`)
+	require.NoError(t, err)
+	contentID, _ := result.LastInsertId()
+
+	// Create episodes
+	result, _ = db.Exec(`INSERT INTO episodes (content_id, season, episode, title, status) VALUES (?, 1, 1, 'Pilot', 'wanted')`, contentID)
+	ep1ID, _ := result.LastInsertId()
+	result, _ = db.Exec(`INSERT INTO episodes (content_id, season, episode, title, status) VALUES (?, 1, 2, 'Cat in the Bag', 'wanted')`, contentID)
+	ep2ID, _ := result.LastInsertId()
+
+	// Create download
+	d := &Download{
+		ContentID:   contentID,
+		Client:      ClientSABnzbd,
+		ClientID:    "SABnzbd_nzo_replace",
+		Status:      StatusQueued,
+		ReleaseName: "Breaking.Bad.S01E01.1080p.BluRay.x264",
+		Indexer:     "nzbgeek",
+	}
+	require.NoError(t, store.Add(d))
+
+	// Set initial episode ID
+	require.NoError(t, store.SetEpisodeIDs(d.ID, []int64{ep1ID}))
+
+	retrieved, err := store.Get(d.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{ep1ID}, retrieved.EpisodeIDs)
+
+	// Replace with different episode IDs
+	require.NoError(t, store.SetEpisodeIDs(d.ID, []int64{ep2ID}))
+
+	retrieved, err = store.Get(d.ID)
+	require.NoError(t, err)
+	assert.Equal(t, []int64{ep2ID}, retrieved.EpisodeIDs, "SetEpisodeIDs should replace existing associations")
+}
+
+func TestStore_List_SeasonPackFields(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	// Create series content
+	result, err := db.Exec(`
+		INSERT INTO content (type, title, year, status, quality_profile, root_path)
+		VALUES ('series', 'Breaking Bad', 2008, 'wanted', 'hd', '/tv')`)
+	require.NoError(t, err)
+	contentID, _ := result.LastInsertId()
+
+	// Create season pack download
+	season := 1
+	d := &Download{
+		ContentID:        contentID,
+		Season:           &season,
+		IsCompleteSeason: true,
+		Client:           ClientSABnzbd,
+		ClientID:         "SABnzbd_nzo_list",
+		Status:           StatusQueued,
+		ReleaseName:      "Breaking.Bad.S01.1080p.BluRay.x264",
+		Indexer:          "nzbgeek",
+	}
+	require.NoError(t, store.Add(d))
+
+	// List should include season and is_complete_season but not EpisodeIDs
+	results, total, err := store.List(Filter{})
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	require.Len(t, results, 1)
+
+	require.NotNil(t, results[0].Season)
+	assert.Equal(t, 1, *results[0].Season)
+	assert.True(t, results[0].IsCompleteSeason)
+	// EpisodeIDs should be nil/empty for List() performance
+	assert.Empty(t, results[0].EpisodeIDs, "List should not load EpisodeIDs for performance")
+}

@@ -254,12 +254,21 @@ func (h *CleanupHandler) handlePlexDetected(ctx context.Context, e *events.PlexI
 		return
 	}
 
+	h.Logger().Debug("retrieved download for transition",
+		"download_id", dl.ID,
+		"current_status", dl.Status)
+
 	if err := h.store.Transition(dl, download.StatusCleaned); err != nil {
 		h.Logger().Error("failed to transition download to cleaned",
 			"download_id", pending.DownloadID,
+			"current_status", dl.Status,
 			"error", err)
 		return
 	}
+
+	h.Logger().Debug("transition successful",
+		"download_id", dl.ID,
+		"new_status", dl.Status)
 
 	// Emit CleanupCompleted event
 	if err := h.Bus().Publish(ctx, &events.CleanupCompleted{

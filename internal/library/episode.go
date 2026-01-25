@@ -148,3 +148,124 @@ func (s *Store) DeleteEpisode(id int64) error { return deleteEpisode(s.db, id) }
 
 // DeleteEpisode removes an episode by ID within a transaction.
 func (t *Tx) DeleteEpisode(id int64) error { return deleteEpisode(t.tx, id) }
+
+// FindOrCreateEpisode finds an existing episode or creates a new one.
+// Returns (episode, created, error) where created is true if a new episode was created.
+func (s *Store) FindOrCreateEpisode(contentID int64, season, episode int) (*Episode, bool, error) {
+	// Try to find existing - query by contentID and season
+	eps, _, err := s.ListEpisodes(EpisodeFilter{
+		ContentID: &contentID,
+		Season:    &season,
+	})
+	if err != nil {
+		return nil, false, fmt.Errorf("list episodes: %w", err)
+	}
+
+	for _, ep := range eps {
+		if ep.Episode == episode {
+			return ep, false, nil
+		}
+	}
+
+	// Not found, create new with StatusWanted
+	ep := &Episode{
+		ContentID: contentID,
+		Season:    season,
+		Episode:   episode,
+		Status:    StatusWanted,
+	}
+	if err := s.AddEpisode(ep); err != nil {
+		return nil, false, fmt.Errorf("add episode: %w", err)
+	}
+
+	return ep, true, nil
+}
+
+// FindOrCreateEpisodes finds or creates multiple episodes for a season.
+// Returns the episodes in the same order as the input episode numbers.
+func (s *Store) FindOrCreateEpisodes(contentID int64, season int, episodeNums []int) ([]*Episode, error) {
+	result := make([]*Episode, 0, len(episodeNums))
+
+	for _, epNum := range episodeNums {
+		ep, _, err := s.FindOrCreateEpisode(contentID, season, epNum)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, ep)
+	}
+
+	return result, nil
+}
+
+// SeriesStats contains statistics about a series.
+type SeriesStats struct {
+	TotalEpisodes     int
+	AvailableEpisodes int
+	SeasonCount       int
+}
+
+// GetSeriesStats returns episode statistics for a series.
+func (s *Store) GetSeriesStats(contentID int64) (*SeriesStats, error) {
+	stats := &SeriesStats{}
+
+	// Get total and available episode counts
+	// Use COALESCE to handle NULL when no episodes exist
+	err := s.db.QueryRow(`
+		SELECT
+			COUNT(*) as total,
+			COALESCE(SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END), 0) as available,
+			COUNT(DISTINCT season) as seasons
+		FROM episodes
+		WHERE content_id = ?`, contentID,
+	).Scan(&stats.TotalEpisodes, &stats.AvailableEpisodes, &stats.SeasonCount)
+	if err != nil {
+		return nil, fmt.Errorf("get series stats: %w", err)
+	}
+
+	return stats, nil
+}
+
+// GetSeriesStatsBatch returns episode statistics for multiple series.
+// Returns a map from content ID to stats.
+func (s *Store) GetSeriesStatsBatch(contentIDs []int64) (map[int64]*SeriesStats, error) {
+	if len(contentIDs) == 0 {
+		return map[int64]*SeriesStats{}, nil
+	}
+
+	// Build placeholders
+	placeholders := make([]string, len(contentIDs))
+	args := make([]any, len(contentIDs))
+	for i, id := range contentIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	rows, err := s.db.Query(fmt.Sprintf(`
+		SELECT
+			content_id,
+			COUNT(*) as total,
+			COALESCE(SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END), 0) as available,
+			COUNT(DISTINCT season) as seasons
+		FROM episodes
+		WHERE content_id IN (%s)
+		GROUP BY content_id`, strings.Join(placeholders, ",")), args...)
+	if err != nil {
+		return nil, fmt.Errorf("get series stats batch: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[int64]*SeriesStats)
+	for rows.Next() {
+		var contentID int64
+		stats := &SeriesStats{}
+		if err := rows.Scan(&contentID, &stats.TotalEpisodes, &stats.AvailableEpisodes, &stats.SeasonCount); err != nil {
+			return nil, fmt.Errorf("scan series stats: %w", err)
+		}
+		result[contentID] = stats
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate series stats: %w", err)
+	}
+
+	return result, nil
+}

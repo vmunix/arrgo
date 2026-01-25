@@ -16,3 +16,6 @@ var Migration003DownloadsStatusCleaned string
 
 //go:embed sql/005_events.sql
 var Migration005Events string
+
+//go:embed sql/006_download_episodes.sql
+var Migration006DownloadEpisodes string

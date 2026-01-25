@@ -44,6 +44,7 @@ type PlexClient interface {
 // FileImporter defines the interface for file import operations.
 type FileImporter interface {
 	Import(ctx context.Context, downloadID int64, downloadPath string) (*importer.ImportResult, error)
+	ImportSeasonPack(ctx context.Context, downloadID int64, downloadPath string) (*importer.SeasonPackResult, error)
 }
 
 // IndexerAPI represents an indexer that can be queried.

@@ -16,6 +16,7 @@ import (
 // FileImporter is the interface for the importer.
 type FileImporter interface {
 	Import(ctx context.Context, downloadID int64, path string) (*importer.ImportResult, error)
+	ImportSeasonPack(ctx context.Context, downloadID int64, path string) (*importer.SeasonPackResult, error)
 }
 
 // ImportHandler handles file import when downloads complete.
@@ -81,7 +82,12 @@ func (h *ImportHandler) handleDownloadCompleted(ctx context.Context, e *events.D
 	// Check for existing files before importing (duplicate prevention)
 	// Must happen before transitioning to importing, since completed→skipped is valid but importing→skipped is not
 	if dl.ContentID > 0 && h.library != nil {
-		files, _, err := h.library.ListFiles(library.FileFilter{ContentID: &dl.ContentID})
+		// Build filter - for season packs, only compare against files from the same season
+		filter := library.FileFilter{ContentID: &dl.ContentID}
+		if dl.IsCompleteSeason && dl.Season != nil {
+			filter.Season = dl.Season
+		}
+		files, _, err := h.library.ListFiles(filter)
 		if err != nil {
 			h.Logger().Warn("failed to check existing files", "error", err)
 			// Continue with import on error - better to import than skip
@@ -147,26 +153,37 @@ func (h *ImportHandler) handleDownloadCompleted(ctx context.Context, e *events.D
 	h.Logger().Info("starting import",
 		"download_id", e.DownloadID,
 		"content_id", dl.ContentID,
-		"path", e.SourcePath)
+		"path", e.SourcePath,
+		"is_complete_season", dl.IsCompleteSeason)
 
+	// Route to appropriate import handler based on download type
+	if dl.IsCompleteSeason {
+		h.handleSeasonPackImport(ctx, dl, e.SourcePath)
+	} else {
+		h.handleSingleFileImport(ctx, dl, e.SourcePath)
+	}
+}
+
+// handleSingleFileImport handles import of a single-file download (movie or single episode).
+func (h *ImportHandler) handleSingleFileImport(ctx context.Context, dl *download.Download, sourcePath string) {
 	// Call importer
-	result, err := h.importer.Import(ctx, e.DownloadID, e.SourcePath)
+	result, err := h.importer.Import(ctx, dl.ID, sourcePath)
 	if err != nil {
-		h.Logger().Error("import failed", "download_id", e.DownloadID, "error", err)
-		h.publishImportFailed(ctx, e.DownloadID, err.Error())
+		h.Logger().Error("import failed", "download_id", dl.ID, "error", err)
+		h.publishImportFailed(ctx, dl.ID, err.Error())
 		return
 	}
 
 	// Transition to imported status
 	if err := h.store.Transition(dl, download.StatusImported); err != nil {
-		h.Logger().Error("failed to transition to imported", "download_id", e.DownloadID, "error", err)
+		h.Logger().Error("failed to transition to imported", "download_id", dl.ID, "error", err)
 		// Don't return - the import succeeded, just log the transition failure
 	}
 
 	// Emit ImportCompleted event
 	if err := h.Bus().Publish(ctx, &events.ImportCompleted{
-		BaseEvent:  events.NewBaseEvent(events.EventImportCompleted, events.EntityDownload, e.DownloadID),
-		DownloadID: e.DownloadID,
+		BaseEvent:  events.NewBaseEvent(events.EventImportCompleted, events.EntityDownload, dl.ID),
+		DownloadID: dl.ID,
 		ContentID:  dl.ContentID,
 		EpisodeID:  dl.EpisodeID,
 		FilePath:   result.DestPath,
@@ -176,10 +193,61 @@ func (h *ImportHandler) handleDownloadCompleted(ctx context.Context, e *events.D
 	}
 
 	h.Logger().Info("import completed",
-		"download_id", e.DownloadID,
+		"download_id", dl.ID,
 		"content_id", dl.ContentID,
 		"dest", result.DestPath,
 		"size_bytes", result.SizeBytes)
+}
+
+// handleSeasonPackImport handles import of a season pack download with multiple episodes.
+func (h *ImportHandler) handleSeasonPackImport(ctx context.Context, dl *download.Download, sourcePath string) {
+	// Call season pack importer
+	result, err := h.importer.ImportSeasonPack(ctx, dl.ID, sourcePath)
+	if err != nil {
+		h.Logger().Error("season pack import failed", "download_id", dl.ID, "error", err)
+		h.publishImportFailed(ctx, dl.ID, err.Error())
+		return
+	}
+
+	// Transition to imported status
+	if err := h.store.Transition(dl, download.StatusImported); err != nil {
+		h.Logger().Error("failed to transition to imported", "download_id", dl.ID, "error", err)
+		// Don't return - the import succeeded, just log the transition failure
+	}
+
+	// Convert importer results to event results
+	episodeResults := make([]events.EpisodeImportResult, 0, len(result.Episodes))
+	for _, ep := range result.Episodes {
+		epResult := events.EpisodeImportResult{
+			EpisodeID: ep.EpisodeID,
+			Season:    ep.Season,
+			Episode:   ep.Episode,
+			Success:   ep.Success,
+			FilePath:  ep.FilePath,
+		}
+		if ep.Error != nil {
+			epResult.Error = ep.Error.Error()
+		}
+		episodeResults = append(episodeResults, epResult)
+	}
+
+	// Emit ImportCompleted event with episode results
+	if err := h.Bus().Publish(ctx, &events.ImportCompleted{
+		BaseEvent:      events.NewBaseEvent(events.EventImportCompleted, events.EntityDownload, dl.ID),
+		DownloadID:     dl.ID,
+		ContentID:      dl.ContentID,
+		EpisodeResults: episodeResults,
+		FileSize:       result.TotalSize,
+	}); err != nil {
+		h.Logger().Error("failed to publish ImportCompleted event", "error", err)
+	}
+
+	h.Logger().Info("season pack import completed",
+		"download_id", dl.ID,
+		"content_id", dl.ContentID,
+		"episodes_total", len(result.Episodes),
+		"episodes_success", result.SuccessCount(),
+		"total_size", result.TotalSize)
 }
 
 func (h *ImportHandler) publishImportFailed(ctx context.Context, downloadID int64, reason string) {

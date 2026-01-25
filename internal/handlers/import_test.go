@@ -38,7 +38,14 @@ func setupImportTestDB(t *testing.T) *sql.DB {
 			indexer TEXT NOT NULL,
 			added_at TIMESTAMP NOT NULL,
 			completed_at TIMESTAMP,
-			last_transition_at TIMESTAMP NOT NULL
+			last_transition_at TIMESTAMP NOT NULL,
+			season INTEGER,
+			is_complete_season INTEGER DEFAULT 0
+		);
+		CREATE TABLE download_episodes (
+			download_id INTEGER NOT NULL,
+			episode_id  INTEGER NOT NULL,
+			PRIMARY KEY (download_id, episode_id)
 		)
 	`)
 	require.NoError(t, err)
@@ -74,6 +81,28 @@ func (m *mockImporter) Import(ctx context.Context, downloadID int64, path string
 		return nil, m.returnError
 	}
 	return m.returnResult, nil
+}
+
+func (m *mockImporter) ImportSeasonPack(ctx context.Context, downloadID int64, path string) (*importer.SeasonPackResult, error) {
+	if m.delay > 0 {
+		time.Sleep(m.delay)
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.importCalled = true
+	m.callCount++
+	m.lastID = downloadID
+	m.lastPath = path
+
+	if m.returnError != nil {
+		return nil, m.returnError
+	}
+	return &importer.SeasonPackResult{
+		TotalSize: 10000000000,
+		Episodes:  []importer.EpisodeResult{},
+	}, nil
 }
 
 func (m *mockImporter) getCallCount() int {
@@ -447,6 +476,11 @@ func (c *countingImporter) Import(ctx context.Context, downloadID int64, path st
 	return c.inner.Import(ctx, downloadID, path)
 }
 
+func (c *countingImporter) ImportSeasonPack(ctx context.Context, downloadID int64, path string) (*importer.SeasonPackResult, error) {
+	c.counter.Add(1)
+	return c.inner.ImportSeasonPack(ctx, downloadID, path)
+}
+
 // setupImportTestDBWithLibrary creates a test DB with both download and library schemas.
 func setupImportTestDBWithLibrary(t *testing.T) *sql.DB {
 	db, err := sql.Open("sqlite", "file::memory:?cache=shared")
@@ -465,7 +499,14 @@ func setupImportTestDBWithLibrary(t *testing.T) *sql.DB {
 			indexer TEXT NOT NULL,
 			added_at TIMESTAMP NOT NULL,
 			completed_at TIMESTAMP,
-			last_transition_at TIMESTAMP NOT NULL
+			last_transition_at TIMESTAMP NOT NULL,
+			season INTEGER,
+			is_complete_season INTEGER DEFAULT 0
+		);
+		CREATE TABLE download_episodes (
+			download_id INTEGER NOT NULL,
+			episode_id  INTEGER NOT NULL,
+			PRIMARY KEY (download_id, episode_id)
 		);
 		CREATE TABLE content (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,

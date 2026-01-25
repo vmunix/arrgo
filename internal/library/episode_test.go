@@ -338,3 +338,222 @@ func TestTx_Rollback_Episode(t *testing.T) {
 	_, err = store.GetEpisode(id)
 	assert.ErrorIs(t, err, ErrNotFound, "GetEpisode after rollback should return ErrNotFound")
 }
+
+func TestStore_FindOrCreateEpisode(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	// Create test series
+	content := &Content{
+		Type:           ContentTypeSeries,
+		Title:          "Test Show",
+		Year:           2024,
+		Status:         StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, store.AddContent(content))
+
+	// First call should create
+	ep1, created, err := store.FindOrCreateEpisode(content.ID, 1, 5)
+	require.NoError(t, err)
+	assert.True(t, created)
+	assert.Equal(t, content.ID, ep1.ContentID)
+	assert.Equal(t, 1, ep1.Season)
+	assert.Equal(t, 5, ep1.Episode)
+	assert.Equal(t, StatusWanted, ep1.Status)
+
+	// Second call should find existing
+	ep2, created, err := store.FindOrCreateEpisode(content.ID, 1, 5)
+	require.NoError(t, err)
+	assert.False(t, created)
+	assert.Equal(t, ep1.ID, ep2.ID)
+}
+
+func TestStore_FindOrCreateEpisodes(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	content := &Content{
+		Type:           ContentTypeSeries,
+		Title:          "Test Show",
+		Year:           2024,
+		Status:         StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, store.AddContent(content))
+
+	// Create multiple episodes at once
+	episodes, err := store.FindOrCreateEpisodes(content.ID, 1, []int{1, 2, 3})
+	require.NoError(t, err)
+	assert.Len(t, episodes, 3)
+
+	// Verify each episode
+	for i, ep := range episodes {
+		assert.Equal(t, content.ID, ep.ContentID)
+		assert.Equal(t, 1, ep.Season)
+		assert.Equal(t, i+1, ep.Episode)
+	}
+
+	// Call again - should return same episodes
+	episodes2, err := store.FindOrCreateEpisodes(content.ID, 1, []int{1, 2, 3})
+	require.NoError(t, err)
+	assert.Equal(t, episodes[0].ID, episodes2[0].ID)
+}
+
+func TestStore_GetSeriesStats(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	// Create test series
+	series := &Content{
+		Type:           ContentTypeSeries,
+		Title:          "Test Series",
+		Year:           2024,
+		Status:         StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, store.AddContent(series))
+
+	// No episodes - stats should be zero
+	stats, err := store.GetSeriesStats(series.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 0, stats.TotalEpisodes)
+	assert.Equal(t, 0, stats.AvailableEpisodes)
+	assert.Equal(t, 0, stats.SeasonCount)
+
+	// Add episodes in season 1: 3 total, 2 available
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series.ID, Season: 1, Episode: 1, Status: StatusAvailable}))
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series.ID, Season: 1, Episode: 2, Status: StatusAvailable}))
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series.ID, Season: 1, Episode: 3, Status: StatusWanted}))
+
+	stats, err = store.GetSeriesStats(series.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 3, stats.TotalEpisodes)
+	assert.Equal(t, 2, stats.AvailableEpisodes)
+	assert.Equal(t, 1, stats.SeasonCount)
+
+	// Add episodes in season 2: 2 total, 1 available
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series.ID, Season: 2, Episode: 1, Status: StatusAvailable}))
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series.ID, Season: 2, Episode: 2, Status: StatusWanted}))
+
+	stats, err = store.GetSeriesStats(series.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 5, stats.TotalEpisodes)
+	assert.Equal(t, 3, stats.AvailableEpisodes)
+	assert.Equal(t, 2, stats.SeasonCount)
+}
+
+func TestStore_GetSeriesStats_AllAvailable(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	series := &Content{
+		Type:           ContentTypeSeries,
+		Title:          "Complete Series",
+		Year:           2024,
+		Status:         StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, store.AddContent(series))
+
+	// Add all available episodes
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series.ID, Season: 1, Episode: 1, Status: StatusAvailable}))
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series.ID, Season: 1, Episode: 2, Status: StatusAvailable}))
+
+	stats, err := store.GetSeriesStats(series.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 2, stats.TotalEpisodes)
+	assert.Equal(t, 2, stats.AvailableEpisodes)
+	assert.Equal(t, 1, stats.SeasonCount)
+}
+
+func TestStore_GetSeriesStatsBatch(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	// Create two series
+	series1 := &Content{
+		Type:           ContentTypeSeries,
+		Title:          "Series One",
+		Year:           2024,
+		Status:         StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, store.AddContent(series1))
+
+	series2 := &Content{
+		Type:           ContentTypeSeries,
+		Title:          "Series Two",
+		Year:           2024,
+		Status:         StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, store.AddContent(series2))
+
+	// Series 1: 3 episodes, 2 available, 1 season
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series1.ID, Season: 1, Episode: 1, Status: StatusAvailable}))
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series1.ID, Season: 1, Episode: 2, Status: StatusAvailable}))
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series1.ID, Season: 1, Episode: 3, Status: StatusWanted}))
+
+	// Series 2: 4 episodes, 4 available, 2 seasons
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series2.ID, Season: 1, Episode: 1, Status: StatusAvailable}))
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series2.ID, Season: 1, Episode: 2, Status: StatusAvailable}))
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series2.ID, Season: 2, Episode: 1, Status: StatusAvailable}))
+	require.NoError(t, store.AddEpisode(&Episode{ContentID: series2.ID, Season: 2, Episode: 2, Status: StatusAvailable}))
+
+	// Batch query
+	statsMap, err := store.GetSeriesStatsBatch([]int64{series1.ID, series2.ID})
+	require.NoError(t, err)
+	assert.Len(t, statsMap, 2)
+
+	// Verify series 1
+	stats1 := statsMap[series1.ID]
+	require.NotNil(t, stats1, "stats for series1 should exist")
+	assert.Equal(t, 3, stats1.TotalEpisodes)
+	assert.Equal(t, 2, stats1.AvailableEpisodes)
+	assert.Equal(t, 1, stats1.SeasonCount)
+
+	// Verify series 2
+	stats2 := statsMap[series2.ID]
+	require.NotNil(t, stats2, "stats for series2 should exist")
+	assert.Equal(t, 4, stats2.TotalEpisodes)
+	assert.Equal(t, 4, stats2.AvailableEpisodes)
+	assert.Equal(t, 2, stats2.SeasonCount)
+}
+
+func TestStore_GetSeriesStatsBatch_EmptyInput(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	// Empty input should return empty map
+	statsMap, err := store.GetSeriesStatsBatch([]int64{})
+	require.NoError(t, err)
+	assert.Empty(t, statsMap)
+}
+
+func TestStore_GetSeriesStatsBatch_NoEpisodes(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	// Create series with no episodes
+	series := &Content{
+		Type:           ContentTypeSeries,
+		Title:          "Empty Series",
+		Year:           2024,
+		Status:         StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, store.AddContent(series))
+
+	// Should return empty map since no episodes exist
+	statsMap, err := store.GetSeriesStatsBatch([]int64{series.ID})
+	require.NoError(t, err)
+	assert.Empty(t, statsMap, "series with no episodes should not appear in batch results")
+}
