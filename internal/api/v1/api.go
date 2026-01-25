@@ -1425,12 +1425,24 @@ func (s *Server) importTracked(w http.ResponseWriter, r *http.Request, req impor
 		return
 	}
 
+	// Transition to importing status
+	if err := s.deps.Downloads.Transition(dl, download.StatusImporting); err != nil {
+		writeError(w, http.StatusInternalServerError, "TRANSITION_ERROR", err.Error())
+		return
+	}
+
 	// Call appropriate importer method based on download type
 	if dl.IsCompleteSeason {
 		// Season pack import
 		packResult, err := s.deps.Importer.ImportSeasonPack(ctx, dl.ID, sourcePath)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", err.Error())
+			return
+		}
+
+		// Transition to imported status
+		if err := s.deps.Downloads.Transition(dl, download.StatusImported); err != nil {
+			writeError(w, http.StatusInternalServerError, "TRANSITION_ERROR", err.Error())
 			return
 		}
 
@@ -1475,6 +1487,12 @@ func (s *Server) importTracked(w http.ResponseWriter, r *http.Request, req impor
 	result, err := s.deps.Importer.Import(ctx, dl.ID, sourcePath)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", err.Error())
+		return
+	}
+
+	// Transition to imported status
+	if err := s.deps.Downloads.Transition(dl, download.StatusImported); err != nil {
+		writeError(w, http.StatusInternalServerError, "TRANSITION_ERROR", err.Error())
 		return
 	}
 
