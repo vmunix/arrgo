@@ -446,3 +446,21 @@ func (c *Client) Events(limit int) (*ListEventsResponse, error) {
 	}
 	return &resp, nil
 }
+
+func (c *Client) Download(id int64) (*DownloadResponse, error) {
+	path := fmt.Sprintf("/api/v1/downloads/%d", id)
+	var resp DownloadResponse
+	if err := c.get(path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) DownloadEvents(id int64) (*ListEventsResponse, error) {
+	path := fmt.Sprintf("/api/v1/downloads/%d/events", id)
+	var resp ListEventsResponse
+	if err := c.get(path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}

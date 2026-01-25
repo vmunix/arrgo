@@ -23,6 +23,13 @@ var queueCancelCmd = &cobra.Command{
 	RunE:  runQueueCancel,
 }
 
+var queueShowCmd = &cobra.Command{
+	Use:   "show <id>",
+	Short: "Show detailed download info",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runQueueShow,
+}
+
 func init() {
 	rootCmd.AddCommand(queueCmd)
 	queueCmd.Flags().BoolP("all", "a", false, "Include terminal states (cleaned, failed)")
@@ -30,6 +37,7 @@ func init() {
 
 	queueCancelCmd.Flags().BoolP("delete", "d", false, "Also delete downloaded files")
 	queueCmd.AddCommand(queueCancelCmd)
+	queueCmd.AddCommand(queueShowCmd)
 }
 
 func runQueueCancel(cmd *cobra.Command, args []string) error {
@@ -145,4 +153,45 @@ func printQueueAll(d *ListDownloadsResponse) {
 		}
 		fmt.Printf("  %-4d %-12s %-40s %-12s\n", dl.ID, dl.Status, title, completed)
 	}
+}
+
+func runQueueShow(cmd *cobra.Command, args []string) error {
+	id, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid ID: %s", args[0])
+	}
+
+	client := NewClient(serverURL)
+	dl, err := client.Download(id)
+	if err != nil {
+		return fmt.Errorf("failed to fetch download: %w", err)
+	}
+
+	if jsonOutput {
+		printJSON(dl)
+		return nil
+	}
+
+	fmt.Printf("Download #%d\n\n", dl.ID)
+	fmt.Printf("  %-12s %s\n", "Release:", dl.ReleaseName)
+	fmt.Printf("  %-12s %d\n", "Content ID:", dl.ContentID)
+	fmt.Printf("  %-12s %s\n", "Status:", dl.Status)
+	fmt.Printf("  %-12s %s\n", "Indexer:", dl.Indexer)
+	fmt.Printf("  %-12s %s (%s)\n", "Client:", dl.Client, dl.ClientID)
+	fmt.Printf("  %-12s %s\n", "Added:", dl.AddedAt)
+	if dl.CompletedAt != nil {
+		fmt.Printf("  %-12s %s\n", "Completed:", *dl.CompletedAt)
+	}
+
+	// Fetch and display events
+	events, err := client.DownloadEvents(id)
+	if err == nil && len(events.Items) > 0 {
+		fmt.Printf("\n  Event History:\n")
+		for _, e := range events.Items {
+			t, _ := time.Parse(time.RFC3339, e.OccurredAt)
+			fmt.Printf("    %s  %s\n", t.Format("15:04:05"), e.EventType)
+		}
+	}
+
+	return nil
 }
