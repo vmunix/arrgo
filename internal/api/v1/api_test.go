@@ -2,6 +2,7 @@
 package v1
 
 import (
+	"context"
 	"database/sql"
 	_ "embed"
 	"encoding/json"
@@ -1291,4 +1292,190 @@ func TestListPlexLibraryItems_NotFound(t *testing.T) {
 	assert.Contains(t, resp.Error, "NonExistent")
 	assert.Contains(t, resp.Error, "Movies")
 	assert.Contains(t, resp.Error, "TV Shows")
+}
+
+// mockIndexer implements IndexerAPI for testing
+type mockIndexer struct {
+	name string
+	url  string
+}
+
+func (m *mockIndexer) Name() string                      { return m.name }
+func (m *mockIndexer) URL() string                       { return m.url }
+func (m *mockIndexer) Caps(_ context.Context) error      { return nil }
+
+func TestCheckLibrary_Success(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	// Add content with different statuses
+	available := &library.Content{
+		Type:           library.ContentTypeMovie,
+		Title:          "Available Movie",
+		Year:           2024,
+		Status:         library.StatusAvailable,
+		QualityProfile: "hd",
+		RootPath:       "/movies",
+	}
+	require.NoError(t, srv.deps.Library.AddContent(available))
+
+	wanted := &library.Content{
+		Type:           library.ContentTypeMovie,
+		Title:          "Wanted Movie",
+		Year:           2024,
+		Status:         library.StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/movies",
+	}
+	require.NoError(t, srv.deps.Library.AddContent(wanted))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/library/check", nil)
+	w := httptest.NewRecorder()
+
+	srv.checkLibrary(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp libraryCheckResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	assert.Equal(t, 2, resp.Total)
+	assert.Len(t, resp.Items, 2)
+
+	// Find each item
+	var foundAvailable, foundWanted bool
+	for _, item := range resp.Items {
+		if item.Title == "Available Movie" {
+			foundAvailable = true
+			assert.Equal(t, "available", item.Status)
+			assert.Equal(t, int64(1), item.ID)
+			// Status is 'available' but no files - should have issue
+			assert.Contains(t, item.Issues, "Status is 'available' but no files in database")
+		}
+		if item.Title == "Wanted Movie" {
+			foundWanted = true
+			assert.Equal(t, "wanted", item.Status)
+			assert.Equal(t, int64(2), item.ID)
+			// Status is 'wanted' with no files - no issue
+			assert.Empty(t, item.Issues)
+		}
+	}
+	assert.True(t, foundAvailable, "should find Available Movie")
+	assert.True(t, foundWanted, "should find Wanted Movie")
+
+	// 'available' with no files = issue, 'wanted' with no files = healthy
+	assert.Equal(t, 1, resp.Healthy)
+	assert.Equal(t, 1, resp.WithIssues)
+}
+
+func TestCheckLibrary_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	// No content added
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/library/check", nil)
+	w := httptest.NewRecorder()
+
+	srv.checkLibrary(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp libraryCheckResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	assert.Equal(t, 0, resp.Total)
+	assert.Empty(t, resp.Items)
+	assert.Equal(t, 0, resp.Healthy)
+	assert.Equal(t, 0, resp.WithIssues)
+}
+
+func TestListIndexers_Success(t *testing.T) {
+	db := setupTestDB(t)
+
+	// Create mock indexers
+	indexers := []IndexerAPI{
+		&mockIndexer{name: "NZBgeek", url: "https://api.nzbgeek.info"},
+		&mockIndexer{name: "DrunkenSlug", url: "https://api.drunkenslug.com"},
+	}
+
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Indexers:  indexers,
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/indexers", nil)
+	w := httptest.NewRecorder()
+
+	srv.listIndexers(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp listIndexersResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	assert.Len(t, resp.Indexers, 2)
+	assert.Equal(t, "NZBgeek", resp.Indexers[0].Name)
+	assert.Equal(t, "https://api.nzbgeek.info", resp.Indexers[0].URL)
+	assert.Equal(t, "DrunkenSlug", resp.Indexers[1].Name)
+	assert.Equal(t, "https://api.drunkenslug.com", resp.Indexers[1].URL)
+}
+
+func TestListIndexers_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	// No indexers configured (srv.deps.Indexers is nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/indexers", nil)
+	w := httptest.NewRecorder()
+
+	srv.listIndexers(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp listIndexersResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	// Should return empty array, not 503
+	assert.Empty(t, resp.Indexers)
+}
+
+func TestRetryDownload_NotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	mockSearcher := mocks.NewMockSearcher(ctrl)
+	mockManager := mocks.NewMockDownloadManager(ctrl)
+
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Searcher:  mockSearcher,
+		Manager:   mockManager,
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	// Try to retry a non-existent download
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/downloads/999/retry", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+
+	var resp errorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "NOT_FOUND", resp.Code)
+	assert.Equal(t, "Download not found", resp.Error)
 }
