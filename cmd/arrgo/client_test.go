@@ -420,3 +420,286 @@ func TestClient_PlexSearch_Success(t *testing.T) {
 func ptrInt64(v int64) *int64 {
 	return &v
 }
+
+func TestClient_Import_TrackedDownload(t *testing.T) {
+	var receivedReq ImportRequest
+
+	srv := newMockServer(t).
+		ExpectPath("/api/v1/import").
+		ExpectPOST().
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&receivedReq)) {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			respondJSON(t, w, ImportResponse{
+				FileID:       101,
+				ContentID:    42,
+				SourcePath:   "/downloads/complete/Test.Movie.2024.1080p.WEB-DL.mkv",
+				DestPath:     "/media/movies/Test Movie (2024)/Test Movie (2024).mkv",
+				SizeBytes:    4294967296,
+				PlexNotified: true,
+			})
+		}).
+		Build()
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	downloadID := int64(42)
+	resp, err := client.Import(&ImportRequest{
+		DownloadID: &downloadID,
+	})
+	require.NoError(t, err)
+
+	// Verify request body was sent correctly
+	require.NotNil(t, receivedReq.DownloadID)
+	assert.Equal(t, int64(42), *receivedReq.DownloadID)
+	assert.Empty(t, receivedReq.Path)
+	assert.Empty(t, receivedReq.Title)
+	assert.Zero(t, receivedReq.Year)
+
+	// Verify response
+	assert.Equal(t, int64(101), resp.FileID)
+	assert.Equal(t, int64(42), resp.ContentID)
+	assert.Equal(t, "/downloads/complete/Test.Movie.2024.1080p.WEB-DL.mkv", resp.SourcePath)
+	assert.Equal(t, "/media/movies/Test Movie (2024)/Test Movie (2024).mkv", resp.DestPath)
+	assert.Equal(t, int64(4294967296), resp.SizeBytes)
+	assert.True(t, resp.PlexNotified)
+}
+
+func TestClient_Import_ManualPath(t *testing.T) {
+	var receivedReq ImportRequest
+
+	srv := newMockServer(t).
+		ExpectPath("/api/v1/import").
+		ExpectPOST().
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&receivedReq)) {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			respondJSON(t, w, ImportResponse{
+				FileID:       102,
+				ContentID:    55,
+				SourcePath:   "/manual/Blade.Runner.1982.2160p.UHD.BluRay.mkv",
+				DestPath:     "/media/movies/Blade Runner (1982)/Blade Runner (1982).mkv",
+				SizeBytes:    8589934592,
+				PlexNotified: true,
+			})
+		}).
+		Build()
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	resp, err := client.Import(&ImportRequest{
+		Path:    "/manual/Blade.Runner.1982.2160p.UHD.BluRay.mkv",
+		Title:   "Blade Runner",
+		Year:    1982,
+		Type:    "movie",
+		Quality: "uhd",
+	})
+	require.NoError(t, err)
+
+	// Verify request body was sent correctly (manual import fields)
+	assert.Nil(t, receivedReq.DownloadID)
+	assert.Equal(t, "/manual/Blade.Runner.1982.2160p.UHD.BluRay.mkv", receivedReq.Path)
+	assert.Equal(t, "Blade Runner", receivedReq.Title)
+	assert.Equal(t, 1982, receivedReq.Year)
+	assert.Equal(t, "movie", receivedReq.Type)
+	assert.Equal(t, "uhd", receivedReq.Quality)
+
+	// Verify response
+	assert.Equal(t, int64(102), resp.FileID)
+	assert.Equal(t, int64(55), resp.ContentID)
+	assert.Equal(t, "/manual/Blade.Runner.1982.2160p.UHD.BluRay.mkv", resp.SourcePath)
+	assert.Equal(t, "/media/movies/Blade Runner (1982)/Blade Runner (1982).mkv", resp.DestPath)
+	assert.Equal(t, int64(8589934592), resp.SizeBytes)
+	assert.True(t, resp.PlexNotified)
+}
+
+func TestClient_Events_Success(t *testing.T) {
+	var receivedPath string
+
+	srv := newMockServer(t).
+		ExpectGET().
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.String()
+			respondJSON(t, w, ListEventsResponse{
+				Items: []EventResponse{
+					{
+						ID:         1,
+						EventType:  "download.grabbed",
+						EntityType: "download",
+						EntityID:   42,
+						OccurredAt: "2024-01-15T10:00:00Z",
+					},
+					{
+						ID:         2,
+						EventType:  "download.completed",
+						EntityType: "download",
+						EntityID:   42,
+						OccurredAt: "2024-01-15T11:30:00Z",
+					},
+					{
+						ID:         3,
+						EventType:  "import.completed",
+						EntityType: "file",
+						EntityID:   101,
+						OccurredAt: "2024-01-15T11:35:00Z",
+					},
+				},
+				Total: 3,
+			})
+		}).
+		Build()
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	resp, err := client.Events(50)
+	require.NoError(t, err)
+
+	// Verify the limit was sent as query parameter
+	assert.Equal(t, "/api/v1/events?limit=50", receivedPath)
+
+	// Verify response
+	assert.Equal(t, 3, resp.Total)
+	require.Len(t, resp.Items, 3)
+
+	// Verify first event
+	assert.Equal(t, int64(1), resp.Items[0].ID)
+	assert.Equal(t, "download.grabbed", resp.Items[0].EventType)
+	assert.Equal(t, "download", resp.Items[0].EntityType)
+	assert.Equal(t, int64(42), resp.Items[0].EntityID)
+	assert.Equal(t, "2024-01-15T10:00:00Z", resp.Items[0].OccurredAt)
+
+	// Verify second event
+	assert.Equal(t, int64(2), resp.Items[1].ID)
+	assert.Equal(t, "download.completed", resp.Items[1].EventType)
+
+	// Verify third event
+	assert.Equal(t, int64(3), resp.Items[2].ID)
+	assert.Equal(t, "import.completed", resp.Items[2].EventType)
+	assert.Equal(t, "file", resp.Items[2].EntityType)
+}
+
+func TestClient_DownloadEvents_Success(t *testing.T) {
+	var receivedPath string
+
+	srv := newMockServer(t).
+		ExpectGET().
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.Path
+			respondJSON(t, w, ListEventsResponse{
+				Items: []EventResponse{
+					{
+						ID:         10,
+						EventType:  "download.grabbed",
+						EntityType: "download",
+						EntityID:   123,
+						OccurredAt: "2024-01-20T08:00:00Z",
+					},
+					{
+						ID:         15,
+						EventType:  "download.progress",
+						EntityType: "download",
+						EntityID:   123,
+						OccurredAt: "2024-01-20T08:30:00Z",
+					},
+					{
+						ID:         20,
+						EventType:  "download.completed",
+						EntityType: "download",
+						EntityID:   123,
+						OccurredAt: "2024-01-20T09:00:00Z",
+					},
+				},
+				Total: 3,
+			})
+		}).
+		Build()
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	resp, err := client.DownloadEvents(123)
+	require.NoError(t, err)
+
+	// Verify the download ID was included in the path
+	assert.Equal(t, "/api/v1/downloads/123/events", receivedPath)
+
+	// Verify response
+	assert.Equal(t, 3, resp.Total)
+	require.Len(t, resp.Items, 3)
+
+	// Verify all events are for the same download
+	for _, event := range resp.Items {
+		assert.Equal(t, "download", event.EntityType)
+		assert.Equal(t, int64(123), event.EntityID)
+	}
+
+	// Verify event types
+	assert.Equal(t, "download.grabbed", resp.Items[0].EventType)
+	assert.Equal(t, "download.progress", resp.Items[1].EventType)
+	assert.Equal(t, "download.completed", resp.Items[2].EventType)
+}
+
+func TestClient_Download_Success(t *testing.T) {
+	var receivedPath string
+
+	progress := 75.5
+	size := int64(4294967296)
+	speed := int64(10485760)
+	eta := "15m"
+
+	srv := newMockServer(t).
+		ExpectGET().
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.Path
+			respondJSON(t, w, DownloadResponse{
+				ID:          42,
+				ContentID:   100,
+				EpisodeID:   nil,
+				Client:      "sabnzbd",
+				ClientID:    "SABnzbd_nzo_abc123",
+				Status:      "downloading",
+				ReleaseName: "Test.Movie.2024.1080p.WEB-DL.DDP5.1.H.264-GROUP",
+				Indexer:     "nzbgeek",
+				AddedAt:     "2024-01-15T10:00:00Z",
+				CompletedAt: nil,
+				Progress:    &progress,
+				Size:        &size,
+				Speed:       &speed,
+				ETA:         &eta,
+			})
+		}).
+		Build()
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	resp, err := client.Download(42)
+	require.NoError(t, err)
+
+	// Verify the download ID was included in the path
+	assert.Equal(t, "/api/v1/downloads/42", receivedPath)
+
+	// Verify response fields
+	assert.Equal(t, int64(42), resp.ID)
+	assert.Equal(t, int64(100), resp.ContentID)
+	assert.Nil(t, resp.EpisodeID)
+	assert.Equal(t, "sabnzbd", resp.Client)
+	assert.Equal(t, "SABnzbd_nzo_abc123", resp.ClientID)
+	assert.Equal(t, "downloading", resp.Status)
+	assert.Equal(t, "Test.Movie.2024.1080p.WEB-DL.DDP5.1.H.264-GROUP", resp.ReleaseName)
+	assert.Equal(t, "nzbgeek", resp.Indexer)
+	assert.Equal(t, "2024-01-15T10:00:00Z", resp.AddedAt)
+	assert.Nil(t, resp.CompletedAt)
+
+	// Verify live status fields
+	require.NotNil(t, resp.Progress)
+	assert.InDelta(t, 75.5, *resp.Progress, 0.001)
+	require.NotNil(t, resp.Size)
+	assert.Equal(t, int64(4294967296), *resp.Size)
+	require.NotNil(t, resp.Speed)
+	assert.Equal(t, int64(10485760), *resp.Speed)
+	require.NotNil(t, resp.ETA)
+	assert.Equal(t, "15m", *resp.ETA)
+}
