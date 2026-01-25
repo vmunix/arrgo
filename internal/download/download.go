@@ -116,7 +116,33 @@ func (s *Store) Add(d *Download) error {
 	).Scan(&existingID, &existingAddedAt)
 
 	if err == nil {
-		// Found existing record, return it
+		// Found existing record - check if it's a failed download being retried
+		var existingStatus Status
+		err = s.db.QueryRow(`SELECT status FROM downloads WHERE id = ?`, existingID).Scan(&existingStatus)
+		if err != nil {
+			return fmt.Errorf("get existing status: %w", err)
+		}
+
+		if existingStatus == StatusFailed {
+			// Retry scenario: update with new client info and reset status to queued
+			now := time.Now()
+			_, updateErr := s.db.Exec(`
+				UPDATE downloads
+				SET client_id = ?, status = ?, last_transition_at = ?
+				WHERE id = ?`,
+				d.ClientID, StatusQueued, now, existingID,
+			)
+			if updateErr != nil {
+				return fmt.Errorf("update existing download: %w", updateErr)
+			}
+			d.ID = existingID
+			d.AddedAt = existingAddedAt
+			d.Status = StatusQueued
+			d.LastTransitionAt = now
+			return nil
+		}
+
+		// Existing non-failed record - just return it (no update)
 		d.ID = existingID
 		d.AddedAt = existingAddedAt
 		return nil
