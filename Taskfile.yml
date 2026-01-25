@@ -4,7 +4,7 @@ tasks:
   default:
     desc: Show available tasks
     cmds:
-      - task: build
+      - task --list
 
   build:
     desc: Build both binaries
