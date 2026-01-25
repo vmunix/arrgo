@@ -91,6 +91,9 @@ arrgo downloads retry 42            # Retry a failed download
 arrgo library list       # List all tracked content (movies, series)
 arrgo library delete 42  # Remove content from library
 arrgo library check      # Verify files exist and Plex awareness
+arrgo library import --from-plex Movies  # Import existing Plex library
+arrgo library import --from-plex Movies --dry-run  # Preview import
+arrgo library import --from-plex Movies --quality uhd  # Override quality
 
 # Search and grab
 arrgo search "Movie"              # Search indexers for releases
