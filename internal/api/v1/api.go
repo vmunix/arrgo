@@ -991,35 +991,15 @@ func (s *Server) getDashboard(w http.ResponseWriter, _ *http.Request) {
 	resp.Connections.Plex = s.deps.Plex != nil
 	resp.Connections.SABnzbd = s.deps.Manager != nil
 
-	// Download counts by status
-	for _, status := range []download.Status{
-		download.StatusQueued,
-		download.StatusDownloading,
-		download.StatusCompleted,
-		download.StatusImporting,
-		download.StatusImported,
-		download.StatusCleaned,
-		download.StatusFailed,
-	} {
-		st := status
-		_, count, _ := s.deps.Downloads.List(download.Filter{Status: &st})
-		switch status {
-		case download.StatusQueued:
-			resp.Downloads.Queued = count
-		case download.StatusDownloading:
-			resp.Downloads.Downloading = count
-		case download.StatusCompleted:
-			resp.Downloads.Completed = count
-		case download.StatusImporting:
-			resp.Downloads.Importing = count
-		case download.StatusImported:
-			resp.Downloads.Imported = count
-		case download.StatusCleaned:
-			resp.Downloads.Cleaned = count
-		case download.StatusFailed:
-			resp.Downloads.Failed = count
-		}
-	}
+	// Download counts by status (single GROUP BY query)
+	counts, _ := s.deps.Downloads.CountByStatus()
+	resp.Downloads.Queued = counts[download.StatusQueued]
+	resp.Downloads.Downloading = counts[download.StatusDownloading]
+	resp.Downloads.Completed = counts[download.StatusCompleted]
+	resp.Downloads.Importing = counts[download.StatusImporting]
+	resp.Downloads.Imported = counts[download.StatusImported]
+	resp.Downloads.Cleaned = counts[download.StatusCleaned]
+	resp.Downloads.Failed = counts[download.StatusFailed]
 
 	// Stuck count (>1hr in non-terminal state)
 	resp.Stuck.Threshold = 60

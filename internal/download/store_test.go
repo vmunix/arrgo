@@ -664,3 +664,41 @@ func TestStore_List_Pagination(t *testing.T) {
 	assert.Len(t, results, 2)
 	assert.Equal(t, 5, total)
 }
+
+func TestStore_CountByStatus(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+	contentID := insertTestContent(t, db, "Count Test")
+
+	// Create downloads with different statuses
+	statuses := []Status{StatusQueued, StatusQueued, StatusDownloading, StatusCompleted, StatusFailed}
+	for i, status := range statuses {
+		d := &Download{
+			ContentID:   contentID,
+			Client:      ClientSABnzbd,
+			ClientID:    fmt.Sprintf("nzo_%d", i),
+			Status:      status,
+			ReleaseName: fmt.Sprintf("Release.%d", i),
+			Indexer:     "test",
+		}
+		require.NoError(t, store.Add(d))
+	}
+
+	counts, err := store.CountByStatus()
+	require.NoError(t, err)
+
+	assert.Equal(t, 2, counts[StatusQueued])
+	assert.Equal(t, 1, counts[StatusDownloading])
+	assert.Equal(t, 1, counts[StatusCompleted])
+	assert.Equal(t, 1, counts[StatusFailed])
+	assert.Equal(t, 0, counts[StatusImported])
+}
+
+func TestStore_CountByStatus_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	counts, err := store.CountByStatus()
+	require.NoError(t, err)
+	assert.Empty(t, counts, "should return empty map when no downloads exist")
+}

@@ -338,6 +338,30 @@ func (s *Store) Delete(id int64) error {
 	return nil
 }
 
+// CountByStatus returns a map of status to count for all downloads.
+func (s *Store) CountByStatus() (map[Status]int, error) {
+	rows, err := s.db.Query(`
+		SELECT status, COUNT(*) as count
+		FROM downloads
+		GROUP BY status`)
+	if err != nil {
+		return nil, fmt.Errorf("count by status: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	counts := make(map[Status]int)
+	for rows.Next() {
+		var status Status
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return nil, fmt.Errorf("scan count: %w", err)
+		}
+		counts[status] = count
+	}
+
+	return counts, rows.Err()
+}
+
 // ListStuck returns downloads that haven't transitioned within their expected threshold.
 func (s *Store) ListStuck(thresholds map[Status]time.Duration) ([]*Download, error) {
 	// Pre-allocate with capacity based on threshold count
