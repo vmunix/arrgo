@@ -361,13 +361,39 @@ func TestSearch_NoSearcher(t *testing.T) {
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)
 
-	body := `{"query":"test movie"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/search", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/search?query=test+movie", nil)
 	w := httptest.NewRecorder()
 
 	mux.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+}
+
+func TestSearch_MissingQuery(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	// Need a searcher for the endpoint to be available
+	mockSearcher := mocks.NewMockSearcher(ctrl)
+	srv.deps.Searcher = mockSearcher
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	// GET without query param
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/search", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var errResp errorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Equal(t, "MISSING_QUERY", errResp.Code)
 }
 
 func TestGrab_NoManager(t *testing.T) {
@@ -570,8 +596,7 @@ func TestSearch_WithMockSearcher(t *testing.T) {
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)
 
-	body := `{"query":"test movie"}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/search", strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/search?query=test+movie", nil)
 	w := httptest.NewRecorder()
 
 	mux.ServeHTTP(w, req)

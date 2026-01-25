@@ -72,7 +72,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v1/episodes/{id}", s.updateEpisode)
 
 	// Search & grab (require optional dependencies)
-	mux.HandleFunc("POST /api/v1/search", s.requireSearcher(s.search))
+	mux.HandleFunc("GET /api/v1/search", s.requireSearcher(s.search))
 	mux.HandleFunc("POST /api/v1/grab", s.requireManager(s.grab))
 
 	// Downloads
@@ -452,25 +452,39 @@ func (s *Server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) search(w http.ResponseWriter, r *http.Request) {
-	var req searchRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+	query := r.URL.Query().Get("query")
+	if query == "" {
+		writeError(w, http.StatusBadRequest, "MISSING_QUERY", "query parameter is required")
 		return
 	}
 
-	profile := req.Profile
+	profile := r.URL.Query().Get("profile")
 	if profile == "" {
 		profile = "hd"
 	}
 
 	q := search.Query{
-		Text:    req.Query,
-		Type:    req.Type,
-		Season:  req.Season,
-		Episode: req.Episode,
+		Text: query,
+		Type: r.URL.Query().Get("type"),
 	}
-	if req.ContentID != nil {
-		q.ContentID = *req.ContentID
+
+	// Parse optional season/episode
+	if seasonStr := r.URL.Query().Get("season"); seasonStr != "" {
+		if season, err := strconv.Atoi(seasonStr); err == nil {
+			q.Season = &season
+		}
+	}
+	if episodeStr := r.URL.Query().Get("episode"); episodeStr != "" {
+		if episode, err := strconv.Atoi(episodeStr); err == nil {
+			q.Episode = &episode
+		}
+	}
+
+	// Parse optional content_id
+	if contentIDStr := r.URL.Query().Get("content_id"); contentIDStr != "" {
+		if contentID, err := strconv.ParseInt(contentIDStr, 10, 64); err == nil {
+			q.ContentID = contentID
+		}
 	}
 
 	result, err := s.deps.Searcher.Search(r.Context(), q, profile)

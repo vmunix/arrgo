@@ -241,12 +241,8 @@ func TestIntegration_SearchAndGrab(t *testing.T) {
 	env.mockIndexer.EXPECT().Search(gomock.Any(), gomock.Any()).Return(releases, nil)
 	env.sabnzbdClientID = "SABnzbd_nzo_abc123"
 
-	// 2. POST /api/v1/search - verify results returned
-	searchResp := httpPost(t, env.api.URL+"/api/v1/search", map[string]any{
-		"query":   "the matrix",
-		"type":    "movie",
-		"profile": "hd",
-	})
+	// 2. GET /api/v1/search - verify results returned
+	searchResp := httpGet(t, env.api.URL+"/api/v1/search?query=the+matrix&type=movie&profile=hd")
 	requireStatus(t, searchResp, http.StatusOK, "search")
 
 	var searchResult searchResponse

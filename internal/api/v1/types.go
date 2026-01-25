@@ -65,16 +65,6 @@ type updateEpisodeRequest struct {
 	Status *string `json:"status,omitempty"`
 }
 
-// searchRequest is the request body for POST /search.
-type searchRequest struct {
-	ContentID *int64 `json:"content_id,omitempty"`
-	Query     string `json:"query,omitempty"`
-	Type      string `json:"type,omitempty"`
-	Season    *int   `json:"season,omitempty"`
-	Episode   *int   `json:"episode,omitempty"`
-	Profile   string `json:"profile,omitempty"`
-}
-
 // releaseResponse is the API representation of a search result.
 type releaseResponse struct {
 	Title       string    `json:"title"`
