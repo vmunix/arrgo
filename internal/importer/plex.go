@@ -370,7 +370,9 @@ func (c *PlexClient) ListLibraryItems(ctx context.Context, sectionKey string) ([
 	}
 
 	// Combine videos (movies) and directories (TV shows)
-	allItems := append(result.Videos, result.Directories...)
+	allItems := make([]plexItemXML, 0, len(result.Videos)+len(result.Directories))
+	allItems = append(allItems, result.Videos...)
+	allItems = append(allItems, result.Directories...)
 	items := make([]PlexItem, len(allItems))
 	for i, item := range allItems {
 		filePath := ""
@@ -424,7 +426,9 @@ func (c *PlexClient) Search(ctx context.Context, query string) ([]PlexItem, erro
 	}
 
 	// Combine videos (movies) and directories (TV shows)
-	allItems := append(result.Videos, result.Directories...)
+	allItems := make([]plexItemXML, 0, len(result.Videos)+len(result.Directories))
+	allItems = append(allItems, result.Videos...)
+	allItems = append(allItems, result.Directories...)
 	items := make([]PlexItem, len(allItems))
 	for i, item := range allItems {
 		filePath := ""

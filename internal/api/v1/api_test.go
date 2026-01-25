@@ -1550,7 +1550,7 @@ func TestLibraryImport_PlexNotConfigured(t *testing.T) {
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)
 
-	body := `{"source": "plex", "library": "Movies"}`
+	body := `{"source": "plex", "library": "Movies"}` //nolint:goconst
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/library/import", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1621,7 +1621,7 @@ func TestLibraryImport_Success(t *testing.T) {
 	srv.RegisterRoutes(mux)
 
 	// Use dry_run since we're just testing response structure (no real files)
-	body := `{"source": "plex", "library": "Movies", "dry_run": true}`
+	body := `{"source": "plex", "library": "Movies", "dry_run": true}` //nolint:goconst
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/library/import", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1664,7 +1664,7 @@ func TestLibraryImport_DryRun(t *testing.T) {
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)
 
-	body := `{"source": "plex", "library": "Movies", "dry_run": true}`
+	body := `{"source": "plex", "library": "Movies", "dry_run": true}` //nolint:goconst
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/library/import", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1724,7 +1724,7 @@ func TestLibraryImport_SkipsAlreadyTracked(t *testing.T) {
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)
 
-	body := `{"source": "plex", "library": "Movies", "dry_run": true}`
+	body := `{"source": "plex", "library": "Movies", "dry_run": true}` //nolint:goconst
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/library/import", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1769,7 +1769,7 @@ func TestLibraryImport_CreatesRecords(t *testing.T) {
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)
 
-	body := `{"source": "plex", "library": "Movies"}`
+	body := `{"source": "plex", "library": "Movies"}` //nolint:goconst
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/library/import", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1821,7 +1821,7 @@ func TestLibraryImport_FileStatError(t *testing.T) {
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)
 
-	body := `{"source": "plex", "library": "Movies"}`
+	body := `{"source": "plex", "library": "Movies"}` //nolint:goconst
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/library/import", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
