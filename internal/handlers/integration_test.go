@@ -34,7 +34,14 @@ func setupIntegrationDB(t *testing.T) *sql.DB {
 			indexer TEXT NOT NULL,
 			added_at TIMESTAMP NOT NULL,
 			completed_at TIMESTAMP,
-			last_transition_at TIMESTAMP NOT NULL
+			last_transition_at TIMESTAMP NOT NULL,
+			season INTEGER,
+			is_complete_season INTEGER DEFAULT 0
+		);
+		CREATE TABLE download_episodes (
+			download_id INTEGER NOT NULL,
+			episode_id  INTEGER NOT NULL,
+			PRIMARY KEY (download_id, episode_id)
 		);
 		CREATE TABLE events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,

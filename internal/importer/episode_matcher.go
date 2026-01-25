@@ -38,7 +38,7 @@ func MatchFileToEpisode(filename string, episodes []*library.Episode) (*library.
 // MatchFilesToEpisodes matches multiple files to episodes.
 // Returns matched pairs and a list of unmatched files.
 func MatchFilesToEpisodes(files []string, episodes []*library.Episode) ([]FileMatch, []string) {
-	var matches []FileMatch
+	matches := make([]FileMatch, 0, len(files))
 	var unmatched []string
 
 	for _, f := range files {

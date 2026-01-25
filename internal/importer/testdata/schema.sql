@@ -58,17 +58,28 @@ CREATE TABLE IF NOT EXISTS downloads (
     episode_id      INTEGER REFERENCES episodes(id) ON DELETE CASCADE,
     client          TEXT NOT NULL CHECK (client IN ('sabnzbd', 'qbittorrent', 'manual')),
     client_id       TEXT NOT NULL,
-    status          TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'downloading', 'completed', 'importing', 'failed', 'imported', 'cleaned')),
+    status          TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'downloading', 'completed', 'importing', 'failed', 'imported', 'cleaned', 'skipped')),
     release_name    TEXT,
     indexer         TEXT,
     added_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     completed_at    TIMESTAMP,
-    last_transition_at TIMESTAMP
+    last_transition_at TIMESTAMP,
+    season          INTEGER,
+    is_complete_season INTEGER DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_downloads_content ON downloads(content_id);
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE INDEX IF NOT EXISTS idx_downloads_client ON downloads(client, client_id);
+
+-- Junction table for download-to-episode relationships (many-to-many)
+CREATE TABLE IF NOT EXISTS download_episodes (
+    download_id INTEGER NOT NULL REFERENCES downloads(id) ON DELETE CASCADE,
+    episode_id  INTEGER NOT NULL REFERENCES episodes(id) ON DELETE CASCADE,
+    PRIMARY KEY (download_id, episode_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_download_episodes_episode_id ON download_episodes(episode_id);
 
 -- History: audit trail
 CREATE TABLE IF NOT EXISTS history (
