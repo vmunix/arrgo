@@ -30,6 +30,14 @@ var queueShowCmd = &cobra.Command{
 	RunE:  runQueueShow,
 }
 
+var queueRetryCmd = &cobra.Command{
+	Use:   "retry <id>",
+	Short: "Retry a failed download",
+	Long:  "Re-searches indexers for the content and grabs the best matching release.",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runQueueRetry,
+}
+
 func init() {
 	rootCmd.AddCommand(queueCmd)
 	queueCmd.Flags().BoolP("all", "a", false, "Include terminal states (cleaned, failed)")
@@ -38,6 +46,7 @@ func init() {
 	queueCancelCmd.Flags().BoolP("delete", "d", false, "Also delete downloaded files")
 	queueCmd.AddCommand(queueCancelCmd)
 	queueCmd.AddCommand(queueShowCmd)
+	queueCmd.AddCommand(queueRetryCmd)
 }
 
 func runQueueCancel(cmd *cobra.Command, args []string) error {
@@ -193,5 +202,29 @@ func runQueueShow(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	return nil
+}
+
+func runQueueRetry(cmd *cobra.Command, args []string) error {
+	id, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid ID: %s", args[0])
+	}
+
+	client := NewClient(serverURL)
+
+	fmt.Printf("Retrying download #%d...\n", id)
+	result, err := client.RetryDownload(id)
+	if err != nil {
+		return fmt.Errorf("retry failed: %w", err)
+	}
+
+	if jsonOutput {
+		printJSON(result)
+		return nil
+	}
+
+	fmt.Printf("New download queued: #%d\n", result.NewDownloadID)
+	fmt.Printf("Release: %s\n", result.ReleaseName)
 	return nil
 }

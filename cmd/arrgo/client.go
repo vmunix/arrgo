@@ -464,3 +464,20 @@ func (c *Client) DownloadEvents(id int64) (*ListEventsResponse, error) {
 	}
 	return &resp, nil
 }
+
+// RetryResponse is the response from retrying a failed download.
+type RetryResponse struct {
+	NewDownloadID int64  `json:"new_download_id,omitempty"`
+	ReleaseName   string `json:"release_name"`
+	Message       string `json:"message"`
+}
+
+// RetryDownload re-searches indexers for the content and grabs the best matching release.
+func (c *Client) RetryDownload(id int64) (*RetryResponse, error) {
+	path := fmt.Sprintf("/api/v1/downloads/%d/retry", id)
+	var resp RetryResponse
+	if err := c.post(path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
