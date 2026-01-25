@@ -767,3 +767,31 @@ func TestCleanupHandler_ReconcileOnStartup_FullFlow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, download.StatusCleaned, updated.Status)
 }
+
+func TestCleanupHandler_ReconcileOnStartup_NoImportedDownloads(t *testing.T) {
+	// Setup
+	db := setupCleanupTestDB(t)
+	bus := events.NewBus(nil, nil)
+	defer bus.Close()
+
+	store := download.NewStore(db)
+
+	// No downloads in database
+
+	config := CleanupConfig{
+		DownloadRoot: t.TempDir(),
+		Enabled:      true,
+	}
+	handler := NewCleanupHandler(bus, store, config, nil)
+
+	// Call reconcileOnStartup - should not error
+	ctx := context.Background()
+	handler.reconcileOnStartup(ctx)
+
+	// Verify pending map is empty
+	handler.mu.RLock()
+	count := len(handler.pending)
+	handler.mu.RUnlock()
+
+	assert.Equal(t, 0, count, "expected empty pending map")
+}
