@@ -241,6 +241,12 @@ func runServer(configPath string) error {
 		profiles[name] = cfg.Quality.Profiles[name].Resolution
 	}
 
+	// Build indexer list for API
+	var apiIndexers []v1.IndexerAPI
+	for _, c := range newznabClients {
+		apiIndexers = append(apiIndexers, c)
+	}
+
 	// Native API v1
 	apiV1, err := v1.NewWithDeps(v1.ServerDeps{
 		Library:   libraryStore,
@@ -252,6 +258,7 @@ func runServer(configPath string) error {
 		Importer:  imp,
 		Bus:       eventBus,
 		EventLog:  eventLog,
+		Indexers:  apiIndexers,
 	}, v1.Config{
 		MovieRoot:       cfg.Libraries.Movies.Root,
 		SeriesRoot:      cfg.Libraries.Series.Root,
