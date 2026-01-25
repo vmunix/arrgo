@@ -8,6 +8,19 @@ import (
 
 // goldenCases contains curated test cases from real releases to validate parser behavior.
 // Each case tests specific patterns and combinations found in the wild.
+//
+// Cases are organized into categories:
+//   - Resolution Variants: 720p, 1080p, 2160p, 4K, UHD markers
+//   - Source Variants: BluRay, WEB-DL, WEBRip, HDTV, CAM, Telesync
+//   - Codec Variants: x264, x265, H.264, H.265, HEVC, AVC
+//   - HDR Variants: HDR, HDR10, HDR10+, DV, Dolby Vision, SDR
+//   - Audio Variants: Atmos, TrueHD, DTS-HD MA, DDP, AC3, AAC, FLAC
+//   - Remux Patterns: REMUX detection and non-remux distinction
+//   - Edition Patterns: Directors Cut, IMAX, Extended, Criterion, etc.
+//   - Streaming Services: Netflix, Amazon, Disney+, Apple TV+, etc.
+//   - Tricky Titles: years in titles, Roman numerals, hyphens, sequels
+//   - PROPER/REPACK flags
+//   - TV Series: multi-episode, season packs, daily shows
 var goldenCases = []struct {
 	name       string
 	input      string
@@ -1698,6 +1711,50 @@ var goldenCases = []struct {
 	},
 }
 
+// TestParse_Golden validates the release name parser against a curated set of real-world
+// release names covering various patterns found in the wild.
+//
+// # Purpose
+//
+// This test ensures the parser correctly extracts metadata (resolution, source, codec,
+// audio, HDR format, title, year, group, etc.) from release names across many formats
+// and edge cases. It serves as both a regression test and documentation of supported
+// patterns.
+//
+// # Conditional Checking Pattern
+//
+// Test cases only specify fields they want to verify. Zero values are interpreted as
+// "don't check this field", allowing tests to focus on specific aspects:
+//
+//   - ResolutionUnknown, SourceUnknown, CodecUnknown, AudioUnknown: skip check
+//   - Empty string for title, group, service, edition: skip check
+//   - Year 0: skip check
+//   - HDR and IsRemux: always checked (HDRNone and false are valid expected values)
+//   - Proper and Repack: always checked (false is a valid expected value)
+//
+// This pattern keeps test cases concise—a test for audio parsing doesn't need to
+// specify every other field.
+//
+// # Adding New Test Cases
+//
+// 1. Find the appropriate category section (Resolution, Source, Codec, etc.)
+// 2. Add a new struct with a descriptive name field
+// 3. Set the input field to the full release name
+// 4. Set only the fields you want to verify—leave others at zero values
+// 5. Add a comment if the behavior is non-obvious (see existing NOTE comments)
+//
+// Example:
+//
+//	{
+//	    name:       "New pattern description",
+//	    input:      "Release.Name.2024.1080p.BluRay.x264-GROUP",
+//	    resolution: Resolution1080p,
+//	    source:     SourceBluRay,
+//	    codec:      CodecX264,
+//	    title:      "Release Name",
+//	    year:       2024,
+//	    group:      "GROUP",
+//	},
 func TestParse_Golden(t *testing.T) {
 	for _, tc := range goldenCases {
 		t.Run(tc.name, func(t *testing.T) {
