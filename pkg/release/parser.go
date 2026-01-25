@@ -105,10 +105,16 @@ func Parse(name string) *Info {
 	info.DailyDate = parseDailyDate(name)
 
 	// Year (only if not a daily show)
+	// Find the last valid release year (release years come after title, so last valid year wins)
+	// This handles titles like "2001 A Space Odyssey" where 2001 is title, 1968 is release year
 	if info.DailyDate == "" {
-		if match := yearRegex.FindString(normalized); match != "" {
-			if year, err := strconv.Atoi(match); err == nil {
-				info.Year = year
+		matches := yearRegex.FindAllString(normalized, -1)
+		for i := len(matches) - 1; i >= 0; i-- {
+			if year, err := strconv.Atoi(matches[i]); err == nil {
+				if isValidReleaseYear(year) {
+					info.Year = year
+					break
+				}
 			}
 		}
 	}
