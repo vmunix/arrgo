@@ -70,6 +70,21 @@ CREATE INDEX IF NOT EXISTS idx_downloads_content ON downloads(content_id);
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE INDEX IF NOT EXISTS idx_downloads_client ON downloads(client, client_id);
 
+-- Events: event log for audit/replay
+CREATE TABLE IF NOT EXISTS events (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type      TEXT NOT NULL,
+    entity_type     TEXT NOT NULL,
+    entity_id       INTEGER NOT NULL,
+    payload         TEXT NOT NULL,
+    occurred_at     TIMESTAMP NOT NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
+CREATE INDEX IF NOT EXISTS idx_events_entity ON events(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_events_occurred ON events(occurred_at);
+
 -- History: audit trail
 CREATE TABLE IF NOT EXISTS history (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,

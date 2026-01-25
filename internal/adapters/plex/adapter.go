@@ -94,9 +94,9 @@ func (a *Adapter) reconcileOnStartup(ctx context.Context) {
 		return
 	}
 
-	// Query for downloads in imported status
+	// Query for downloads in imported status (no pagination - reconcile all)
 	status := download.StatusImported
-	downloads, err := a.downloadStore.List(download.Filter{Status: &status})
+	downloads, _, err := a.downloadStore.List(download.Filter{Status: &status})
 	if err != nil {
 		a.logger.Error("failed to list imported downloads for reconciliation", "error", err)
 		return

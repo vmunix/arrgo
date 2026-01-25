@@ -95,7 +95,7 @@ func TestImporter_Import_Movie(t *testing.T) {
 	assert.Equal(t, "available", status)
 
 	// Verify history entry
-	entries, _ := imp.history.List(HistoryFilter{ContentID: &contentID})
+	entries, _, _ := imp.history.List(HistoryFilter{ContentID: &contentID})
 	require.Len(t, entries, 1, "expected 1 history entry")
 	assert.Equal(t, EventImported, entries[0].Event)
 
@@ -280,7 +280,7 @@ func TestImporter_Import_Episode(t *testing.T) {
 	assert.Equal(t, episodeID, fileEpisodeID.Int64)
 
 	// Verify history entry has episode ID
-	entries, _ := imp.history.List(HistoryFilter{ContentID: &seriesID})
+	entries, _, _ := imp.history.List(HistoryFilter{ContentID: &seriesID})
 	require.Len(t, entries, 1, "expected 1 history entry")
 	require.NotNil(t, entries[0].EpisodeID)
 	assert.Equal(t, episodeID, *entries[0].EpisodeID)

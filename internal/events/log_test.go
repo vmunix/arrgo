@@ -159,14 +159,40 @@ func TestEventLog_Recent(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Get last 3
-	events, err := log.Recent(3)
+	// Get last 3 with no offset
+	events, total, err := log.Recent(3, 0)
 	require.NoError(t, err)
 	assert.Len(t, events, 3)
+	assert.Equal(t, 5, total)
 	// Should be in reverse chronological order (newest first)
 	assert.Equal(t, int64(5), events[0].EntityID)
 	assert.Equal(t, int64(4), events[1].EntityID)
 	assert.Equal(t, int64(3), events[2].EntityID)
+}
+
+func TestEventLog_Recent_Pagination(t *testing.T) {
+	db := setupTestDB(t)
+	log := NewEventLog(db)
+
+	// Insert 5 events
+	for i := 0; i < 5; i++ {
+		evt := &ContentAdded{
+			BaseEvent: NewBaseEvent(EventContentAdded, EntityContent, int64(i+1)),
+			ContentID: int64(i + 1),
+			Title:     fmt.Sprintf("Movie %d", i+1),
+		}
+		_, err := log.Append(evt)
+		require.NoError(t, err)
+	}
+
+	// Get page 2 (offset 2, limit 2)
+	events, total, err := log.Recent(2, 2)
+	require.NoError(t, err)
+	assert.Len(t, events, 2)
+	assert.Equal(t, 5, total)
+	// Offset 2 from newest: skip 5,4 -> get 3,2
+	assert.Equal(t, int64(3), events[0].EntityID)
+	assert.Equal(t, int64(2), events[1].EntityID)
 }
 
 // testEvent is a concrete event type for testing

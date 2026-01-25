@@ -1,8 +1,6 @@
 package main
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
 	"testing"
 
@@ -13,9 +11,9 @@ import (
 func TestClientSearch_Success(t *testing.T) {
 	srv := newMockServer(t).
 		ExpectPath("/api/v1/search").
-		ExpectPOST().
+		ExpectGET().
 		Handler(func(w http.ResponseWriter, r *http.Request) {
-			assert.Equal(t, "application/json", r.Header.Get("Content-Type"), "unexpected content-type")
+			assert.Equal(t, "The Matrix 1999", r.URL.Query().Get("query"), "unexpected query param")
 			respondJSON(t, w, SearchResponse{
 				Releases: []ReleaseResponse{
 					{
@@ -55,7 +53,7 @@ func TestClientSearch_Success(t *testing.T) {
 func TestClientSearch_EmptyResults(t *testing.T) {
 	srv := newMockServer(t).
 		ExpectPath("/api/v1/search").
-		ExpectPOST().
+		ExpectGET().
 		RespondJSON(SearchResponse{
 			Releases: []ReleaseResponse{},
 		}).
@@ -71,7 +69,7 @@ func TestClientSearch_EmptyResults(t *testing.T) {
 func TestClientSearch_WithErrors(t *testing.T) {
 	srv := newMockServer(t).
 		ExpectPath("/api/v1/search").
-		ExpectPOST().
+		ExpectGET().
 		RespondJSON(SearchResponse{
 			Releases: []ReleaseResponse{
 				{
@@ -95,7 +93,7 @@ func TestClientSearch_WithErrors(t *testing.T) {
 	assert.Equal(t, "DrunkenSlug: connection timeout", resp.Errors[0])
 }
 
-func TestClientSearch_RequestBody(t *testing.T) {
+func TestClientSearch_QueryParams(t *testing.T) {
 	tests := []struct {
 		name          string
 		query         string
@@ -124,19 +122,26 @@ func TestClientSearch_RequestBody(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var receivedBody map[string]any
-
 			srv := newMockServer(t).
 				Handler(func(w http.ResponseWriter, r *http.Request) {
-					body, err := io.ReadAll(r.Body)
-					if err != nil {
-						t.Errorf("failed to read request body: %v", err)
-						return
+					assert.Equal(t, http.MethodGet, r.Method)
+
+					query := r.URL.Query()
+					assert.Equal(t, tt.query, query.Get("query"))
+
+					hasType := query.Has("type")
+					assert.Equal(t, tt.expectType, hasType, "type param presence mismatch")
+
+					hasProfile := query.Has("profile")
+					assert.Equal(t, tt.expectProfile, hasProfile, "profile param presence mismatch")
+
+					if tt.expectType {
+						assert.Equal(t, tt.contentType, query.Get("type"))
 					}
-					if err := json.Unmarshal(body, &receivedBody); err != nil {
-						t.Errorf("failed to parse request body: %v", err)
-						return
+					if tt.expectProfile {
+						assert.Equal(t, tt.profile, query.Get("profile"))
 					}
+
 					respondJSON(t, w, SearchResponse{})
 				}).
 				Build()
@@ -145,27 +150,13 @@ func TestClientSearch_RequestBody(t *testing.T) {
 			client := NewClient(srv.URL)
 			_, err := client.Search(tt.query, tt.contentType, tt.profile)
 			require.NoError(t, err)
-
-			assert.Equal(t, tt.query, receivedBody["query"])
-
-			_, hasType := receivedBody["type"]
-			assert.Equal(t, tt.expectType, hasType, "type field presence mismatch")
-
-			_, hasProfile := receivedBody["profile"]
-			assert.Equal(t, tt.expectProfile, hasProfile, "profile field presence mismatch")
-
-			if tt.expectType {
-				assert.Equal(t, tt.contentType, receivedBody["type"])
-			}
-			if tt.expectProfile {
-				assert.Equal(t, tt.profile, receivedBody["profile"])
-			}
 		})
 	}
 }
 
 func TestClientSearch_ServerError(t *testing.T) {
 	srv := newMockServer(t).
+		ExpectGET().
 		RespondError(http.StatusInternalServerError, "search service unavailable").
 		Build()
 	defer srv.Close()

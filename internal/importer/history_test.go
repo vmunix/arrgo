@@ -40,25 +40,29 @@ func TestHistoryStore_List(t *testing.T) {
 	}
 
 	// List all
-	entries, err := store.List(HistoryFilter{})
+	entries, total, err := store.List(HistoryFilter{})
 	require.NoError(t, err)
 	assert.Len(t, entries, 3)
+	assert.Equal(t, 3, total)
 
 	// List by content
-	entries, err = store.List(HistoryFilter{ContentID: &contentID})
+	entries, total, err = store.List(HistoryFilter{ContentID: &contentID})
 	require.NoError(t, err, "List by content")
 	assert.Len(t, entries, 3)
+	assert.Equal(t, 3, total)
 
 	// List by event
 	event := EventGrabbed
-	entries, err = store.List(HistoryFilter{Event: &event})
+	entries, total, err = store.List(HistoryFilter{Event: &event})
 	require.NoError(t, err, "List by event")
 	assert.Len(t, entries, 2, "expected 2 grabbed entries")
+	assert.Equal(t, 2, total)
 
 	// List with limit
-	entries, err = store.List(HistoryFilter{Limit: 2})
+	entries, total, err = store.List(HistoryFilter{Limit: 2})
 	require.NoError(t, err, "List with limit")
 	assert.Len(t, entries, 2, "expected 2 entries with limit")
+	assert.Equal(t, 3, total, "total should be unaffected by limit")
 }
 
 func TestHistoryStore_List_OrderByRecent(t *testing.T) {
@@ -73,7 +77,7 @@ func TestHistoryStore_List_OrderByRecent(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 
-	entries, _ := store.List(HistoryFilter{})
+	entries, _, _ := store.List(HistoryFilter{})
 
 	// Should be ordered by most recent first
 	for i := 1; i < len(entries); i++ {

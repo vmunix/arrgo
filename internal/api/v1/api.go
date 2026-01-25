@@ -72,7 +72,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v1/episodes/{id}", s.updateEpisode)
 
 	// Search & grab (require optional dependencies)
-	mux.HandleFunc("POST /api/v1/search", s.requireSearcher(s.search))
+	mux.HandleFunc("GET /api/v1/search", s.requireSearcher(s.search))
 	mux.HandleFunc("POST /api/v1/grab", s.requireManager(s.grab))
 
 	// Downloads
@@ -92,7 +92,10 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/files", s.listFiles)
 	mux.HandleFunc("DELETE /api/v1/files/{id}", s.deleteFile)
 
-	// Library check
+	// Library check - validates content records against actual files and Plex.
+	// Note: There is no /library resource. "Library" represents the validated state
+	// of content + files + Plex awareness, not a standalone entity. This endpoint
+	// performs cross-system health checks rather than CRUD operations.
 	mux.HandleFunc("GET /api/v1/library/check", s.checkLibrary)
 
 	// System
@@ -101,7 +104,6 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/verify", s.verify)
 	mux.HandleFunc("GET /api/v1/profiles", s.listProfiles)
 	mux.HandleFunc("GET /api/v1/indexers", s.listIndexers)
-	mux.HandleFunc("POST /api/v1/scan", s.requirePlex(s.triggerScan))
 
 	// Plex (getPlexStatus handles nil gracefully, others require Plex)
 	mux.HandleFunc("GET /api/v1/plex/status", s.getPlexStatus)
@@ -452,25 +454,39 @@ func (s *Server) updateEpisode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) search(w http.ResponseWriter, r *http.Request) {
-	var req searchRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+	query := r.URL.Query().Get("query")
+	if query == "" {
+		writeError(w, http.StatusBadRequest, "MISSING_QUERY", "query parameter is required")
 		return
 	}
 
-	profile := req.Profile
+	profile := r.URL.Query().Get("profile")
 	if profile == "" {
 		profile = "hd"
 	}
 
 	q := search.Query{
-		Text:    req.Query,
-		Type:    req.Type,
-		Season:  req.Season,
-		Episode: req.Episode,
+		Text: query,
+		Type: r.URL.Query().Get("type"),
 	}
-	if req.ContentID != nil {
-		q.ContentID = *req.ContentID
+
+	// Parse optional season/episode
+	if seasonStr := r.URL.Query().Get("season"); seasonStr != "" {
+		if season, err := strconv.Atoi(seasonStr); err == nil {
+			q.Season = &season
+		}
+	}
+	if episodeStr := r.URL.Query().Get("episode"); episodeStr != "" {
+		if episode, err := strconv.Atoi(episodeStr); err == nil {
+			q.Episode = &episode
+		}
+	}
+
+	// Parse optional content_id
+	if contentIDStr := r.URL.Query().Get("content_id"); contentIDStr != "" {
+		if contentID, err := strconv.ParseInt(contentIDStr, 10, 64); err == nil {
+			q.ContentID = contentID
+		}
 	}
 
 	result, err := s.deps.Searcher.Search(r.Context(), q, profile)
@@ -536,12 +552,26 @@ func (s *Server) grab(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listDownloads(w http.ResponseWriter, r *http.Request) {
-	filter := download.Filter{}
+	filter := download.Filter{
+		Limit:  queryInt(r, "limit", 50),
+		Offset: queryInt(r, "offset", 0),
+	}
+
+	// Validate pagination parameters
+	if filter.Limit < 0 || filter.Offset < 0 {
+		writeError(w, http.StatusBadRequest, "INVALID_PAGINATION", "limit and offset must be non-negative")
+		return
+	}
+	const maxLimit = 1000
+	if filter.Limit > maxLimit {
+		filter.Limit = maxLimit
+	}
+
 	if activeStr := r.URL.Query().Get("active"); activeStr == queryTrue {
 		filter.Active = true
 	}
 
-	downloads, err := s.deps.Downloads.List(filter)
+	downloads, total, err := s.deps.Downloads.List(filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
@@ -561,8 +591,10 @@ func (s *Server) listDownloads(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := listDownloadsResponse{
-		Items: make([]downloadResponse, len(downloads)),
-		Total: len(downloads),
+		Items:  make([]downloadResponse, len(downloads)),
+		Total:  total,
+		Limit:  filter.Limit,
+		Offset: filter.Offset,
 	}
 
 	for i, d := range downloads {
@@ -729,7 +761,18 @@ func (s *Server) retryDownload(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listHistory(w http.ResponseWriter, r *http.Request) {
 	filter := importer.HistoryFilter{
-		Limit: queryInt(r, "limit", 50),
+		Limit:  queryInt(r, "limit", 50),
+		Offset: queryInt(r, "offset", 0),
+	}
+
+	// Validate pagination parameters
+	if filter.Limit < 0 || filter.Offset < 0 {
+		writeError(w, http.StatusBadRequest, "INVALID_PAGINATION", "limit and offset must be non-negative")
+		return
+	}
+	const maxLimit = 1000
+	if filter.Limit > maxLimit {
+		filter.Limit = maxLimit
 	}
 
 	if contentIDStr := r.URL.Query().Get("content_id"); contentIDStr != "" {
@@ -737,15 +780,17 @@ func (s *Server) listHistory(w http.ResponseWriter, r *http.Request) {
 		filter.ContentID = &id
 	}
 
-	entries, err := s.deps.History.List(filter)
+	entries, total, err := s.deps.History.List(filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
 	}
 
 	resp := listHistoryResponse{
-		Items: make([]historyResponse, len(entries)),
-		Total: len(entries),
+		Items:  make([]historyResponse, len(entries)),
+		Total:  total,
+		Limit:  filter.Limit,
+		Offset: filter.Offset,
 	}
 
 	for i, h := range entries {
@@ -763,21 +808,37 @@ func (s *Server) listHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
-	filter := library.FileFilter{}
+	filter := library.FileFilter{
+		Limit:  queryInt(r, "limit", 50),
+		Offset: queryInt(r, "offset", 0),
+	}
+
+	// Validate pagination parameters
+	if filter.Limit < 0 || filter.Offset < 0 {
+		writeError(w, http.StatusBadRequest, "INVALID_PAGINATION", "limit and offset must be non-negative")
+		return
+	}
+	const maxLimit = 1000
+	if filter.Limit > maxLimit {
+		filter.Limit = maxLimit
+	}
+
 	if contentIDStr := r.URL.Query().Get("content_id"); contentIDStr != "" {
 		id, _ := strconv.ParseInt(contentIDStr, 10, 64)
 		filter.ContentID = &id
 	}
 
-	files, _, err := s.deps.Library.ListFiles(filter)
+	files, total, err := s.deps.Library.ListFiles(filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
 	}
 
 	resp := listFilesResponse{
-		Items: make([]fileResponse, len(files)),
-		Total: len(files),
+		Items:  make([]fileResponse, len(files)),
+		Total:  total,
+		Limit:  filter.Limit,
+		Offset: filter.Offset,
 	}
 
 	for i, f := range files {
@@ -933,35 +994,15 @@ func (s *Server) getDashboard(w http.ResponseWriter, _ *http.Request) {
 	resp.Connections.Plex = s.deps.Plex != nil
 	resp.Connections.SABnzbd = s.deps.Manager != nil
 
-	// Download counts by status
-	for _, status := range []download.Status{
-		download.StatusQueued,
-		download.StatusDownloading,
-		download.StatusCompleted,
-		download.StatusImporting,
-		download.StatusImported,
-		download.StatusCleaned,
-		download.StatusFailed,
-	} {
-		st := status
-		downloads, _ := s.deps.Downloads.List(download.Filter{Status: &st})
-		switch status {
-		case download.StatusQueued:
-			resp.Downloads.Queued = len(downloads)
-		case download.StatusDownloading:
-			resp.Downloads.Downloading = len(downloads)
-		case download.StatusCompleted:
-			resp.Downloads.Completed = len(downloads)
-		case download.StatusImporting:
-			resp.Downloads.Importing = len(downloads)
-		case download.StatusImported:
-			resp.Downloads.Imported = len(downloads)
-		case download.StatusCleaned:
-			resp.Downloads.Cleaned = len(downloads)
-		case download.StatusFailed:
-			resp.Downloads.Failed = len(downloads)
-		}
-	}
+	// Download counts by status (single GROUP BY query)
+	counts, _ := s.deps.Downloads.CountByStatus()
+	resp.Downloads.Queued = counts[download.StatusQueued]
+	resp.Downloads.Downloading = counts[download.StatusDownloading]
+	resp.Downloads.Completed = counts[download.StatusCompleted]
+	resp.Downloads.Importing = counts[download.StatusImporting]
+	resp.Downloads.Imported = counts[download.StatusImported]
+	resp.Downloads.Cleaned = counts[download.StatusCleaned]
+	resp.Downloads.Failed = counts[download.StatusFailed]
 
 	// Stuck count (>1hr in non-terminal state)
 	resp.Stuck.Threshold = 60
@@ -1026,29 +1067,12 @@ func (s *Server) listIndexers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func (s *Server) triggerScan(w http.ResponseWriter, r *http.Request) {
-	var req scanRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
-		return
-	}
-
-	if req.Path != "" {
-		if err := s.deps.Plex.ScanPath(r.Context(), req.Path); err != nil {
-			writeError(w, http.StatusInternalServerError, "SCAN_ERROR", err.Error())
-			return
-		}
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{"status": "scan triggered"})
-}
-
 func (s *Server) getPlexStatus(w http.ResponseWriter, r *http.Request) {
 	resp := plexStatusResponse{}
 
 	if s.deps.Plex == nil {
 		resp.Error = "Plex not configured"
-		writeJSON(w, http.StatusOK, resp)
+		writeJSON(w, http.StatusServiceUnavailable, resp)
 		return
 	}
 
@@ -1058,7 +1082,7 @@ func (s *Server) getPlexStatus(w http.ResponseWriter, r *http.Request) {
 	identity, err := s.deps.Plex.GetIdentity(ctx)
 	if err != nil {
 		resp.Error = fmt.Sprintf("connection failed: %v", err)
-		writeJSON(w, http.StatusOK, resp)
+		writeJSON(w, http.StatusServiceUnavailable, resp)
 		return
 	}
 
@@ -1069,6 +1093,7 @@ func (s *Server) getPlexStatus(w http.ResponseWriter, r *http.Request) {
 	// Get sections
 	sections, err := s.deps.Plex.GetSections(ctx)
 	if err != nil {
+		// Connected but partial failure - still return 200
 		resp.Error = fmt.Sprintf("failed to get libraries: %v", err)
 		writeJSON(w, http.StatusOK, resp)
 		return
