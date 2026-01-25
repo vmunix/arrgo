@@ -81,16 +81,21 @@ See README.md for installation commands.
 
 ### Commands
 
-Using Task (recommended):
+**Always use `task` commands instead of running `go` commands directly.** This ensures consistent build flags, proper sequencing, and reduces errors. Run `task` to see all available commands.
+
 ```bash
+task              # Show available tasks
 task build        # Build both arrgo and arrgod
 task build:client # Build arrgo (CLI) only
 task build:server # Build arrgod (server) only
 task test         # Run tests
+task test:v       # Run tests with verbose output
 task lint         # Run linter
 task check        # fmt + lint + test
 task dev          # Run arrgod with live reload (air)
 task test:cover   # Tests with coverage report
+task generate     # Run go generate (regenerate mocks)
+task clean        # Clean build artifacts
 ```
 
 ### Configuration
