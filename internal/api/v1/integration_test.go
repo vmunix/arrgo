@@ -367,10 +367,7 @@ func TestIntegration_FullHappyPath(t *testing.T) {
 	env.sabnzbdClientID = "SABnzbd_nzo_inception"
 
 	// Phase 1: Search
-	searchResp := httpPost(t, env.api.URL+"/api/v1/search", map[string]any{
-		"query": "inception 2010",
-		"type":  "movie",
-	})
+	searchResp := httpGet(t, env.api.URL+"/api/v1/search?query=inception+2010&type=movie")
 	requireStatus(t, searchResp, http.StatusOK, "search")
 
 	var searchResult searchResponse
@@ -515,10 +512,7 @@ func TestIntegration_FullLifecycle(t *testing.T) {
 	}
 	mockIndexer.EXPECT().Search(gomock.Any(), gomock.Any()).Return(releases, nil)
 
-	searchResp := httpPost(t, api.URL+"/api/v1/search", map[string]any{
-		"query": "blade runner 1982",
-		"type":  "movie",
-	})
+	searchResp := httpGet(t, api.URL+"/api/v1/search?query=blade+runner+1982&type=movie")
 	requireStatus(t, searchResp, http.StatusOK, "search")
 
 	var searchResult searchResponse
