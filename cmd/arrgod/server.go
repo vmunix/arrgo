@@ -165,11 +165,21 @@ func runServer(configPath string) error {
 
 	var plexClient *importer.PlexClient
 	if cfg.Notifications.Plex != nil {
-		plexClient = importer.NewPlexClient(
-			cfg.Notifications.Plex.URL,
-			cfg.Notifications.Plex.Token,
-			logger,
-		)
+		if cfg.Notifications.Plex.LocalPath != "" && cfg.Notifications.Plex.RemotePath != "" {
+			plexClient = importer.NewPlexClientWithPathMapping(
+				cfg.Notifications.Plex.URL,
+				cfg.Notifications.Plex.Token,
+				cfg.Notifications.Plex.LocalPath,
+				cfg.Notifications.Plex.RemotePath,
+				logger,
+			)
+		} else {
+			plexClient = importer.NewPlexClient(
+				cfg.Notifications.Plex.URL,
+				cfg.Notifications.Plex.Token,
+				logger,
+			)
+		}
 	}
 
 	// === Services ===
