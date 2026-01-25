@@ -92,7 +92,10 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/files", s.listFiles)
 	mux.HandleFunc("DELETE /api/v1/files/{id}", s.deleteFile)
 
-	// Library check
+	// Library check - validates content records against actual files and Plex.
+	// Note: There is no /library resource. "Library" represents the validated state
+	// of content + files + Plex awareness, not a standalone entity. This endpoint
+	// performs cross-system health checks rather than CRUD operations.
 	mux.HandleFunc("GET /api/v1/library/check", s.checkLibrary)
 
 	// System
