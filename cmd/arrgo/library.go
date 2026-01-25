@@ -249,7 +249,7 @@ func runLibraryShow(cmd *cobra.Command, args []string) error {
 
 	// For series, also fetch episodes
 	var episodes *ListEpisodesResponse
-	if content.Type == "series" {
+	if content.Type == contentTypeSeries {
 		episodesURL := fmt.Sprintf("%s/api/v1/content/%d/episodes", serverURL, id)
 		req, err = http.NewRequest(http.MethodGet, episodesURL, nil)
 		if err != nil {
@@ -309,7 +309,7 @@ func printLibraryShow(content *LibraryContentResponse, episodes *ListEpisodesRes
 	fmt.Printf("  Added:    %s\n", content.AddedAt.Format("2006-01-02 15:04"))
 
 	// For series, show episode breakdown
-	if content.Type == "series" && episodes != nil && len(episodes.Items) > 0 {
+	if content.Type == contentTypeSeries && episodes != nil && len(episodes.Items) > 0 {
 		fmt.Printf("\n  Episodes (%d total):\n", episodes.Total)
 
 		// Group episodes by season
@@ -345,12 +345,13 @@ func printLibraryShow(content *LibraryContentResponse, episodes *ListEpisodesRes
 				}
 			}
 
-			statusStr := ""
-			if available == len(eps) {
+			var statusStr string
+			switch {
+			case available == len(eps):
 				statusStr = "all available"
-			} else if wanted == len(eps) {
+			case wanted == len(eps):
 				statusStr = "all wanted"
-			} else {
+			default:
 				statusStr = fmt.Sprintf("%d available, %d wanted", available, wanted)
 			}
 
@@ -366,7 +367,7 @@ func printLibraryShow(content *LibraryContentResponse, episodes *ListEpisodesRes
 				fmt.Printf("      %-4d %-40s %s\n", ep.Episode, title, ep.Status)
 			}
 		}
-	} else if content.Type == "series" {
+	} else if content.Type == contentTypeSeries {
 		fmt.Println("\n  No episodes tracked yet.")
 	}
 }
@@ -385,7 +386,7 @@ func printLibraryList(data *ListLibraryResponse) {
 
 		// Format status - for series, include episode count
 		status := item.Status
-		if item.Type == "series" && item.EpisodeStats != nil {
+		if item.Type == contentTypeSeries && item.EpisodeStats != nil {
 			status = fmt.Sprintf("%s (%d/%d)",
 				item.Status,
 				item.EpisodeStats.AvailableEpisodes,

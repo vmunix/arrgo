@@ -282,11 +282,12 @@ func contentToResponse(c *library.Content, stats *library.SeriesStats) contentRe
 		}
 
 		// Compute display status based on episode availability
-		if stats.AvailableEpisodes == 0 {
+		switch {
+		case stats.AvailableEpisodes == 0:
 			resp.Status = "wanted"
-		} else if stats.AvailableEpisodes < stats.TotalEpisodes {
+		case stats.AvailableEpisodes < stats.TotalEpisodes:
 			resp.Status = "partial"
-		} else {
+		default:
 			resp.Status = "available"
 		}
 	}

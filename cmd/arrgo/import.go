@@ -77,9 +77,9 @@ func runManualImport(path string, dryRun bool) error {
 	info := release.Parse(filename)
 
 	// Determine content type based on S##E## presence
-	contentType := "movie"
+	contentType := contentTypeMovie
 	if info.Season > 0 || info.Episode > 0 {
-		contentType = "series"
+		contentType = contentTypeSeries
 	}
 
 	// Build quality string

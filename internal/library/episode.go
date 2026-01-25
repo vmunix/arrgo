@@ -209,10 +209,11 @@ func (s *Store) GetSeriesStats(contentID int64) (*SeriesStats, error) {
 	stats := &SeriesStats{}
 
 	// Get total and available episode counts
+	// Use COALESCE to handle NULL when no episodes exist
 	err := s.db.QueryRow(`
 		SELECT
 			COUNT(*) as total,
-			SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available,
+			COALESCE(SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END), 0) as available,
 			COUNT(DISTINCT season) as seasons
 		FROM episodes
 		WHERE content_id = ?`, contentID,
@@ -243,7 +244,7 @@ func (s *Store) GetSeriesStatsBatch(contentIDs []int64) (map[int64]*SeriesStats,
 		SELECT
 			content_id,
 			COUNT(*) as total,
-			SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available,
+			COALESCE(SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END), 0) as available,
 			COUNT(DISTINCT season) as seasons
 		FROM episodes
 		WHERE content_id IN (%s)
