@@ -1077,11 +1077,13 @@ func (s *Server) searchAndGrabSeries(contentID int64, title string, profile stri
 		best := result.Releases[0]
 
 		if err := s.bus.Publish(ctx, &events.GrabRequested{
-			BaseEvent:   events.NewBaseEvent(events.EventGrabRequested, events.EntityDownload, 0),
-			ContentID:   contentID,
-			DownloadURL: best.DownloadURL,
-			ReleaseName: best.Title,
-			Indexer:     best.Indexer,
+			BaseEvent:        events.NewBaseEvent(events.EventGrabRequested, events.EntityDownload, 0),
+			ContentID:        contentID,
+			Season:           &season,
+			IsCompleteSeason: true,
+			DownloadURL:      best.DownloadURL,
+			ReleaseName:      best.Title,
+			Indexer:          best.Indexer,
 		}); err != nil {
 			s.log.Error("failed to publish GrabRequested", "error", err)
 		}
