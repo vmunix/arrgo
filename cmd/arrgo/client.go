@@ -481,3 +481,29 @@ func (c *Client) RetryDownload(id int64) (*RetryResponse, error) {
 	}
 	return &resp, nil
 }
+
+// Indexer types
+
+type IndexerResponse struct {
+	Name       string `json:"name"`
+	URL        string `json:"url"`
+	Status     string `json:"status,omitempty"`
+	Error      string `json:"error,omitempty"`
+	ResponseMs int64  `json:"response_ms,omitempty"`
+}
+
+type ListIndexersResponse struct {
+	Indexers []IndexerResponse `json:"indexers"`
+}
+
+func (c *Client) Indexers(test bool) (*ListIndexersResponse, error) {
+	path := "/api/v1/indexers"
+	if test {
+		path += "?test=true"
+	}
+	var resp ListIndexersResponse
+	if err := c.get(path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
