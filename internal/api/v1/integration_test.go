@@ -265,10 +265,18 @@ func TestIntegration_SearchAndGrab(t *testing.T) {
 
 	require.NotZero(t, content.ID, "content ID should be set")
 
-	// 4. Grab now requires the event bus (event-driven architecture)
-	// This test verifies search works; grab is tested separately with event bus wired up
-	_ = content // Use content to avoid unused variable warning
-	_ = searchResult
+	// 4. After content creation, insert download record directly
+	// (Grab API requires event bus; this simulates what DownloadHandler does)
+	_, err := env.db.Exec(`
+		INSERT INTO downloads (content_id, client, client_id, status, release_name, indexer, added_at, last_transition_at)
+		VALUES (?, 'sabnzbd', ?, 'queued', ?, ?, datetime('now'), datetime('now'))`,
+		content.ID, "SABnzbd_nzo_abc123", searchResult.Releases[0].Title, searchResult.Releases[0].Indexer,
+	)
+	require.NoError(t, err, "insert download")
+
+	// 5. Query download and verify indexer matches
+	dl := queryDownload(t, env.db, content.ID)
+	assert.Equal(t, "nzbgeek", dl.Indexer, "download indexer should match grabbed release")
 }
 
 func TestIntegration_DownloadComplete(t *testing.T) {
