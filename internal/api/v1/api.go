@@ -549,8 +549,9 @@ func (s *Server) grab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify content exists
-	if _, err := s.deps.Library.GetContent(req.ContentID); err != nil {
+	// Verify content exists and get type
+	content, err := s.deps.Library.GetContent(req.ContentID)
+	if err != nil {
 		if errors.Is(err, library.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "NOT_FOUND", "Content not found")
 			return
@@ -565,14 +566,68 @@ func (s *Server) grab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.deps.Bus.Publish(r.Context(), &events.GrabRequested{
+	// Build the event
+	event := &events.GrabRequested{
 		BaseEvent:   events.NewBaseEvent(events.EventGrabRequested, events.EntityDownload, 0),
 		ContentID:   req.ContentID,
-		EpisodeID:   req.EpisodeID,
 		DownloadURL: req.DownloadURL,
 		ReleaseName: req.Title,
 		Indexer:     req.Indexer,
-	}); err != nil {
+	}
+
+	// For series, parse release name to detect episodes
+	if content.Type == library.ContentTypeSeries {
+		parsed := release.Parse(req.Title)
+
+		// Use overrides if provided, otherwise use parsed values
+		season := parsed.Season
+		if req.Season != nil {
+			season = *req.Season
+		}
+
+		episodes := parsed.Episodes
+		if len(req.Episodes) > 0 {
+			episodes = req.Episodes
+		}
+
+		// Season is required for series
+		if season == 0 {
+			writeError(w, http.StatusBadRequest, "INVALID_RELEASE", "cannot determine season from release title")
+			return
+		}
+
+		event.Season = &season
+
+		// Handle season packs vs specific episodes
+		switch {
+		case parsed.IsCompleteSeason && len(episodes) == 0:
+			// Season pack: set IsCompleteSeason, no EpisodeIDs yet
+			event.IsCompleteSeason = true
+		case len(episodes) > 0:
+			// Specific episodes: find or create episode records
+			eps, err := s.deps.Library.FindOrCreateEpisodes(req.ContentID, season, episodes)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+				return
+			}
+			for _, ep := range eps {
+				event.EpisodeIDs = append(event.EpisodeIDs, ep.ID)
+			}
+			// Backward compatibility: set EpisodeID for single-episode grabs
+			if len(event.EpisodeIDs) == 1 {
+				event.EpisodeID = &event.EpisodeIDs[0]
+			}
+		default:
+			// No episode info and not a season pack
+			writeError(w, http.StatusBadRequest, "INVALID_RELEASE", "cannot determine episodes from release title")
+			return
+		}
+	} else {
+		// For movies, preserve legacy EpisodeID if provided (shouldn't happen, but handle gracefully)
+		event.EpisodeID = req.EpisodeID
+	}
+
+	if err := s.deps.Bus.Publish(r.Context(), event); err != nil {
 		writeError(w, http.StatusInternalServerError, "EVENT_ERROR", err.Error())
 		return
 	}

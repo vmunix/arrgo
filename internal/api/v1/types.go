@@ -86,10 +86,12 @@ type searchResponse struct {
 // grabRequest is the request body for POST /grab.
 type grabRequest struct {
 	ContentID   int64  `json:"content_id"`
-	EpisodeID   *int64 `json:"episode_id,omitempty"`
 	DownloadURL string `json:"download_url"`
 	Title       string `json:"title"`
 	Indexer     string `json:"indexer"`
+	EpisodeID   *int64 `json:"episode_id,omitempty"` // Deprecated: use Season/Episodes
+	Season      *int   `json:"season,omitempty"`     // Override: season number
+	Episodes    []int  `json:"episodes,omitempty"`   // Override: episode numbers
 }
 
 // downloadResponse is the API representation of a download.
