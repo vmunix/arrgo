@@ -698,6 +698,11 @@ func TestLibraryImport_Success(t *testing.T) {
 			{Title: "Test Movie", Year: 2024, Type: "movie", FilePath: "/movies/Test.Movie.2024.mkv"},
 		}, nil)
 
+	// Mock TranslateToLocal (identity transform)
+	mockPlex.EXPECT().
+		TranslateToLocal("/movies/Test.Movie.2024.mkv").
+		Return("/movies/Test.Movie.2024.mkv")
+
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)
 
@@ -712,9 +717,113 @@ func TestLibraryImport_Success(t *testing.T) {
 
 	var resp libraryImportResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	// For now, processPlexImport is a stub that returns empty slices
-	// This will be updated in Task 5 when processing is implemented
+	// Now that processPlexImport is implemented, check the actual response
 	assert.NotNil(t, resp.Imported)
 	assert.NotNil(t, resp.Skipped)
 	assert.NotNil(t, resp.Errors)
+}
+
+func TestLibraryImport_DryRun(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	mockPlex := mocks.NewMockPlexClient(ctrl)
+	srv.deps.Plex = mockPlex
+
+	// Mock Plex to return section and items
+	mockPlex.EXPECT().
+		FindSectionByName(gomock.Any(), "Movies").
+		Return(&importer.Section{Key: "1", Title: "Movies"}, nil)
+	mockPlex.EXPECT().
+		ListLibraryItems(gomock.Any(), "1").
+		Return([]importer.PlexItem{
+			{Title: "Test Movie", Year: 2024, Type: "movie", FilePath: "/data/media/movies/Test.Movie.2024.2160p.BluRay.mkv"},
+		}, nil)
+	mockPlex.EXPECT().
+		TranslateToLocal("/data/media/movies/Test.Movie.2024.2160p.BluRay.mkv").
+		Return("/srv/media/movies/Test.Movie.2024.2160p.BluRay.mkv")
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	body := `{"source": "plex", "library": "Movies", "dry_run": true}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/library/import", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp libraryImportResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	// Dry run should show what would be imported
+	assert.Len(t, resp.Imported, 1)
+	assert.Equal(t, "Test Movie", resp.Imported[0].Title)
+	assert.Equal(t, 2024, resp.Imported[0].Year)
+	assert.Equal(t, "uhd", resp.Imported[0].Quality) // parsed from 2160p
+
+	// ContentID should be 0 because dry_run doesn't create records
+	assert.Zero(t, resp.Imported[0].ContentID)
+
+	// Summary should be correct
+	assert.Equal(t, 1, resp.Summary.Imported)
+	assert.Equal(t, 0, resp.Summary.Skipped)
+	assert.Equal(t, 0, resp.Summary.Errors)
+}
+
+func TestLibraryImport_SkipsAlreadyTracked(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	mockPlex := mocks.NewMockPlexClient(ctrl)
+	srv.deps.Plex = mockPlex
+
+	// Pre-create content that should be skipped
+	content := &library.Content{
+		Type:           library.ContentTypeMovie,
+		Title:          "Existing Movie",
+		Year:           2020,
+		Status:         library.StatusAvailable,
+		QualityProfile: "hd",
+	}
+	err := srv.deps.Library.AddContent(content)
+	require.NoError(t, err)
+
+	mockPlex.EXPECT().
+		FindSectionByName(gomock.Any(), "Movies").
+		Return(&importer.Section{Key: "1", Title: "Movies"}, nil)
+	mockPlex.EXPECT().
+		ListLibraryItems(gomock.Any(), "1").
+		Return([]importer.PlexItem{
+			{Title: "Existing Movie", Year: 2020, Type: "movie", FilePath: "/data/media/movies/file.mkv"},
+		}, nil)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	body := `{"source": "plex", "library": "Movies", "dry_run": true}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/library/import", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp libraryImportResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	assert.Empty(t, resp.Imported)
+	assert.Len(t, resp.Skipped, 1)
+	assert.Equal(t, "Existing Movie", resp.Skipped[0].Title)
+	assert.Equal(t, "already tracked", resp.Skipped[0].Reason)
+	assert.Equal(t, content.ID, resp.Skipped[0].ContentID)
 }

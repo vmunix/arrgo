@@ -19,6 +19,7 @@ import (
 	"github.com/vmunix/arrgo/internal/importer"
 	"github.com/vmunix/arrgo/internal/library"
 	"github.com/vmunix/arrgo/internal/search"
+	"github.com/vmunix/arrgo/pkg/release"
 )
 
 const queryTrue = "true"
@@ -1572,13 +1573,99 @@ func (s *Server) importLibrary(w http.ResponseWriter, r *http.Request) {
 }
 
 // processPlexImport processes Plex items for import.
-// This is a stub that will be fully implemented in Task 5.
-//
-//nolint:unparam // ctx, qualityOverride, dryRun will be used in Task 5 implementation
-func (s *Server) processPlexImport(_ context.Context, _ []importer.PlexItem, _ string, _ bool) libraryImportResponse {
-	return libraryImportResponse{
+func (s *Server) processPlexImport(ctx context.Context, items []importer.PlexItem, qualityOverride string, dryRun bool) libraryImportResponse {
+	resp := libraryImportResponse{
 		Imported: []libraryImportItem{},
 		Skipped:  []libraryImportItem{},
 		Errors:   []libraryImportItem{},
 	}
+
+	for _, item := range items {
+		// Map Plex type to our type
+		contentType := library.ContentTypeMovie
+		if item.Type == "show" {
+			contentType = library.ContentTypeSeries
+		}
+
+		// Check if already tracked
+		title := item.Title
+		year := item.Year
+		existing, _, _ := s.deps.Library.ListContent(library.ContentFilter{
+			Type:  &contentType,
+			Title: &title,
+			Year:  &year,
+			Limit: 1,
+		})
+		if len(existing) > 0 {
+			resp.Skipped = append(resp.Skipped, libraryImportItem{
+				Title:     item.Title,
+				Year:      item.Year,
+				Type:      string(contentType),
+				ContentID: existing[0].ID,
+				Reason:    "already tracked",
+			})
+			continue
+		}
+
+		// Parse quality from filename
+		quality := "hd" // default
+		if item.FilePath != "" {
+			// Translate Plex path to local path for parsing
+			localPath := item.FilePath
+			if s.deps.Plex != nil {
+				localPath = s.deps.Plex.TranslateToLocal(item.FilePath)
+			}
+			parsed := release.Parse(filepath.Base(localPath))
+			quality = mapResolutionToProfile(parsed.Resolution)
+		}
+		if qualityOverride != "" {
+			quality = qualityOverride
+		}
+
+		importItem := libraryImportItem{
+			Title:   item.Title,
+			Year:    item.Year,
+			Type:    string(contentType),
+			Quality: quality,
+		}
+
+		if !dryRun {
+			// Create content and file records (will be implemented in Task 6)
+			contentID, err := s.createImportedContent(ctx, item, contentType, quality)
+			if err != nil {
+				importItem.Error = err.Error()
+				resp.Errors = append(resp.Errors, importItem)
+				continue
+			}
+			importItem.ContentID = contentID
+		}
+
+		resp.Imported = append(resp.Imported, importItem)
+	}
+
+	resp.Summary.Imported = len(resp.Imported)
+	resp.Summary.Skipped = len(resp.Skipped)
+	resp.Summary.Errors = len(resp.Errors)
+
+	return resp
+}
+
+// mapResolutionToProfile maps a resolution string to a quality profile name.
+func mapResolutionToProfile(resolution release.Resolution) string {
+	switch resolution {
+	case release.Resolution2160p:
+		return "uhd"
+	case release.Resolution1080p:
+		return "hd"
+	case release.Resolution720p:
+		return "hd720"
+	default:
+		return "hd"
+	}
+}
+
+// createImportedContent creates content and file records for an imported item.
+// This is a stub that will be implemented in Task 6.
+func (s *Server) createImportedContent(_ context.Context, _ importer.PlexItem, _ library.ContentType, _ string) (int64, error) {
+	return 0, fmt.Errorf("not implemented")
 }

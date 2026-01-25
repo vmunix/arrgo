@@ -38,6 +38,7 @@ type PlexClient interface {
 	ScanPath(ctx context.Context, filePath string) error
 	RefreshLibrary(ctx context.Context, sectionKey string) error
 	HasMovie(ctx context.Context, title string, year int) (bool, error)
+	TranslateToLocal(path string) string
 }
 
 // FileImporter defines the interface for file import operations.
