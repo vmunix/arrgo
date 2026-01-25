@@ -210,27 +210,39 @@ func Parse(name string) *Info {
 		info.Group = group
 	}
 
-	// Title - extract based on content type:
-	// - TV shows: stop at season/episode marker
-	// - Movies with year: stop at the release year
-	// - Daily shows: stop at the daily date
-	// - Fallback: use non-year quality markers
-	if info.Season > 0 || len(info.Episodes) > 0 {
-		// TV show - use season/episode marker as title boundary
-		info.Title = parseTitleFallback(normalized)
-	} else if info.Year > 0 {
-		// Movie with year - stop at the release year
+	// Title - extract from start up to the earliest title boundary
+	// Boundaries: release year, season/episode marker, resolution, daily date, etc.
+	// Use whichever comes first in the string
+	titleEnd := -1
+
+	// Check year position (for movies/TV with years)
+	if info.Year > 0 {
 		yearStr := strconv.Itoa(info.Year)
 		if idx := strings.Index(normalized, yearStr); idx > 0 {
-			info.Title = strings.TrimSpace(normalized[:idx])
+			titleEnd = idx
 		}
-	} else if info.DailyDate != "" {
-		// Daily show - use titleMarkerRegex which includes daily date patterns
-		info.Title = parseTitle(normalized)
 	}
-	if info.Title == "" {
-		// Fall back to non-year markers (resolution, S01E01, etc.)
-		info.Title = parseTitleFallback(normalized)
+
+	// Check non-year markers (S01E01, resolution, etc.) - use if earlier
+	if markerLoc := nonYearMarkerRegex.FindStringIndex(normalized); markerLoc != nil {
+		if titleEnd < 0 || markerLoc[0] < titleEnd {
+			titleEnd = markerLoc[0]
+		}
+	}
+
+	// Check daily date patterns (for daily shows) - use if earlier
+	// Daily dates: DD.MM.YYYY, YYYYMMDD, etc.
+	if info.DailyDate != "" {
+		// Find the daily date position using titleMarkerRegex which includes date patterns
+		if markerLoc := titleMarkerRegex.FindStringIndex(normalized); markerLoc != nil {
+			if titleEnd < 0 || markerLoc[0] < titleEnd {
+				titleEnd = markerLoc[0]
+			}
+		}
+	}
+
+	if titleEnd > 0 {
+		info.Title = strings.TrimSpace(normalized[:titleEnd])
 	}
 
 	// Clean title for matching
@@ -318,26 +330,6 @@ func containsWordBoundary(s string, patterns ...string) bool {
 		}
 	}
 	return false
-}
-
-func parseTitle(name string) string {
-	// Find the first marker that indicates end of title
-	// Common markers: year (4 digits), resolution, S01E01, etc.
-	loc := titleMarkerRegex.FindStringIndex(name)
-	if loc != nil {
-		title := strings.TrimSpace(name[:loc[0]])
-		return title
-	}
-	return ""
-}
-
-// parseTitleFallback extracts title using non-year markers (resolution, S01E01, etc.)
-func parseTitleFallback(name string) string {
-	loc := nonYearMarkerRegex.FindStringIndex(name)
-	if loc != nil {
-		return strings.TrimSpace(name[:loc[0]])
-	}
-	return ""
 }
 
 func parseHDR(name string) HDRFormat {

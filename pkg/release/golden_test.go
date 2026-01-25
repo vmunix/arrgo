@@ -854,9 +854,10 @@ var goldenCases = []struct {
 		source:     SourceBluRay,
 		codec:      CodecX264,
 		audio:      AudioUnknown,
-		title:      "Kummatty",
-		year:       1979,
-		group:      "TMT",
+		// Double-feature release: parser extracts last valid year (1987) and title up to it
+		title: "Kummatty 1979 Yam Daabo",
+		year:  1987,
+		group: "TMT",
 	},
 
 	// === Remux Patterns (10 cases) ===
@@ -1006,9 +1007,9 @@ var goldenCases = []struct {
 		hdr:        DolbyVision,
 		audio:      AudioAtmos,
 		edition:    "IMAX",
-		// NOTE: Parser extracts first year match (1984 in title), not release year
-		title: "Wonder Woman",
-		year:  1984,
+		// Parser extracts last valid year (2020) and includes "1984" in title
+		title: "Wonder Woman 1984",
+		year:  2020,
 		group: "TheFarm",
 	},
 	{
@@ -1307,9 +1308,9 @@ var goldenCases = []struct {
 		resolution: Resolution1080p,
 		source:     SourceBluRay,
 		codec:      CodecX264,
-		// NOTE: Parser matches first year-like number (2001), resulting in empty title
-		title: "",
-		year:  2001,
+		// Parser extracts last valid year (1968) and includes title year in title
+		title: "2001 A Space Odyssey",
+		year:  1968,
 		group: "GROUP",
 	},
 	{

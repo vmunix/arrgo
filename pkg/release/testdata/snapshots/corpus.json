@@ -496,8 +496,8 @@
   {
     "input": "Kummatty.1979.Yam.Daabo.1987.1080p.USA.Blu-ray.AVC.LPCM.1.0-TMT",
     "info": {
-      "Title": "Kummatty",
-      "Year": 1979,
+      "Title": "Kummatty 1979 Yam Daabo",
+      "Year": 1987,
       "Season": 0,
       "Episode": 0,
       "Episodes": null,
@@ -516,7 +516,7 @@
       "IsCompleteSeason": false,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "kummatty"
+      "CleanTitle": "kummatty 1979 yam daabo"
     }
   },
   {
@@ -6258,7 +6258,7 @@
       "Audio": 2,
       "IsRemux": false,
       "Edition": "",
-      "Service": "Apple TV+",
+      "Service": "Paramount+",
       "IsCompleteSeason": false,
       "IsSplitSeason": false,
       "SplitPart": 0,
@@ -6648,7 +6648,7 @@
       "Audio": 3,
       "IsRemux": false,
       "Edition": "",
-      "Service": "iT",
+      "Service": "Amazon",
       "IsCompleteSeason": false,
       "IsSplitSeason": false,
       "SplitPart": 0,
@@ -11130,8 +11130,8 @@
   {
     "input": "Wonder.Woman.1984.2020.IMAX.2160p.MA.WEB-DL.TrueHD.Atmos.7.1.DV.HDR10P.H.265-TheFarm",
     "info": {
-      "Title": "Wonder Woman",
-      "Year": 1984,
+      "Title": "Wonder Woman 1984",
+      "Year": 2020,
       "Season": 0,
       "Episode": 0,
       "Episodes": null,
@@ -11150,7 +11150,7 @@
       "IsCompleteSeason": false,
       "IsSplitSeason": false,
       "SplitPart": 0,
-      "CleanTitle": "wonder woman"
+      "CleanTitle": "wonder woman 1984"
     }
   },
   {
@@ -28242,7 +28242,7 @@
       "Audio": 1,
       "IsRemux": false,
       "Edition": "",
-      "Service": "Disney+",
+      "Service": "iT",
       "IsCompleteSeason": false,
       "IsSplitSeason": false,
       "SplitPart": 0,
@@ -37072,7 +37072,7 @@
       "Audio": 1,
       "IsRemux": false,
       "Edition": "",
-      "Service": "Disney+",
+      "Service": "iT",
       "IsCompleteSeason": false,
       "IsSplitSeason": false,
       "SplitPart": 0,
@@ -37240,7 +37240,7 @@
       "Audio": 1,
       "IsRemux": false,
       "Edition": "",
-      "Service": "Disney+",
+      "Service": "iT",
       "IsCompleteSeason": false,
       "IsSplitSeason": false,
       "SplitPart": 0,
