@@ -38,6 +38,7 @@ type testRootFolder struct {
 	ID        int    `json:"id"`
 	Path      string `json:"path"`
 	FreeSpace int64  `json:"freeSpace"`
+	Type      string `json:"type"`
 }
 
 type testQueueRecord struct {
@@ -213,13 +214,17 @@ func TestListRootFolders_ReturnsConfiguredRoots(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &folders))
 	assert.Len(t, folders, 2)
 
-	// Verify paths
-	paths := make(map[string]bool)
+	// Verify paths and types
 	for _, folder := range folders {
-		paths[folder.Path] = true
+		switch folder.Path {
+		case testMovieRoot:
+			assert.Equal(t, "movie", folder.Type, "movie root should have type=movie")
+		case testSeriesRoot:
+			assert.Equal(t, "series", folder.Type, "series root should have type=series")
+		default:
+			t.Errorf("unexpected root folder path: %s", folder.Path)
+		}
 	}
-	assert.True(t, paths[testMovieRoot], "%s root folder not found", testMovieRoot)
-	assert.True(t, paths[testSeriesRoot], "%s root folder not found", testSeriesRoot)
 }
 
 func TestListRootFolders_EmptyWhenNoRootsConfigured(t *testing.T) {

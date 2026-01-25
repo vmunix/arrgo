@@ -524,6 +524,7 @@ func (s *Server) listRootFolders(w http.ResponseWriter, r *http.Request) {
 			"id":        1,
 			"path":      s.cfg.MovieRoot,
 			"freeSpace": getFreeSpace(s.cfg.MovieRoot),
+			"type":      "movie",
 		})
 	}
 	if s.cfg.SeriesRoot != "" {
@@ -531,6 +532,7 @@ func (s *Server) listRootFolders(w http.ResponseWriter, r *http.Request) {
 			"id":        2,
 			"path":      s.cfg.SeriesRoot,
 			"freeSpace": getFreeSpace(s.cfg.SeriesRoot),
+			"type":      "series",
 		})
 	}
 
