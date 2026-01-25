@@ -98,6 +98,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/dashboard", s.getDashboard)
 	mux.HandleFunc("GET /api/v1/verify", s.verify)
 	mux.HandleFunc("GET /api/v1/profiles", s.listProfiles)
+	mux.HandleFunc("GET /api/v1/indexers", s.listIndexers)
 	mux.HandleFunc("POST /api/v1/scan", s.requirePlex(s.triggerScan))
 
 	// Plex (getPlexStatus handles nil gracefully, others require Plex)
@@ -992,6 +993,35 @@ func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, listProfilesResponse{Profiles: profiles})
+}
+
+func (s *Server) listIndexers(w http.ResponseWriter, r *http.Request) {
+	testConn := r.URL.Query().Get("test") == "true"
+	ctx := r.Context()
+
+	resp := listIndexersResponse{
+		Indexers: make([]indexerResponse, len(s.deps.Indexers)),
+	}
+
+	for i, idx := range s.deps.Indexers {
+		resp.Indexers[i] = indexerResponse{
+			Name: idx.Name(),
+			URL:  idx.URL(),
+		}
+
+		if testConn {
+			start := time.Now()
+			if err := idx.Caps(ctx); err != nil {
+				resp.Indexers[i].Status = "error"
+				resp.Indexers[i].Error = err.Error()
+			} else {
+				resp.Indexers[i].Status = "ok"
+				resp.Indexers[i].ResponseMs = time.Since(start).Milliseconds()
+			}
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) triggerScan(w http.ResponseWriter, r *http.Request) {
