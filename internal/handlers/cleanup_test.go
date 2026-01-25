@@ -700,3 +700,70 @@ func TestCleanupHandler_ReconcileOnStartup(t *testing.T) {
 	assert.Equal(t, contentID, pending.ContentID)
 	assert.Equal(t, "Test.Movie.2024.1080p.BluRay", pending.ReleaseName)
 }
+
+func TestCleanupHandler_ReconcileOnStartup_FullFlow(t *testing.T) {
+	// Setup
+	db := setupCleanupTestDB(t)
+	bus := events.NewBus(nil, nil)
+	defer bus.Close()
+
+	store := download.NewStore(db)
+
+	contentID := int64(456)
+	downloadRoot := t.TempDir()
+
+	// Create source folder (simulating download that was imported but not cleaned)
+	releaseName := "Orphaned.Movie.2024.1080p.BluRay"
+	sourceDir := filepath.Join(downloadRoot, releaseName)
+	require.NoError(t, os.MkdirAll(sourceDir, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "movie.mkv"), []byte("test"), 0644))
+
+	// Create download in "imported" status
+	dl := &download.Download{
+		ContentID:   contentID,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "nzo_orphan",
+		Status:      download.StatusImported,
+		ReleaseName: releaseName,
+		Indexer:     "test",
+	}
+	require.NoError(t, store.Add(dl))
+
+	// Create and start cleanup handler
+	config := CleanupConfig{
+		DownloadRoot: downloadRoot,
+		Enabled:      true,
+	}
+	handler := NewCleanupHandler(bus, store, config, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Start handler in background
+	go func() {
+		_ = handler.Start(ctx)
+	}()
+
+	// Give handler time to reconcile and subscribe
+	time.Sleep(50 * time.Millisecond)
+
+	// Emit PlexItemDetected (simulating Plex adapter reconciliation)
+	err := bus.Publish(ctx, &events.PlexItemDetected{
+		BaseEvent: events.NewBaseEvent(events.EventPlexItemDetected, events.EntityContent, contentID),
+		ContentID: contentID,
+		PlexKey:   "plex_123",
+	})
+	require.NoError(t, err)
+
+	// Wait for cleanup to process
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify source folder was deleted
+	_, err = os.Stat(sourceDir)
+	assert.True(t, os.IsNotExist(err), "expected source folder to be deleted")
+
+	// Verify download transitioned to cleaned
+	updated, err := store.Get(dl.ID)
+	require.NoError(t, err)
+	assert.Equal(t, download.StatusCleaned, updated.Status)
+}
