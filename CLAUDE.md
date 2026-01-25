@@ -199,6 +199,8 @@ SQLite with these core tables:
 - `history` — Audit trail
 - `quality_profiles` — Quality definitions
 
+**SQLite driver:** Uses `modernc.org/sqlite` (pure Go, no CGO). Error detection uses string matching on error messages (see `internal/library/content.go:mapSQLiteError`) since the driver wraps errors without exposing typed error codes. This is tested in `TestSQLiteCompat_ConstraintErrors`.
+
 ## API Design
 
 Native API conventions:
