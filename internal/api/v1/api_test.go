@@ -16,6 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/vmunix/arrgo/internal/api/v1/mocks"
+	"github.com/vmunix/arrgo/internal/importer"
 	"github.com/vmunix/arrgo/internal/library"
 	"github.com/vmunix/arrgo/internal/search"
 	"go.uber.org/mock/gomock"
@@ -625,4 +626,95 @@ func TestLibraryImport_ValidationErrors(t *testing.T) {
 			assert.Contains(t, w.Body.String(), tt.wantErr)
 		})
 	}
+}
+
+func TestLibraryImport_PlexNotConfigured(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+	srv.deps.Plex = nil // Ensure Plex is not configured
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	body := `{"source": "plex", "library": "Movies"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/library/import", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Contains(t, w.Body.String(), "Plex not configured")
+}
+
+func TestLibraryImport_LibraryNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	mockPlex := mocks.NewMockPlexClient(ctrl)
+	srv.deps.Plex = mockPlex
+
+	// Mock FindSectionByName to return nil (not found)
+	mockPlex.EXPECT().
+		FindSectionByName(gomock.Any(), "NonExistent").
+		Return(nil, nil)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	body := `{"source": "plex", "library": "NonExistent"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/library/import", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "Plex library not found")
+}
+
+func TestLibraryImport_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	mockPlex := mocks.NewMockPlexClient(ctrl)
+	srv.deps.Plex = mockPlex
+
+	// Mock FindSectionByName to return a section
+	mockPlex.EXPECT().
+		FindSectionByName(gomock.Any(), "Movies").
+		Return(&importer.Section{Key: "1", Title: "Movies", Type: "movie"}, nil)
+
+	// Mock ListLibraryItems to return some items
+	mockPlex.EXPECT().
+		ListLibraryItems(gomock.Any(), "1").
+		Return([]importer.PlexItem{
+			{Title: "Test Movie", Year: 2024, Type: "movie", FilePath: "/movies/Test.Movie.2024.mkv"},
+		}, nil)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	body := `{"source": "plex", "library": "Movies"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/library/import", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp libraryImportResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	// For now, processPlexImport is a stub that returns empty slices
+	// This will be updated in Task 5 when processing is implemented
+	assert.NotNil(t, resp.Imported)
+	assert.NotNil(t, resp.Skipped)
+	assert.NotNil(t, resp.Errors)
 }

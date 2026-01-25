@@ -282,6 +282,20 @@ func (mr *MockPlexClientMockRecorder) Search(ctx, query any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Search", reflect.TypeOf((*MockPlexClient)(nil).Search), ctx, query)
 }
 
+// TranslateToLocal mocks base method.
+func (m *MockPlexClient) TranslateToLocal(path string) string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TranslateToLocal", path)
+	ret0, _ := ret[0].(string)
+	return ret0
+}
+
+// TranslateToLocal indicates an expected call of TranslateToLocal.
+func (mr *MockPlexClientMockRecorder) TranslateToLocal(path any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TranslateToLocal", reflect.TypeOf((*MockPlexClient)(nil).TranslateToLocal), path)
+}
+
 // MockFileImporter is a mock of FileImporter interface.
 type MockFileImporter struct {
 	ctrl     *gomock.Controller

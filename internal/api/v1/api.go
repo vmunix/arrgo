@@ -2,6 +2,7 @@
 package v1
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -1541,10 +1542,43 @@ func (s *Server) importLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: implement import logic in next task
-	writeJSON(w, http.StatusOK, libraryImportResponse{
+	// Check Plex is configured
+	if s.deps.Plex == nil {
+		writeError(w, http.StatusServiceUnavailable, "PLEX_NOT_CONFIGURED", "Plex not configured")
+		return
+	}
+
+	// Find the library section
+	section, err := s.deps.Plex.FindSectionByName(r.Context(), req.Library)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "PLEX_ERROR", err.Error())
+		return
+	}
+	if section == nil {
+		writeError(w, http.StatusNotFound, "LIBRARY_NOT_FOUND", "Plex library not found: "+req.Library)
+		return
+	}
+
+	// Get all items from library
+	items, err := s.deps.Plex.ListLibraryItems(r.Context(), section.Key)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "PLEX_ERROR", err.Error())
+		return
+	}
+
+	// Process items (stub for now - will be implemented in Task 5)
+	resp := s.processPlexImport(r.Context(), items, req.QualityOverride, req.DryRun)
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// processPlexImport processes Plex items for import.
+// This is a stub that will be fully implemented in Task 5.
+//
+//nolint:unparam // ctx, qualityOverride, dryRun will be used in Task 5 implementation
+func (s *Server) processPlexImport(_ context.Context, _ []importer.PlexItem, _ string, _ bool) libraryImportResponse {
+	return libraryImportResponse{
 		Imported: []libraryImportItem{},
 		Skipped:  []libraryImportItem{},
 		Errors:   []libraryImportItem{},
-	})
+	}
 }
