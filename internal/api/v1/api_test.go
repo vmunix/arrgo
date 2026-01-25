@@ -558,21 +558,6 @@ func TestListProfiles(t *testing.T) {
 	assert.Len(t, resp.Profiles, 2)
 }
 
-func TestTriggerScan_NoPlex(t *testing.T) {
-	db := setupTestDB(t)
-	srv := New(db, Config{})
-
-	mux := http.NewServeMux()
-	srv.RegisterRoutes(mux)
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/scan", strings.NewReader("{}"))
-	w := httptest.NewRecorder()
-
-	mux.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
-}
-
 func TestSearch_WithMockSearcher(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

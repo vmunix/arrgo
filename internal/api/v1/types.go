@@ -174,11 +174,6 @@ type listProfilesResponse struct {
 	Profiles []profileResponse `json:"profiles"`
 }
 
-// scanRequest is the request body for POST /scan.
-type scanRequest struct {
-	Path string `json:"path,omitempty"`
-}
-
 // plexStatusResponse is the response for GET /plex/status.
 type plexStatusResponse struct {
 	Connected  bool          `json:"connected"`

@@ -101,7 +101,6 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/verify", s.verify)
 	mux.HandleFunc("GET /api/v1/profiles", s.listProfiles)
 	mux.HandleFunc("GET /api/v1/indexers", s.listIndexers)
-	mux.HandleFunc("POST /api/v1/scan", s.requirePlex(s.triggerScan))
 
 	// Plex (getPlexStatus handles nil gracefully, others require Plex)
 	mux.HandleFunc("GET /api/v1/plex/status", s.getPlexStatus)
@@ -1083,23 +1082,6 @@ func (s *Server) listIndexers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
-}
-
-func (s *Server) triggerScan(w http.ResponseWriter, r *http.Request) {
-	var req scanRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
-		return
-	}
-
-	if req.Path != "" {
-		if err := s.deps.Plex.ScanPath(r.Context(), req.Path); err != nil {
-			writeError(w, http.StatusInternalServerError, "SCAN_ERROR", err.Error())
-			return
-		}
-	}
-
-	writeJSON(w, http.StatusOK, map[string]string{"status": "scan triggered"})
 }
 
 func (s *Server) getPlexStatus(w http.ResponseWriter, r *http.Request) {
