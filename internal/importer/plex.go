@@ -429,18 +429,9 @@ func (c *PlexClient) Search(ctx context.Context, query string) ([]PlexItem, erro
 
 // HasMovie checks if Plex has a movie with the given title and year.
 func (c *PlexClient) HasMovie(ctx context.Context, title string, year int) (bool, error) {
-	items, err := c.Search(ctx, title)
-	if err != nil {
-		return false, err
-	}
-
-	for _, item := range items {
-		if item.Type == "movie" && item.Year == year && strings.EqualFold(item.Title, title) {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	// Use FindMovie which has year tolerance and fuzzy title matching
+	found, _, err := c.FindMovie(ctx, title, year)
+	return found, err
 }
 
 // HasContent implements MediaServer.HasContent.

@@ -192,15 +192,20 @@ func TestPlexClient_HasMovie(t *testing.T) {
 
 	client := NewPlexClient(server.URL, "test-token", nil)
 
-	// Should find movie
+	// Should find movie with exact year
 	found, err := client.HasMovie(context.Background(), "Test Movie", 2024)
 	require.NoError(t, err, "HasMovie")
 	assert.True(t, found, "should find Test Movie (2024)")
 
-	// Should not find with wrong year
+	// Should find with ±1 year tolerance (2023 vs 2024)
 	found, err = client.HasMovie(context.Background(), "Test Movie", 2023)
 	require.NoError(t, err, "HasMovie")
-	assert.False(t, found, "should not find Test Movie (2023)")
+	assert.True(t, found, "should find Test Movie with 1 year tolerance")
+
+	// Should NOT find with 2+ year difference
+	found, err = client.HasMovie(context.Background(), "Test Movie", 2022)
+	require.NoError(t, err, "HasMovie")
+	assert.False(t, found, "should not find Test Movie (2022) - 2 year diff")
 
 	// Should not find non-existent movie
 	found, err = client.HasMovie(context.Background(), "Nonexistent", 2024)
