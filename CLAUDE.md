@@ -127,6 +127,9 @@ Or use defaults syntax in config: `${VAR:-default_value}`
 ./arrgo library list              # List all tracked content
 ./arrgo library delete <id>       # Remove content from library
 ./arrgo library check             # Verify files exist and Plex awareness
+./arrgo library import --from-plex Movies          # Import Plex library
+./arrgo library import --from-plex Movies --dry-run  # Preview import
+./arrgo library import --from-plex Movies --quality uhd  # Override quality
 
 # Search and grab
 ./arrgo search "Movie Name"              # Search indexers
