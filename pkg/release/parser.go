@@ -36,6 +36,9 @@ var (
 	seasonOnlyRegex  = regexp.MustCompile(`(?i)\bS(\d{1,2})(?:\b|\.|$)`) // S01 without E## (checked separately)
 	splitSeasonRegex = regexp.MustCompile(`(?i)(?:Season[\s.]?(\d{1,2})|S(\d{1,2}))[\s.]+(?:Part|Vol)[\s.]?(\d{1,2})`)
 
+	// Non-year markers for title extraction fallback (resolution, season/episode, 4K, UHD)
+	nonYearMarkerRegex = regexp.MustCompile(`(?i)\b\d{3,4}p\b|\bS\d{1,2}E\d{1,2}(?:E\d{1,2}|-E?\d{1,2})*\b|\bS\d{1,2}\b|\b\d{1,2}x\d{1,2}\b|\bComplete[\s.]+Season[\s.]\d{1,2}\b|\bSeason[\s.]\d{1,2}\b|\b4K\b|\bUHD\b`)
+
 	// Audio detection patterns (must work with both raw and normalized names)
 	ddPlusRegex = regexp.MustCompile(`(?i)\bdd\+[\s.]?\d`)
 	ddRegex     = regexp.MustCompile(`(?i)\bdd[\s.]+\d[\s.]+\d`) // DD 5 1 or DD.5.1 or DD 5.1
@@ -207,8 +210,28 @@ func Parse(name string) *Info {
 		info.Group = group
 	}
 
-	// Title - extract from start up to year or quality marker
-	info.Title = parseTitle(normalized)
+	// Title - extract based on content type:
+	// - TV shows: stop at season/episode marker
+	// - Movies with year: stop at the release year
+	// - Daily shows: stop at the daily date
+	// - Fallback: use non-year quality markers
+	if info.Season > 0 || len(info.Episodes) > 0 {
+		// TV show - use season/episode marker as title boundary
+		info.Title = parseTitleFallback(normalized)
+	} else if info.Year > 0 {
+		// Movie with year - stop at the release year
+		yearStr := strconv.Itoa(info.Year)
+		if idx := strings.Index(normalized, yearStr); idx > 0 {
+			info.Title = strings.TrimSpace(normalized[:idx])
+		}
+	} else if info.DailyDate != "" {
+		// Daily show - use titleMarkerRegex which includes daily date patterns
+		info.Title = parseTitle(normalized)
+	}
+	if info.Title == "" {
+		// Fall back to non-year markers (resolution, S01E01, etc.)
+		info.Title = parseTitleFallback(normalized)
+	}
 
 	// Clean title for matching
 	info.CleanTitle = CleanTitle(info.Title)
@@ -304,6 +327,15 @@ func parseTitle(name string) string {
 	if loc != nil {
 		title := strings.TrimSpace(name[:loc[0]])
 		return title
+	}
+	return ""
+}
+
+// parseTitleFallback extracts title using non-year markers (resolution, S01E01, etc.)
+func parseTitleFallback(name string) string {
+	loc := nonYearMarkerRegex.FindStringIndex(name)
+	if loc != nil {
+		return strings.TrimSpace(name[:loc[0]])
 	}
 	return ""
 }
