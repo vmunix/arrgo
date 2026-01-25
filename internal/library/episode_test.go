@@ -338,3 +338,66 @@ func TestTx_Rollback_Episode(t *testing.T) {
 	_, err = store.GetEpisode(id)
 	assert.ErrorIs(t, err, ErrNotFound, "GetEpisode after rollback should return ErrNotFound")
 }
+
+func TestStore_FindOrCreateEpisode(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	// Create test series
+	content := &Content{
+		Type:           ContentTypeSeries,
+		Title:          "Test Show",
+		Year:           2024,
+		Status:         StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, store.AddContent(content))
+
+	// First call should create
+	ep1, created, err := store.FindOrCreateEpisode(content.ID, 1, 5)
+	require.NoError(t, err)
+	assert.True(t, created)
+	assert.Equal(t, content.ID, ep1.ContentID)
+	assert.Equal(t, 1, ep1.Season)
+	assert.Equal(t, 5, ep1.Episode)
+	assert.Equal(t, StatusWanted, ep1.Status)
+
+	// Second call should find existing
+	ep2, created, err := store.FindOrCreateEpisode(content.ID, 1, 5)
+	require.NoError(t, err)
+	assert.False(t, created)
+	assert.Equal(t, ep1.ID, ep2.ID)
+}
+
+func TestStore_FindOrCreateEpisodes(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	content := &Content{
+		Type:           ContentTypeSeries,
+		Title:          "Test Show",
+		Year:           2024,
+		Status:         StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, store.AddContent(content))
+
+	// Create multiple episodes at once
+	episodes, err := store.FindOrCreateEpisodes(content.ID, 1, []int{1, 2, 3})
+	require.NoError(t, err)
+	assert.Len(t, episodes, 3)
+
+	// Verify each episode
+	for i, ep := range episodes {
+		assert.Equal(t, content.ID, ep.ContentID)
+		assert.Equal(t, 1, ep.Season)
+		assert.Equal(t, i+1, ep.Episode)
+	}
+
+	// Call again - should return same episodes
+	episodes2, err := store.FindOrCreateEpisodes(content.ID, 1, []int{1, 2, 3})
+	require.NoError(t, err)
+	assert.Equal(t, episodes[0].ID, episodes2[0].ID)
+}
