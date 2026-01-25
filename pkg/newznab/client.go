@@ -54,6 +54,39 @@ func (c *Client) Name() string {
 	return c.name
 }
 
+// URL returns the indexer base URL.
+func (c *Client) URL() string {
+	return c.baseURL
+}
+
+// Caps performs a capabilities request to test connectivity.
+func (c *Client) Caps(ctx context.Context) error {
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		return err
+	}
+	q := u.Query()
+	q.Set("t", "caps")
+	q.Set("apikey", c.apiKey)
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("caps request failed: %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // Newznab RSS response structures
 type rssResponse struct {
 	XMLName xml.Name   `xml:"rss"`
