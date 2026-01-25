@@ -84,6 +84,9 @@ func (h *CleanupHandler) Name() string {
 
 // Start begins processing events.
 func (h *CleanupHandler) Start(ctx context.Context) error {
+	// Reconcile on startup - restore pending cleanups from database
+	h.reconcileOnStartup(ctx)
+
 	importCompleted := h.Bus().Subscribe(events.EventImportCompleted, 100)
 	importSkipped := h.Bus().Subscribe(events.EventImportSkipped, 100)
 	plexDetected := h.Bus().Subscribe(events.EventPlexItemDetected, 100)
