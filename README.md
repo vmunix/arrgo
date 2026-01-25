@@ -73,10 +73,19 @@ Environment variables can be referenced with `${VAR_NAME}` syntax.
 arrgod                   # Start API server + background jobs
 arrgod --config FILE     # Use custom config file
 
-# System status
-arrgo status             # Dashboard (connections, pipeline state, problems)
-arrgo verify             # Reality-check downloads against SABnzbd/filesystem/Plex
-arrgo verify 42          # Verify specific download
+# System status & verification
+arrgo status             # Dashboard (connections, downloads, library)
+arrgo status --verify    # Dashboard + verify all downloads against SABnzbd/filesystem/Plex
+arrgo status 42          # Verify specific download
+
+# Downloads
+arrgo downloads                     # Show active downloads
+arrgo downloads --all               # Include terminal states (cleaned, failed)
+arrgo downloads -s failed           # Filter by state
+arrgo downloads show 42             # Show detailed download info
+arrgo downloads cancel 42           # Cancel a download
+arrgo downloads cancel 42 --delete  # Cancel and delete files
+arrgo downloads retry 42            # Retry a failed download
 
 # Library management
 arrgo library list       # List all tracked content (movies, series)
@@ -89,11 +98,6 @@ arrgo search -v "Movie"           # Verbose (show indexer, group, service)
 arrgo search "Movie" --grab best  # Auto-grab best result
 arrgo search "Movie" --grab 1     # Grab specific result by number
 arrgo search "Movie" --type movie --profile uhd  # Filter by type and profile
-
-# Download queue
-arrgo queue              # Show active downloads
-arrgo queue --all        # Include terminal states (cleaned, failed)
-arrgo queue -s failed    # Filter by state (queued, downloading, completed, etc.)
 
 # Import content
 arrgo import list                            # Show pending imports and recent completions
@@ -114,9 +118,11 @@ arrgo parse "Release.Name.2024.1080p.mkv"      # Parse release name
 arrgo parse --score hd "Release.1080p.mkv"    # Parse and score against profile
 arrgo parse -f releases.txt --json            # Batch parse from file
 arrgo init               # Interactive setup wizard
+arrgo version            # Print version
 
 # Global flags
 --json                   # Output as JSON
+--quiet, -q              # Suppress non-essential output
 --server URL             # Custom server URL (default: http://localhost:8484)
 ```
 

@@ -151,9 +151,14 @@ Or use defaults syntax in config: `${VAR:-default_value}`
 ./arrgo parse --score hd "Release.Name.1080p.mkv"     # Parse and score against profile
 ./arrgo init             # Interactive setup wizard
 ./arrgo version          # Print version
+
+# Global flags (available on all commands)
+./arrgo --json status    # Output as JSON
+./arrgo -q downloads     # Quiet mode (suppress non-essential output)
+./arrgo --server http://host:port status  # Custom server URL
 ```
 
-Note: Most commands require `arrgod` running. `parse` and `init` work standalone.
+Note: Most commands require `arrgod` running. `parse`, `init`, and `version` work standalone.
 
 ## Module Responsibilities
 
