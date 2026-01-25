@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -706,7 +708,8 @@ func TestLibraryImport_Success(t *testing.T) {
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)
 
-	body := `{"source": "plex", "library": "Movies"}`
+	// Use dry_run since we're just testing response structure (no real files)
+	body := `{"source": "plex", "library": "Movies", "dry_run": true}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/library/import", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -717,7 +720,7 @@ func TestLibraryImport_Success(t *testing.T) {
 
 	var resp libraryImportResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	// Now that processPlexImport is implemented, check the actual response
+	// Verify response structure has expected fields
 	assert.NotNil(t, resp.Imported)
 	assert.NotNil(t, resp.Skipped)
 	assert.NotNil(t, resp.Errors)
@@ -826,4 +829,101 @@ func TestLibraryImport_SkipsAlreadyTracked(t *testing.T) {
 	assert.Equal(t, "Existing Movie", resp.Skipped[0].Title)
 	assert.Equal(t, "already tracked", resp.Skipped[0].Reason)
 	assert.Equal(t, content.ID, resp.Skipped[0].ContentID)
+}
+
+func TestLibraryImport_CreatesRecords(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	mockPlex := mocks.NewMockPlexClient(ctrl)
+	srv.deps.Plex = mockPlex
+
+	// Create a temp file for the test
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "New.Movie.2024.1080p.BluRay.mkv")
+	err := os.WriteFile(testFile, []byte("test content for size"), 0644)
+	require.NoError(t, err)
+
+	mockPlex.EXPECT().FindSectionByName(gomock.Any(), "Movies").Return(&importer.Section{Key: "1", Title: "Movies"}, nil)
+	mockPlex.EXPECT().ListLibraryItems(gomock.Any(), "1").Return([]importer.PlexItem{
+		{Title: "New Movie", Year: 2024, Type: "movie", FilePath: "/data/media/movies/New.Movie.2024.1080p.BluRay.mkv"},
+	}, nil)
+	// TranslateToLocal is called twice: once in processPlexImport for quality parsing, once in createImportedContent
+	mockPlex.EXPECT().TranslateToLocal("/data/media/movies/New.Movie.2024.1080p.BluRay.mkv").Return(testFile).Times(2)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	body := `{"source": "plex", "library": "Movies"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/library/import", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp libraryImportResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Len(t, resp.Imported, 1)
+	assert.NotZero(t, resp.Imported[0].ContentID)
+
+	// Verify content was created
+	content, err := srv.deps.Library.GetContent(resp.Imported[0].ContentID)
+	require.NoError(t, err)
+	assert.Equal(t, "New Movie", content.Title)
+	assert.Equal(t, 2024, content.Year)
+	assert.Equal(t, library.StatusAvailable, content.Status)
+	assert.Equal(t, "hd", content.QualityProfile) // from 1080p
+
+	// Verify file was created
+	files, _, err := srv.deps.Library.ListFiles(library.FileFilter{ContentID: &content.ID})
+	require.NoError(t, err)
+	require.Len(t, files, 1)
+	assert.Equal(t, testFile, files[0].Path)
+	assert.Equal(t, "1080p", files[0].Quality)
+	assert.Equal(t, "plex-import", files[0].Source)
+	assert.Equal(t, int64(21), files[0].SizeBytes) // "test content for size" is 21 bytes
+}
+
+func TestLibraryImport_FileStatError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	mockPlex := mocks.NewMockPlexClient(ctrl)
+	srv.deps.Plex = mockPlex
+
+	mockPlex.EXPECT().FindSectionByName(gomock.Any(), "Movies").Return(&importer.Section{Key: "1", Title: "Movies"}, nil)
+	mockPlex.EXPECT().ListLibraryItems(gomock.Any(), "1").Return([]importer.PlexItem{
+		{Title: "Missing File", Year: 2024, Type: "movie", FilePath: "/data/media/movies/Missing.mkv"},
+	}, nil)
+	// Return a path that doesn't exist (called twice: once for quality parsing, once for content creation)
+	mockPlex.EXPECT().TranslateToLocal("/data/media/movies/Missing.mkv").Return("/nonexistent/path/Missing.mkv").Times(2)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	body := `{"source": "plex", "library": "Movies"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/library/import", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp libraryImportResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	// Should be in errors, not imported
+	assert.Empty(t, resp.Imported)
+	assert.Len(t, resp.Errors, 1)
+	assert.Equal(t, "Missing File", resp.Errors[0].Title)
+	assert.Contains(t, resp.Errors[0].Error, "cannot access file")
 }
