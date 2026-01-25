@@ -1,7 +1,9 @@
 package release
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -1012,6 +1014,29 @@ func TestParse_YearInTitle(t *testing.T) {
 			info := Parse(tt.input)
 			assert.Equal(t, tt.wantTitle, info.Title)
 			assert.Equal(t, tt.wantYear, info.Year)
+		})
+	}
+}
+
+func TestIsValidReleaseYear(t *testing.T) {
+	currentYear := time.Now().Year()
+
+	tests := []struct {
+		year  int
+		valid bool
+	}{
+		{1968, true},             // 2001 A Space Odyssey release
+		{2017, true},             // Blade Runner 2049 release
+		{2049, false},            // Future - in title, not release year
+		{2001, true},             // Valid year (also title of film)
+		{1899, false},            // Too old
+		{currentYear + 1, true},  // Next year OK (pre-releases)
+		{currentYear + 2, false}, // Too far future
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("year_%d", tt.year), func(t *testing.T) {
+			assert.Equal(t, tt.valid, isValidReleaseYear(tt.year))
 		})
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Pre-compiled regex patterns (compiled once at package init)
@@ -446,6 +447,13 @@ func monthToNumber(month string) string {
 // isValidDate checks if month and day values are reasonable
 func isValidDate(month, day string) bool {
 	return month >= "01" && month <= "12" && day >= "01" && day <= "31"
+}
+
+// isValidReleaseYear checks if a year is a plausible release year.
+// Valid range: 1900 to current year + 1 (for pre-releases).
+func isValidReleaseYear(year int) bool {
+	currentYear := time.Now().Year()
+	return year >= 1900 && year <= currentYear+1
 }
 
 // parseDailyDate detects daily show date formats from release name.
