@@ -1,6 +1,6 @@
 # Library Import Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **Status:** ✅ COMPLETED (2026-01-25) - Issue #50
 
 **Goal:** Add CLI command and API endpoint to bulk import existing Plex libraries into arrgo.
 

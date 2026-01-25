@@ -1,6 +1,6 @@
 # Cleanup Handler Startup Reconciliation
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **Status:** ✅ COMPLETED (2026-01-24) - Issue #61
 
 **Goal:** Fix cleanup handler to restore pending cleanups from database on startup, preventing orphaned download folders after server restart.
 

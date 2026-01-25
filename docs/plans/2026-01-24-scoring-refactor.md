@@ -1,6 +1,6 @@
 # Scoring Logic Refactor Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **Status:** ✅ COMPLETED (2026-01-24)
 
 **Goal:** Extract duplicated scoring logic from `cmd/arrgo/parse.go` and `internal/search/scorer.go` into a shared `pkg/release/scoring` package.
 
