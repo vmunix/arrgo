@@ -151,8 +151,10 @@ type fileResponse struct {
 
 // listFilesResponse is the response for GET /files.
 type listFilesResponse struct {
-	Items []fileResponse `json:"items"`
-	Total int            `json:"total"`
+	Items  []fileResponse `json:"items"`
+	Total  int            `json:"total"`
+	Limit  int            `json:"limit"`
+	Offset int            `json:"offset"`
 }
 
 // statusResponse is the response for GET /status.

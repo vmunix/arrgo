@@ -806,21 +806,37 @@ func (s *Server) listHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listFiles(w http.ResponseWriter, r *http.Request) {
-	filter := library.FileFilter{}
+	filter := library.FileFilter{
+		Limit:  queryInt(r, "limit", 50),
+		Offset: queryInt(r, "offset", 0),
+	}
+
+	// Validate pagination parameters
+	if filter.Limit < 0 || filter.Offset < 0 {
+		writeError(w, http.StatusBadRequest, "INVALID_PAGINATION", "limit and offset must be non-negative")
+		return
+	}
+	const maxLimit = 1000
+	if filter.Limit > maxLimit {
+		filter.Limit = maxLimit
+	}
+
 	if contentIDStr := r.URL.Query().Get("content_id"); contentIDStr != "" {
 		id, _ := strconv.ParseInt(contentIDStr, 10, 64)
 		filter.ContentID = &id
 	}
 
-	files, _, err := s.deps.Library.ListFiles(filter)
+	files, total, err := s.deps.Library.ListFiles(filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
 	}
 
 	resp := listFilesResponse{
-		Items: make([]fileResponse, len(files)),
-		Total: len(files),
+		Items:  make([]fileResponse, len(files)),
+		Total:  total,
+		Limit:  filter.Limit,
+		Offset: filter.Offset,
 	}
 
 	for i, f := range files {
