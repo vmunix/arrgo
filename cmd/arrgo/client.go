@@ -158,14 +158,21 @@ type SearchResponse struct {
 	Errors   []string          `json:"errors,omitempty"`
 }
 
+type EpisodeStatsResponse struct {
+	TotalEpisodes     int `json:"total_episodes"`
+	AvailableEpisodes int `json:"available_episodes"`
+	SeasonCount       int `json:"season_count"`
+}
+
 type ContentResponse struct {
-	ID             int64  `json:"id"`
-	Type           string `json:"type"`
-	Title          string `json:"title"`
-	Year           int    `json:"year"`
-	Status         string `json:"status"`
-	QualityProfile string `json:"quality_profile"`
-	RootPath       string `json:"root_path"`
+	ID             int64                 `json:"id"`
+	Type           string                `json:"type"`
+	Title          string                `json:"title"`
+	Year           int                   `json:"year"`
+	Status         string                `json:"status"`
+	QualityProfile string                `json:"quality_profile"`
+	RootPath       string                `json:"root_path"`
+	EpisodeStats   *EpisodeStatsResponse `json:"episode_stats,omitempty"`
 }
 
 type ListContentResponse struct {

@@ -16,6 +16,15 @@ type contentResponse struct {
 	RootPath       string    `json:"root_path"`
 	AddedAt        time.Time `json:"added_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+	// Series-only fields
+	EpisodeStats *episodeStatsResponse `json:"episode_stats,omitempty"`
+}
+
+// episodeStatsResponse contains episode statistics for a series.
+type episodeStatsResponse struct {
+	TotalEpisodes     int `json:"total_episodes"`
+	AvailableEpisodes int `json:"available_episodes"`
+	SeasonCount       int `json:"season_count"`
 }
 
 // listContentResponse is the response for GET /content.

@@ -13,19 +13,27 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// LibraryEpisodeStats matches the API response for series episode statistics.
+type LibraryEpisodeStats struct {
+	TotalEpisodes     int `json:"total_episodes"`
+	AvailableEpisodes int `json:"available_episodes"`
+	SeasonCount       int `json:"season_count"`
+}
+
 // LibraryContentResponse matches the API response for content items.
 type LibraryContentResponse struct {
-	ID             int64     `json:"id"`
-	Type           string    `json:"type"`
-	TMDBID         *int64    `json:"tmdb_id,omitempty"`
-	TVDBID         *int64    `json:"tvdb_id,omitempty"`
-	Title          string    `json:"title"`
-	Year           int       `json:"year"`
-	Status         string    `json:"status"`
-	QualityProfile string    `json:"quality_profile"`
-	RootPath       string    `json:"root_path"`
-	AddedAt        time.Time `json:"added_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID             int64                `json:"id"`
+	Type           string               `json:"type"`
+	TMDBID         *int64               `json:"tmdb_id,omitempty"`
+	TVDBID         *int64               `json:"tvdb_id,omitempty"`
+	Title          string               `json:"title"`
+	Year           int                  `json:"year"`
+	Status         string               `json:"status"`
+	QualityProfile string               `json:"quality_profile"`
+	RootPath       string               `json:"root_path"`
+	AddedAt        time.Time            `json:"added_at"`
+	UpdatedAt      time.Time            `json:"updated_at"`
+	EpisodeStats   *LibraryEpisodeStats `json:"episode_stats,omitempty"`
 }
 
 // EpisodeResponse matches the API response for episodes.
@@ -365,8 +373,8 @@ func printLibraryShow(content *LibraryContentResponse, episodes *ListEpisodesRes
 
 func printLibraryList(data *ListLibraryResponse) {
 	fmt.Printf("Library (%d items):\n\n", data.Total)
-	fmt.Printf("  %-4s %-8s %-40s %-6s %-10s %s\n", "ID", "TYPE", "TITLE", "YEAR", "STATUS", "QUALITY")
-	fmt.Println("  " + strings.Repeat("-", 90))
+	fmt.Printf("  %-4s %-8s %-40s %-6s %-18s %s\n", "ID", "TYPE", "TITLE", "YEAR", "STATUS", "QUALITY")
+	fmt.Println("  " + strings.Repeat("-", 98))
 
 	for i := range data.Items {
 		item := &data.Items[i]
@@ -375,12 +383,27 @@ func printLibraryList(data *ListLibraryResponse) {
 			title = title[:37] + "..."
 		}
 
-		fmt.Printf("  %-4d %-8s %-40s %-6d %-10s %s\n",
+		// Format status - for series, include episode count
+		status := item.Status
+		if item.Type == "series" && item.EpisodeStats != nil {
+			status = fmt.Sprintf("%s (%d/%d)",
+				item.Status,
+				item.EpisodeStats.AvailableEpisodes,
+				item.EpisodeStats.TotalEpisodes)
+		}
+
+		// Format year - show "-" if 0
+		yearStr := fmt.Sprintf("%d", item.Year)
+		if item.Year == 0 {
+			yearStr = "-"
+		}
+
+		fmt.Printf("  %-4d %-8s %-40s %-6s %-18s %s\n",
 			item.ID,
 			item.Type,
 			title,
-			item.Year,
-			item.Status,
+			yearStr,
+			status,
 			item.QualityProfile)
 	}
 

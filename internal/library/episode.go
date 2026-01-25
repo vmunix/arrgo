@@ -196,3 +196,75 @@ func (s *Store) FindOrCreateEpisodes(contentID int64, season int, episodeNums []
 
 	return result, nil
 }
+
+// SeriesStats contains statistics about a series.
+type SeriesStats struct {
+	TotalEpisodes     int
+	AvailableEpisodes int
+	SeasonCount       int
+}
+
+// GetSeriesStats returns episode statistics for a series.
+func (s *Store) GetSeriesStats(contentID int64) (*SeriesStats, error) {
+	stats := &SeriesStats{}
+
+	// Get total and available episode counts
+	err := s.db.QueryRow(`
+		SELECT
+			COUNT(*) as total,
+			SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available,
+			COUNT(DISTINCT season) as seasons
+		FROM episodes
+		WHERE content_id = ?`, contentID,
+	).Scan(&stats.TotalEpisodes, &stats.AvailableEpisodes, &stats.SeasonCount)
+	if err != nil {
+		return nil, fmt.Errorf("get series stats: %w", err)
+	}
+
+	return stats, nil
+}
+
+// GetSeriesStatsBatch returns episode statistics for multiple series.
+// Returns a map from content ID to stats.
+func (s *Store) GetSeriesStatsBatch(contentIDs []int64) (map[int64]*SeriesStats, error) {
+	if len(contentIDs) == 0 {
+		return map[int64]*SeriesStats{}, nil
+	}
+
+	// Build placeholders
+	placeholders := make([]string, len(contentIDs))
+	args := make([]any, len(contentIDs))
+	for i, id := range contentIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	rows, err := s.db.Query(fmt.Sprintf(`
+		SELECT
+			content_id,
+			COUNT(*) as total,
+			SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available,
+			COUNT(DISTINCT season) as seasons
+		FROM episodes
+		WHERE content_id IN (%s)
+		GROUP BY content_id`, strings.Join(placeholders, ",")), args...)
+	if err != nil {
+		return nil, fmt.Errorf("get series stats batch: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[int64]*SeriesStats)
+	for rows.Next() {
+		var contentID int64
+		stats := &SeriesStats{}
+		if err := rows.Scan(&contentID, &stats.TotalEpisodes, &stats.AvailableEpisodes, &stats.SeasonCount); err != nil {
+			return nil, fmt.Errorf("scan series stats: %w", err)
+		}
+		result[contentID] = stats
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate series stats: %w", err)
+	}
+
+	return result, nil
+}

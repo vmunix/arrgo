@@ -207,6 +207,17 @@ func (s *Server) listContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Collect series IDs to batch-fetch stats
+	var seriesIDs []int64
+	for _, c := range items {
+		if c.Type == library.ContentTypeSeries {
+			seriesIDs = append(seriesIDs, c.ID)
+		}
+	}
+
+	// Fetch stats for all series in one query
+	seriesStats, _ := s.deps.Library.GetSeriesStatsBatch(seriesIDs)
+
 	resp := listContentResponse{
 		Items:  make([]contentResponse, len(items)),
 		Total:  total,
@@ -215,7 +226,7 @@ func (s *Server) listContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for i, c := range items {
-		resp.Items[i] = contentToResponse(c)
+		resp.Items[i] = contentToResponse(c, seriesStats[c.ID])
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -238,11 +249,17 @@ func (s *Server) getContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, contentToResponse(c))
+	// Fetch stats for series
+	var stats *library.SeriesStats
+	if c.Type == library.ContentTypeSeries {
+		stats, _ = s.deps.Library.GetSeriesStats(c.ID)
+	}
+
+	writeJSON(w, http.StatusOK, contentToResponse(c, stats))
 }
 
-func contentToResponse(c *library.Content) contentResponse {
-	return contentResponse{
+func contentToResponse(c *library.Content, stats *library.SeriesStats) contentResponse {
+	resp := contentResponse{
 		ID:             c.ID,
 		Type:           string(c.Type),
 		TMDBID:         c.TMDBID,
@@ -255,6 +272,26 @@ func contentToResponse(c *library.Content) contentResponse {
 		AddedAt:        c.AddedAt,
 		UpdatedAt:      c.UpdatedAt,
 	}
+
+	// For series, compute status from episode stats and include stats in response
+	if c.Type == library.ContentTypeSeries && stats != nil {
+		resp.EpisodeStats = &episodeStatsResponse{
+			TotalEpisodes:     stats.TotalEpisodes,
+			AvailableEpisodes: stats.AvailableEpisodes,
+			SeasonCount:       stats.SeasonCount,
+		}
+
+		// Compute display status based on episode availability
+		if stats.AvailableEpisodes == 0 {
+			resp.Status = "wanted"
+		} else if stats.AvailableEpisodes < stats.TotalEpisodes {
+			resp.Status = "partial"
+		} else {
+			resp.Status = "available"
+		}
+	}
+
+	return resp
 }
 
 func (s *Server) addContent(w http.ResponseWriter, r *http.Request) {
@@ -314,7 +351,7 @@ func (s *Server) addContent(w http.ResponseWriter, r *http.Request) {
 		_ = s.deps.Bus.Publish(r.Context(), evt)
 	}
 
-	writeJSON(w, http.StatusCreated, contentToResponse(c))
+	writeJSON(w, http.StatusCreated, contentToResponse(c, nil))
 }
 
 func (s *Server) updateContent(w http.ResponseWriter, r *http.Request) {
@@ -367,7 +404,13 @@ func (s *Server) updateContent(w http.ResponseWriter, r *http.Request) {
 		_ = s.deps.Bus.Publish(r.Context(), evt)
 	}
 
-	writeJSON(w, http.StatusOK, contentToResponse(c))
+	// Fetch stats for series
+	var stats *library.SeriesStats
+	if c.Type == library.ContentTypeSeries {
+		stats, _ = s.deps.Library.GetSeriesStats(c.ID)
+	}
+
+	writeJSON(w, http.StatusOK, contentToResponse(c, stats))
 }
 
 func (s *Server) deleteContent(w http.ResponseWriter, r *http.Request) {
