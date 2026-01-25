@@ -242,7 +242,7 @@ func runServer(configPath string) error {
 	}
 
 	// Build indexer list for API
-	var apiIndexers []v1.IndexerAPI
+	apiIndexers := make([]v1.IndexerAPI, 0, len(newznabClients))
 	for _, c := range newznabClients {
 		apiIndexers = append(apiIndexers, c)
 	}

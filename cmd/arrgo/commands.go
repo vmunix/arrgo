@@ -10,6 +10,11 @@ import (
 	"github.com/vmunix/arrgo/pkg/release"
 )
 
+const (
+	contentTypeMovie  = "movie"
+	contentTypeSeries = "series"
+)
+
 func printJSON(v any) {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
@@ -103,9 +108,9 @@ func grabRelease(client *Client, rel ReleaseResponse, contentType, profile strin
 	// Determine content type if not specified
 	if contentType == "" {
 		if info.Season > 0 || info.Episode > 0 {
-			contentType = "series"
+			contentType = contentTypeSeries
 		} else {
-			contentType = "movie"
+			contentType = contentTypeMovie
 		}
 	}
 

@@ -20,6 +20,8 @@ import (
 	"github.com/vmunix/arrgo/internal/search"
 )
 
+const queryTrue = "true"
+
 // Config holds API server configuration.
 type Config struct {
 	MovieRoot       string
@@ -535,7 +537,7 @@ func (s *Server) grab(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listDownloads(w http.ResponseWriter, r *http.Request) {
 	filter := download.Filter{}
-	if activeStr := r.URL.Query().Get("active"); activeStr == "true" {
+	if activeStr := r.URL.Query().Get("active"); activeStr == queryTrue {
 		filter.Active = true
 	}
 
@@ -628,7 +630,7 @@ func (s *Server) deleteDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deleteFiles := r.URL.Query().Get("delete_files") == "true"
+	deleteFiles := r.URL.Query().Get("delete_files") == queryTrue
 	if err := s.deps.Manager.Cancel(r.Context(), id, deleteFiles); err != nil {
 		writeError(w, http.StatusInternalServerError, "CANCEL_ERROR", err.Error())
 		return
@@ -996,7 +998,7 @@ func (s *Server) listProfiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listIndexers(w http.ResponseWriter, r *http.Request) {
-	testConn := r.URL.Query().Get("test") == "true"
+	testConn := r.URL.Query().Get("test") == queryTrue
 	ctx := r.Context()
 
 	resp := listIndexersResponse{
