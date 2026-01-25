@@ -286,6 +286,21 @@ type libraryCheckResponse struct {
 	WithIssues int                `json:"with_issues"`
 }
 
+// EventResponse represents an event in API responses.
+type EventResponse struct {
+	ID         int64  `json:"id"`
+	EventType  string `json:"event_type"`
+	EntityType string `json:"entity_type"`
+	EntityID   int64  `json:"entity_id"`
+	OccurredAt string `json:"occurred_at"`
+}
+
+// listEventsResponse is the response for GET /events.
+type listEventsResponse struct {
+	Items []EventResponse `json:"items"`
+	Total int             `json:"total"`
+}
+
 // DashboardResponse is the response for GET /dashboard with aggregated stats.
 type DashboardResponse struct {
 	Version     string `json:"version"`

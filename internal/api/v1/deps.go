@@ -58,7 +58,8 @@ type ServerDeps struct {
 	Manager  DownloadManager
 	Plex     PlexClient
 	Importer FileImporter
-	Bus      *events.Bus // Optional: for event-driven mode
+	Bus      *events.Bus      // Optional: for event-driven mode
+	EventLog *events.EventLog // Optional: for event audit log
 }
 
 // Validate checks that all required dependencies are provided.

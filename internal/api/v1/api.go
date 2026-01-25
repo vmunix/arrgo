@@ -81,6 +81,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// History
 	mux.HandleFunc("GET /api/v1/history", s.listHistory)
 
+	// Events
+	mux.HandleFunc("GET /api/v1/events", s.listEvents)
+
 	// Files
 	mux.HandleFunc("GET /api/v1/files", s.listFiles)
 	mux.HandleFunc("DELETE /api/v1/files/{id}", s.deleteFile)
