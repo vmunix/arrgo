@@ -1057,3 +1057,238 @@ func TestScanPlexLibraries_NoPlex(t *testing.T) {
 	assert.Equal(t, "SERVICE_UNAVAILABLE", resp.Code)
 	assert.Equal(t, "Plex not configured", resp.Error)
 }
+
+func TestSearchPlex_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	mockPlex := mocks.NewMockPlexClient(ctrl)
+
+	// Setup mock expectations
+	mockPlex.EXPECT().
+		Search(gomock.Any(), "inception").
+		Return([]importer.PlexItem{
+			{
+				RatingKey: "12345",
+				Title:     "Inception",
+				Year:      2010,
+				Type:      "movie",
+				AddedAt:   1700000000,
+				FilePath:  "/media/movies/Inception (2010)/Inception.mkv",
+			},
+			{
+				RatingKey: "12346",
+				Title:     "Inception: The Cobol Job",
+				Year:      2010,
+				Type:      "movie",
+				AddedAt:   1700000001,
+				FilePath:  "/media/movies/Inception The Cobol Job (2010)/cobol.mkv",
+			},
+		}, nil)
+
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Plex:      mockPlex,
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/plex/search?query=inception", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp plexSearchResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	assert.Equal(t, "inception", resp.Query)
+	assert.Equal(t, 2, resp.Total)
+	assert.Len(t, resp.Items, 2)
+
+	// Verify first item
+	assert.Equal(t, "Inception", resp.Items[0].Title)
+	assert.Equal(t, 2010, resp.Items[0].Year)
+	assert.Equal(t, "movie", resp.Items[0].Type)
+	assert.Equal(t, int64(1700000000), resp.Items[0].AddedAt)
+	assert.Equal(t, "/media/movies/Inception (2010)/Inception.mkv", resp.Items[0].FilePath)
+	assert.False(t, resp.Items[0].Tracked)
+	assert.Nil(t, resp.Items[0].ContentID)
+
+	// Verify second item
+	assert.Equal(t, "Inception: The Cobol Job", resp.Items[1].Title)
+	assert.Equal(t, 2010, resp.Items[1].Year)
+}
+
+func TestSearchPlex_MissingQuery(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	mockPlex := mocks.NewMockPlexClient(ctrl)
+
+	// No EXPECT calls - search should not be called when query is missing
+
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Plex:      mockPlex,
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/plex/search", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp errorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "MISSING_QUERY", resp.Code)
+	assert.Equal(t, "query parameter is required", resp.Error)
+}
+
+func TestListPlexLibraryItems_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	mockPlex := mocks.NewMockPlexClient(ctrl)
+
+	// Setup mock expectations
+	mockPlex.EXPECT().
+		FindSectionByName(gomock.Any(), "Movies").
+		Return(&importer.Section{
+			Key:   "1",
+			Title: "Movies",
+			Type:  "movie",
+		}, nil)
+
+	mockPlex.EXPECT().
+		ListLibraryItems(gomock.Any(), "1").
+		Return([]importer.PlexItem{
+			{
+				RatingKey: "100",
+				Title:     "The Matrix",
+				Year:      1999,
+				Type:      "movie",
+				AddedAt:   1699000000,
+				FilePath:  "/media/movies/The Matrix (1999)/matrix.mkv",
+			},
+			{
+				RatingKey: "101",
+				Title:     "The Matrix Reloaded",
+				Year:      2003,
+				Type:      "movie",
+				AddedAt:   1699000001,
+				FilePath:  "/media/movies/The Matrix Reloaded (2003)/reloaded.mkv",
+			},
+			{
+				RatingKey: "102",
+				Title:     "The Matrix Revolutions",
+				Year:      2003,
+				Type:      "movie",
+				AddedAt:   1699000002,
+				FilePath:  "/media/movies/The Matrix Revolutions (2003)/revolutions.mkv",
+			},
+		}, nil)
+
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Plex:      mockPlex,
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/plex/libraries/Movies/items", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp plexListResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	assert.Equal(t, "Movies", resp.Library)
+	assert.Equal(t, 3, resp.Total)
+	assert.Len(t, resp.Items, 3)
+
+	// Verify first item
+	assert.Equal(t, "The Matrix", resp.Items[0].Title)
+	assert.Equal(t, 1999, resp.Items[0].Year)
+	assert.Equal(t, "movie", resp.Items[0].Type)
+	assert.Equal(t, int64(1699000000), resp.Items[0].AddedAt)
+	assert.Equal(t, "/media/movies/The Matrix (1999)/matrix.mkv", resp.Items[0].FilePath)
+	assert.False(t, resp.Items[0].Tracked)
+	assert.Nil(t, resp.Items[0].ContentID)
+
+	// Verify second and third items exist
+	assert.Equal(t, "The Matrix Reloaded", resp.Items[1].Title)
+	assert.Equal(t, "The Matrix Revolutions", resp.Items[2].Title)
+}
+
+func TestListPlexLibraryItems_NotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	mockPlex := mocks.NewMockPlexClient(ctrl)
+
+	// Return nil section (not found)
+	mockPlex.EXPECT().
+		FindSectionByName(gomock.Any(), "NonExistent").
+		Return(nil, nil)
+
+	// GetSections called to list available libraries
+	mockPlex.EXPECT().
+		GetSections(gomock.Any()).
+		Return([]importer.Section{
+			{Key: "1", Title: "Movies", Type: "movie"},
+			{Key: "2", Title: "TV Shows", Type: "show"},
+		}, nil)
+
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Plex:      mockPlex,
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/plex/libraries/NonExistent/items", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+
+	var resp errorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "LIBRARY_NOT_FOUND", resp.Code)
+	assert.Contains(t, resp.Error, "NonExistent")
+	assert.Contains(t, resp.Error, "Movies")
+	assert.Contains(t, resp.Error, "TV Shows")
+}
