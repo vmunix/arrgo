@@ -212,12 +212,13 @@ type importRequest struct {
 
 // importResponse is the response for POST /import.
 type importResponse struct {
-	FileID       int64  `json:"file_id"`
+	FileID       int64  `json:"file_id,omitempty"`
 	ContentID    int64  `json:"content_id"`
 	SourcePath   string `json:"source_path"`
-	DestPath     string `json:"dest_path"`
+	DestPath     string `json:"dest_path,omitempty"`
 	SizeBytes    int64  `json:"size_bytes"`
 	PlexNotified bool   `json:"plex_notified"`
+	EpisodeCount int    `json:"episode_count,omitempty"` // For season pack imports
 }
 
 // plexScanRequest is the request body for POST /plex/scan.

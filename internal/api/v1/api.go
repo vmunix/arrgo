@@ -1425,7 +1425,53 @@ func (s *Server) importTracked(w http.ResponseWriter, r *http.Request, req impor
 		return
 	}
 
-	// Call importer
+	// Call appropriate importer method based on download type
+	if dl.IsCompleteSeason {
+		// Season pack import
+		packResult, err := s.deps.Importer.ImportSeasonPack(ctx, dl.ID, sourcePath)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", err.Error())
+			return
+		}
+
+		// Publish ImportCompleted event for event-driven pipeline
+		if s.deps.Bus != nil {
+			episodeResults := make([]events.EpisodeImportResult, 0, len(packResult.Episodes))
+			for _, ep := range packResult.Episodes {
+				var errStr string
+				if ep.Error != nil {
+					errStr = ep.Error.Error()
+				}
+				episodeResults = append(episodeResults, events.EpisodeImportResult{
+					EpisodeID: ep.EpisodeID,
+					Season:    ep.Season,
+					Episode:   ep.Episode,
+					Success:   ep.Error == nil,
+					FilePath:  ep.FilePath,
+					Error:     errStr,
+				})
+			}
+			evt := &events.ImportCompleted{
+				BaseEvent:      events.NewBaseEvent(events.EventImportCompleted, events.EntityDownload, dl.ID),
+				DownloadID:     dl.ID,
+				ContentID:      dl.ContentID,
+				FileSize:       packResult.TotalSize,
+				EpisodeResults: episodeResults,
+			}
+			_ = s.deps.Bus.Publish(ctx, evt)
+		}
+
+		writeJSON(w, http.StatusOK, importResponse{
+			ContentID:    content.ID,
+			SourcePath:   sourcePath,
+			SizeBytes:    packResult.TotalSize,
+			PlexNotified: packResult.PlexNotified,
+			EpisodeCount: len(packResult.Episodes),
+		})
+		return
+	}
+
+	// Single file import
 	result, err := s.deps.Importer.Import(ctx, dl.ID, sourcePath)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", err.Error())
