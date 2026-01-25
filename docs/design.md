@@ -1,7 +1,7 @@
 # arrgo: Unified Media Automation in Go
 
-**Date:** 2026-01-17
-**Status:** Draft
+**Date:** 2026-01-24
+**Status:** Active Development
 **Author:** Mark + Claude
 
 ## Overview
@@ -96,7 +96,7 @@ arrgo is a unified media automation system written in Go, designed to replace th
 **Download Module**
 - Sends NZBs to download clients
 - Tracks download ID ↔ content mapping
-- State machine: queued → downloading → completed → importing → imported → cleaned
+- State machine: queued → downloading → completed → importing → imported → cleaned (or failed/skipped)
 - Initially SABnzbd only; qBittorrent stubbed
 
 **Import Module**
@@ -159,7 +159,7 @@ downloads (
     episode_id      INTEGER REFERENCES episodes(id),
     client          TEXT NOT NULL,          -- 'sabnzbd' | 'qbittorrent' | 'manual'
     client_id       TEXT NOT NULL,
-    status          TEXT NOT NULL,          -- 'queued' | 'downloading' | 'completed' | 'imported' | 'cleaned' | 'failed'
+    status          TEXT NOT NULL,          -- 'queued' | 'downloading' | 'completed' | 'importing' | 'imported' | 'cleaned' | 'failed' | 'skipped'
     release_name    TEXT,
     indexer         TEXT,
     added_at        TIMESTAMP,
@@ -314,21 +314,37 @@ POST    /api/v1/grab                    Grab a release
 # Downloads
 GET     /api/v1/downloads               Active + recent
 GET     /api/v1/downloads/:id           Single download
+GET     /api/v1/downloads/:id/events    Events for a download
 DELETE  /api/v1/downloads/:id           Cancel download
+POST    /api/v1/downloads/:id/retry     Retry failed download
 
-# History
+# History & Events
 GET     /api/v1/history                 Audit log
+GET     /api/v1/events                  Event log
 
 # Files
 GET     /api/v1/files                   All tracked files
 DELETE  /api/v1/files/:id               Remove file
+
+# Library
+GET     /api/v1/library/check           Verify files exist and Plex awareness
+
+# Import
+POST    /api/v1/import                  Import tracked download or manual file
+
+# Plex
+GET     /api/v1/plex/status             Plex connection status and libraries
+POST    /api/v1/plex/scan               Scan specific libraries or all
+GET     /api/v1/plex/libraries/:name/items  List library contents
+GET     /api/v1/plex/search             Search Plex with tracking status
 
 # System
 GET     /api/v1/status                  Health, version
 GET     /api/v1/dashboard               Aggregated stats (connections, pipeline, stuck, library)
 GET     /api/v1/verify                  Reality-check downloads against live systems
 GET     /api/v1/profiles                Quality profiles
-POST    /api/v1/scan                    Trigger Plex scan
+GET     /api/v1/indexers                Configured indexers (with optional connectivity test)
+POST    /api/v1/scan                    Trigger Plex scan by path
 ```
 
 ### Compatibility API (`/api/v3`)
@@ -399,13 +415,20 @@ Plex Adapter                 │                      │
 | Event | Emitted By | Handled By |
 |-------|-----------|------------|
 | `GrabRequested` | API, Compat layer | DownloadHandler |
+| `GrabSkipped` | DownloadHandler | (logged) - when existing quality is better |
 | `DownloadCreated` | DownloadHandler | (logged) |
-| `DownloadProgress` | SABnzbd Adapter | (logged) |
+| `DownloadProgressed` | SABnzbd Adapter | (logged) |
 | `DownloadCompleted` | SABnzbd Adapter | ImportHandler |
+| `DownloadFailed` | SABnzbd Adapter | (logged) |
 | `ImportStarted` | ImportHandler | (logged) |
 | `ImportCompleted` | ImportHandler | CleanupHandler |
+| `ImportFailed` | ImportHandler | (logged) |
+| `ImportSkipped` | ImportHandler | (logged) - when existing quality is better |
 | `PlexItemDetected` | Plex Adapter | CleanupHandler |
+| `CleanupStarted` | CleanupHandler | (logged) |
 | `CleanupCompleted` | CleanupHandler | (logged) |
+| `ContentAdded` | API | (logged) |
+| `ContentStatusChanged` | API | (logged) |
 
 ### Background Jobs
 
@@ -476,24 +499,30 @@ arrgo/
 │   └── arrgod/                  # Server daemon
 │       └── main.go
 ├── internal/
+│   ├── events/                  # Event bus + SQLite event log
+│   ├── handlers/                # Event handlers (download, import, cleanup)
+│   ├── adapters/                # External system adapters
+│   │   ├── sabnzbd/             # SABnzbd polling adapter
+│   │   └── plex/                # Plex polling adapter
+│   ├── server/                  # Runner orchestrating event-driven components
 │   ├── library/                 # Content tracking
 │   ├── search/                  # Indexer queries
-│   ├── download/                # Download client integration
-│   ├── importer/                # File import & rename
+│   ├── download/                # Download client integration (SABnzbd)
+│   ├── importer/                # File import, rename, Plex notification
 │   ├── api/
 │   │   ├── v1/                  # Native API
 │   │   └── compat/              # Radarr/Sonarr shim
 │   ├── ai/                      # LLM integration
+│   ├── tmdb/                    # TMDB metadata client
 │   └── config/                  # Configuration loading
 ├── pkg/
 │   ├── newznab/                 # Newznab protocol client
 │   └── release/                 # Release name parsing
 ├── migrations/                  # SQLite schema
 ├── docs/
-│   └── api.yaml                 # OpenAPI spec
+│   └── design.md                # This design document
 ├── config.example.toml
-├── Dockerfile
-├── docker-compose.yml
+├── Taskfile.yml                 # Task runner commands
 └── README.md
 ```
 
@@ -521,31 +550,61 @@ yay -S arrgo
 arrgod                           # Start API + background jobs
 arrgod --config FILE             # Use custom config file
 
-# Client commands
-arrgo status                     # Dashboard (connections, pipeline, problems)
-arrgo search "Movie Name"        # Search indexers
-arrgo queue                      # Show active downloads
-arrgo queue --all                # Include terminal states (cleaned, failed)
-arrgo queue --state X            # Filter by state
-arrgo imports                    # Pending imports and recent completions
-arrgo verify [id]                # Reality-check against SABnzbd/filesystem/Plex
-arrgo import 42                  # Import tracked download by ID
-arrgo import --manual "/path"    # Import arbitrary file with auto-parsing
-arrgo parse <release>            # Parse release name (local, no server needed)
-arrgo parse --score hd           # Parse and show score breakdown for profile
+# System status & verification
+arrgo status                     # Dashboard (connections, downloads, library)
+arrgo status --verify            # Dashboard + verify all downloads against SABnzbd/filesystem/Plex
+arrgo status 42                  # Verify specific download
+
+# Downloads
+arrgo downloads                          # Show active downloads
+arrgo downloads --all                    # Include terminal states (cleaned, failed)
+arrgo downloads --state failed           # Filter by state
+arrgo downloads show 42                  # Show detailed download info
+arrgo downloads cancel 42                # Cancel a download
+arrgo downloads cancel 42 --delete       # Cancel and delete files
+arrgo downloads retry 42                 # Retry a failed download
+
+# Library management
+arrgo library list               # List all tracked content (movies, series)
+arrgo library delete 42          # Remove content from library
+arrgo library check              # Verify files exist and Plex awareness
+
+# Search and grab
+arrgo search "Movie Name"                # Search indexers
+arrgo search -v "Movie Name"             # Verbose (show indexer, group, service)
+arrgo search "Movie" --grab best         # Auto-grab best result
+arrgo search "Movie" --grab 1            # Grab specific result by number
+arrgo search "Movie" --type movie --profile uhd  # Filter by type and profile
+
+# Import content
+arrgo import list                              # Show pending imports and recent completions
+arrgo import 42                                # Import tracked download by ID
+arrgo import --manual "/path/to/file.mkv"      # Import file with auto-parsed metadata
+arrgo import --manual "/path/to/file.mkv" --dry-run  # Preview without changes
 
 # Plex integration
 arrgo plex status                # Show Plex connection and libraries
-arrgo plex scan movies           # Trigger library scan
+arrgo plex list                  # List all Plex libraries
 arrgo plex list movies           # List library contents with tracking status
 arrgo plex search "Matrix"       # Search Plex with tracking status
+arrgo plex scan movies           # Trigger library scan (case-insensitive names)
+arrgo plex scan --all            # Scan all libraries
+
+# Local commands (no server needed)
+arrgo parse "Release.Name.2024.1080p.mkv"      # Parse release name
+arrgo parse --score hd "Release.1080p.mkv"     # Parse and score against profile
+arrgo parse -f releases.txt --json             # Batch parse from file
+arrgo init                       # Interactive setup wizard
+arrgo version                    # Print version
+
+# Global flags
+--json                           # Output as JSON
+--quiet, -q                      # Suppress non-essential output
+--server URL                     # Custom server URL (default: http://localhost:8484)
 
 # AI chat (v2+)
 arrgo chat                       # Interactive session
 arrgo ask "why is X stuck?"      # One-shot question
-
-# Setup
-arrgo init                       # Interactive wizard
 ```
 
 ### Init Wizard
