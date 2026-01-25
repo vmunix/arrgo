@@ -258,10 +258,11 @@ func (a *Adapter) emitProgressed(ctx context.Context, dl *download.Download, sta
 		"speed", status.Speed)
 }
 
-// isTerminalStatus returns true if the status is a terminal state.
+// isTerminalStatus returns true if the status is a terminal state
+// from the perspective of the SABnzbd adapter (i.e., no further polling needed).
 func isTerminalStatus(s download.Status) bool {
 	switch s {
-	case download.StatusCompleted, download.StatusImported, download.StatusCleaned, download.StatusFailed:
+	case download.StatusCompleted, download.StatusImporting, download.StatusImported, download.StatusCleaned, download.StatusFailed:
 		return true
 	default:
 		return false
