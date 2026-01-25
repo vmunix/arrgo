@@ -422,3 +422,27 @@ func (c *Client) CancelDownload(id int64, deleteFiles bool) error {
 	}
 	return c.delete(path)
 }
+
+// Event types
+
+type EventResponse struct {
+	ID         int64  `json:"id"`
+	EventType  string `json:"event_type"`
+	EntityType string `json:"entity_type"`
+	EntityID   int64  `json:"entity_id"`
+	OccurredAt string `json:"occurred_at"`
+}
+
+type ListEventsResponse struct {
+	Items []EventResponse `json:"items"`
+	Total int             `json:"total"`
+}
+
+func (c *Client) Events(limit int) (*ListEventsResponse, error) {
+	path := fmt.Sprintf("/api/v1/events?limit=%d", limit)
+	var resp ListEventsResponse
+	if err := c.get(path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
