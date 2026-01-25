@@ -254,6 +254,8 @@ category = "arrgo"
 url = "http://localhost:32400"
 token = "${PLEX_TOKEN}"
 libraries = ["Movies", "TV Shows"]
+remote_path = "/data/media"        # Path as seen by Plex (for path translation)
+local_path = "/srv/data/media"     # Corresponding local path
 
 [overseerr]
 enabled = true
@@ -328,6 +330,7 @@ DELETE  /api/v1/files/:id               Remove file
 
 # Library
 GET     /api/v1/library/check           Verify files exist and Plex awareness
+POST    /api/v1/library/import          Import existing Plex library into arrgo
 
 # Import
 POST    /api/v1/import                  Import tracked download or manual file
@@ -568,6 +571,9 @@ arrgo downloads retry 42                 # Retry a failed download
 arrgo library list               # List all tracked content (movies, series)
 arrgo library delete 42          # Remove content from library
 arrgo library check              # Verify files exist and Plex awareness
+arrgo library import --from-plex Movies  # Import existing Plex library
+arrgo library import --from-plex Movies --dry-run  # Preview import
+arrgo library import --from-plex Movies --quality uhd  # Override quality
 
 # Search and grab
 arrgo search "Movie Name"                # Search indexers
