@@ -348,3 +348,34 @@ type DashboardResponse struct {
 		Series int `json:"series"`
 	} `json:"library"`
 }
+
+// libraryImportRequest is the request body for POST /library/import.
+type libraryImportRequest struct {
+	Source          string `json:"source"`                     // "plex"
+	Library         string `json:"library"`                    // Plex library name
+	QualityOverride string `json:"quality_override,omitempty"` // Override parsed quality
+	DryRun          bool   `json:"dry_run,omitempty"`
+}
+
+// libraryImportItem represents a single imported or skipped item.
+type libraryImportItem struct {
+	Title     string `json:"title"`
+	Year      int    `json:"year"`
+	Type      string `json:"type"`
+	Quality   string `json:"quality,omitempty"`
+	ContentID int64  `json:"content_id,omitempty"`
+	Reason    string `json:"reason,omitempty"` // for skipped items
+	Error     string `json:"error,omitempty"`  // for errored items
+}
+
+// libraryImportResponse is the response for POST /library/import.
+type libraryImportResponse struct {
+	Imported []libraryImportItem `json:"imported"`
+	Skipped  []libraryImportItem `json:"skipped"`
+	Errors   []libraryImportItem `json:"errors"`
+	Summary  struct {
+		Imported int `json:"imported"`
+		Skipped  int `json:"skipped"`
+		Errors   int `json:"errors"`
+	} `json:"summary"`
+}
