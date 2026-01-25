@@ -55,7 +55,10 @@ func (h *DownloadHandler) handleGrabRequested(ctx context.Context, e *events.Gra
 	h.Logger().Info("processing grab request",
 		"content_id", e.ContentID,
 		"release", e.ReleaseName,
-		"indexer", e.Indexer)
+		"indexer", e.Indexer,
+		"episode_ids", e.EpisodeIDs,
+		"season", e.Season,
+		"is_complete_season", e.IsCompleteSeason)
 
 	// Check for existing files before grabbing (duplicate prevention)
 	if e.ContentID > 0 && h.library != nil {
@@ -115,13 +118,21 @@ func (h *DownloadHandler) handleGrabRequested(ctx context.Context, e *events.Gra
 
 	// Create DB record
 	dl := &download.Download{
-		ContentID:   e.ContentID,
-		EpisodeID:   e.EpisodeID,
-		Client:      download.ClientSABnzbd,
-		ClientID:    clientID,
-		Status:      download.StatusQueued,
-		ReleaseName: e.ReleaseName,
-		Indexer:     e.Indexer,
+		ContentID:        e.ContentID,
+		Season:           e.Season,
+		IsCompleteSeason: e.IsCompleteSeason,
+		Client:           download.ClientSABnzbd,
+		ClientID:         clientID,
+		Status:           download.StatusQueued,
+		ReleaseName:      e.ReleaseName,
+		Indexer:          e.Indexer,
+	}
+
+	// Backward compat: set EpisodeID if single episode
+	if e.EpisodeID != nil {
+		dl.EpisodeID = e.EpisodeID
+	} else if len(e.EpisodeIDs) == 1 {
+		dl.EpisodeID = &e.EpisodeIDs[0]
 	}
 
 	if err := h.store.Add(dl); err != nil {
@@ -129,19 +140,30 @@ func (h *DownloadHandler) handleGrabRequested(ctx context.Context, e *events.Gra
 		return
 	}
 
-	// Emit success event
+	// Set episode IDs in junction table
+	if len(e.EpisodeIDs) > 0 {
+		if err := h.store.SetEpisodeIDs(dl.ID, e.EpisodeIDs); err != nil {
+			h.Logger().Error("failed to set episode IDs", "error", err)
+		}
+	}
+
+	// Emit success event with new fields
 	if err := h.Bus().Publish(ctx, &events.DownloadCreated{
-		BaseEvent:   events.NewBaseEvent(events.EventDownloadCreated, events.EntityDownload, dl.ID),
-		DownloadID:  dl.ID,
-		ContentID:   e.ContentID,
-		EpisodeID:   e.EpisodeID,
-		ClientID:    clientID,
-		ReleaseName: e.ReleaseName,
+		BaseEvent:        events.NewBaseEvent(events.EventDownloadCreated, events.EntityDownload, dl.ID),
+		DownloadID:       dl.ID,
+		ContentID:        e.ContentID,
+		EpisodeID:        dl.EpisodeID,
+		EpisodeIDs:       e.EpisodeIDs,
+		Season:           e.Season,
+		IsCompleteSeason: e.IsCompleteSeason,
+		ClientID:         clientID,
+		ReleaseName:      e.ReleaseName,
 	}); err != nil {
 		h.Logger().Error("failed to publish DownloadCreated event", "error", err)
 	}
 
 	h.Logger().Info("download created",
 		"download_id", dl.ID,
-		"client_id", clientID)
+		"client_id", clientID,
+		"episode_ids", e.EpisodeIDs)
 }
