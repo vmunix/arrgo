@@ -547,6 +547,55 @@ func (c *PlexClient) searchMovies(ctx context.Context, query string) ([]PlexItem
 	return movies, nil
 }
 
+// searchShows searches Plex and filters to shows only.
+func (c *PlexClient) searchShows(ctx context.Context, query string) ([]PlexItem, error) {
+	items, err := c.Search(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	var shows []PlexItem
+	for _, item := range items {
+		if item.Type == "show" {
+			shows = append(shows, item)
+		}
+	}
+	return shows, nil
+}
+
+// FindShow checks if a TV show exists in Plex by title.
+// Returns (found, ratingKey, error).
+func (c *PlexClient) FindShow(ctx context.Context, title string) (bool, string, error) {
+	shows, err := c.searchShows(ctx, title)
+	if err != nil {
+		return false, "", err
+	}
+
+	if len(shows) == 0 {
+		return false, "", nil
+	}
+
+	// Normalize search title for comparison
+	normalizedSearch := normalizeForMatch(title)
+
+	// Exact normalized title match
+	for _, item := range shows {
+		if normalizeForMatch(item.Title) == normalizedSearch {
+			return true, item.RatingKey, nil
+		}
+	}
+
+	// Fuzzy match (Jaro-Winkler ≥ 0.85)
+	for _, item := range shows {
+		similarity := jaroWinkler(normalizedSearch, normalizeForMatch(item.Title))
+		if similarity >= 0.85 {
+			return true, item.RatingKey, nil
+		}
+	}
+
+	return false, "", nil
+}
+
 // fallbackSearch tries searching for individual words from the title.
 // Plex search can be finicky with long titles or punctuation differences.
 func (c *PlexClient) fallbackSearch(ctx context.Context, title string) ([]PlexItem, error) {

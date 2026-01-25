@@ -489,6 +489,9 @@ func (a *plexCheckerAdapter) HasContentByID(ctx context.Context, contentID int64
 	if err != nil {
 		return false, "", err
 	}
-	// Use FindMovie with fuzzy matching and year tolerance
+	// Use appropriate finder based on content type
+	if content.Type == library.ContentTypeSeries {
+		return a.client.FindShow(ctx, content.Title)
+	}
 	return a.client.FindMovie(ctx, content.Title, content.Year)
 }
