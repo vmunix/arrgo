@@ -1,6 +1,6 @@
 # arrgo: Unified Media Automation in Go
 
-**Date:** 2026-01-24
+**Date:** 2026-01-25
 **Status:** Active Development
 **Author:** Mark + Claude
 
@@ -546,99 +546,29 @@ brew install arrgo
 yay -S arrgo
 ```
 
-### CLI Commands
+### CLI Design
 
-```bash
-# Server daemon
-arrgod                           # Start API + background jobs
-arrgod --config FILE             # Use custom config file
+The CLI (`arrgo`) is a thin client over the REST API, designed around two principles:
 
-# System status & verification
-arrgo status                     # Dashboard (connections, downloads, library)
-arrgo status --verify            # Dashboard + verify all downloads against SABnzbd/filesystem/Plex
-arrgo status 42                  # Verify specific download
+**1. Full observability** — Every state transition in the event-driven pipeline is observable via CLI. Users can see what's happening at each stage: grab → download → import → plex detection → cleanup.
 
-# Downloads
-arrgo downloads                          # Show active downloads
-arrgo downloads --all                    # Include terminal states (cleaned, failed)
-arrgo downloads --state failed           # Filter by state
-arrgo downloads show 42                  # Show detailed download info
-arrgo downloads cancel 42                # Cancel a download
-arrgo downloads cancel 42 --delete       # Cancel and delete files
-arrgo downloads retry 42                 # Retry a failed download
+**2. Scriptable by humans and machines** — All output supports `--json` for automation. An LLM, shell script, or human can equally drive the system through the same interface.
 
-# Library management
-arrgo library list               # List all tracked content (movies, series)
-arrgo library delete 42          # Remove content from library
-arrgo library check              # Verify files exist and Plex awareness
-arrgo library import --from-plex Movies  # Import existing Plex library
-arrgo library import --from-plex Movies --dry-run  # Preview import
-arrgo library import --from-plex Movies --quality uhd  # Override quality
-
-# Search and grab
-arrgo search "Movie Name"                # Search indexers
-arrgo search -v "Movie Name"             # Verbose (show indexer, group, service)
-arrgo search "Movie" --grab best         # Auto-grab best result
-arrgo search "Movie" --grab 1            # Grab specific result by number
-arrgo search "Movie" --type movie --profile uhd  # Filter by type and profile
-
-# Import content
-arrgo import list                              # Show pending imports and recent completions
-arrgo import 42                                # Import tracked download by ID
-arrgo import --manual "/path/to/file.mkv"      # Import file with auto-parsed metadata
-arrgo import --manual "/path/to/file.mkv" --dry-run  # Preview without changes
-
-# Plex integration
-arrgo plex status                # Show Plex connection and libraries
-arrgo plex list                  # List all Plex libraries
-arrgo plex list movies           # List library contents with tracking status
-arrgo plex search "Matrix"       # Search Plex with tracking status
-arrgo plex scan movies           # Trigger library scan (case-insensitive names)
-arrgo plex scan --all            # Scan all libraries
-
-# Local commands (no server needed)
-arrgo parse "Release.Name.2024.1080p.mkv"      # Parse release name
-arrgo parse --score hd "Release.1080p.mkv"     # Parse and score against profile
-arrgo parse -f releases.txt --json             # Batch parse from file
-arrgo init                       # Interactive setup wizard
-arrgo version                    # Print version
-
-# Global flags
---json                           # Output as JSON
---quiet, -q                      # Suppress non-essential output
---server URL                     # Custom server URL (default: http://localhost:8484)
-
-# AI chat (v2+)
-arrgo chat                       # Interactive session
-arrgo ask "why is X stuck?"      # One-shot question
 ```
+arrgo status              # What's happening now?
+arrgo downloads           # What's in the pipeline?
+arrgo downloads show 42   # What happened to this specific download?
+arrgo search "Movie"      # What's available?
+arrgo search --grab best  # Trigger a state transition
+```
+
+The CLI is intentionally simple: read state, trigger transitions, observe results. Complex orchestration (retry logic, upgrade decisions) is either in the server or left to the caller.
+
+See `CLAUDE.md` or `arrgo --help` for the full command reference.
 
 ### Init Wizard
 
-```
-$ arrgo init
-
-Welcome to arrgo! Let's get you set up.
-
-Where should arrgo store data? [~/.config/arrgo]:
-Movies root [/srv/media/movies]:
-TV root [/srv/media/tv]:
-
-Download client:
-  [1] SABnzbd
-  [2] NZBGet
-  > 1
-
-SABnzbd URL [http://localhost:8085]:
-SABnzbd API key: ********
-
-...
-
-✓ Configuration written to ~/.config/arrgo/config.toml
-✓ Database initialized
-
-Start arrgo now? [Y/n]:
-```
+`arrgo init` provides interactive first-time setup, walking users through paths, download client configuration, and indexer setup. Creates a working `config.toml` and initializes the database.
 
 ## Design Decisions
 
@@ -701,30 +631,25 @@ When adding torrent support, key considerations:
 - Cross-reference with import status (don't remove until imported)
 - Hardlink detection (files in library = safe to remove torrent)
 
-## Effort Estimate
+## Status
 
-| Component | Scope |
-|-----------|-------|
-| Project setup, config, DB | Small |
-| Library module | Medium |
-| Search module (Newznab) | Medium |
-| Download module (SABnzbd) | Medium |
-| Import module | Medium |
-| Native API | Medium |
-| Compat API shim | Medium |
-| CLI (direct commands) | Small |
-| CLI (AI chat) | Medium |
-| Init wizard | Small |
-| Documentation | Small |
+v1 core is functional:
+- ✅ Event-driven download pipeline (grab → download → import → cleanup)
+- ✅ Newznab indexer integration with parallel search
+- ✅ SABnzbd integration with progress tracking
+- ✅ Plex integration (status, scan, search, library import)
+- ✅ Overseerr compatibility API
+- ✅ CLI with full observability
+- ✅ Library import from Plex
 
-Total: 4-8 weeks for working v1, depending on pace.
+Remaining v1 work:
+- Series/episode support (parsing works, episode import needs work)
+- Quality upgrade logic
 
 ## Open Questions
 
-1. **Naming templates** — Should we match Radarr/Sonarr syntax or design our own?
-2. **Episode metadata** — How much to fetch from TVDB? Just IDs and air dates, or more?
-3. **Failed download handling** — Auto-retry with different release, or require manual intervention?
-4. **Overseerr sync mode** — Poll for requests, or only respond to API calls?
+1. **Episode metadata** — How much to fetch from TVDB? Just IDs and air dates, or full episode details?
+2. **Failed download handling** — Currently manual retry. Auto-retry with blacklist?
 
 ## References
 
