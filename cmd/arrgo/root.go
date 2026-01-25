@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -9,8 +10,9 @@ import (
 var version = "dev"
 
 var (
-	serverURL  string
-	jsonOutput bool
+	serverURL   string
+	jsonOutput  bool
+	quietOutput bool
 )
 
 var rootCmd = &cobra.Command{
@@ -30,10 +32,21 @@ func Execute() {
 	}
 }
 
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print version information",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("arrgo %s\n", version)
+	},
+}
+
 func init() {
 	rootCmd.PersistentFlags().StringVar(&serverURL, "server", "http://localhost:8484", "Server URL")
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	rootCmd.PersistentFlags().BoolVarP(&quietOutput, "quiet", "q", false, "Suppress non-essential output")
 
 	rootCmd.Version = version
 	rootCmd.SetVersionTemplate("arrgo {{.Version}}\n")
+
+	rootCmd.AddCommand(versionCmd)
 }

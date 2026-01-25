@@ -111,12 +111,17 @@ Or use defaults syntax in config: `${VAR:-default_value}`
 ./arrgod                 # Or: task dev (with live reload)
 
 # In another terminal, use CLI commands
-./arrgo status           # Dashboard (connections, pipeline state, problems)
-./arrgo queue            # Show active downloads
-./arrgo queue --all      # Include terminal states (cleaned, failed)
-./arrgo queue -s failed  # Filter by state
-./arrgo queue cancel <id>         # Cancel a download
-./arrgo queue cancel <id> --delete # Cancel and delete files
+./arrgo status           # Dashboard (connections, downloads, library)
+./arrgo status --verify  # Dashboard + verify all downloads
+./arrgo status 42        # Verify specific download #42
+
+./arrgo downloads                     # Show active downloads
+./arrgo downloads --all               # Include terminal states (cleaned, failed)
+./arrgo downloads -s failed           # Filter by state
+./arrgo downloads show 42             # Show detailed download info
+./arrgo downloads cancel 42           # Cancel a download
+./arrgo downloads cancel 42 --delete  # Cancel and delete files
+./arrgo downloads retry 42            # Retry a failed download
 
 # Library management
 ./arrgo library list              # List all tracked content
@@ -135,10 +140,6 @@ Or use defaults syntax in config: `${VAR:-default_value}`
 ./arrgo import --manual "/path/to/file.mkv"            # Manual import
 ./arrgo import --manual "/path/to/file.mkv" --dry-run  # Preview import
 
-# Verification
-./arrgo verify           # Reality-check against SABnzbd/filesystem/Plex
-./arrgo verify <id>      # Verify specific download
-
 # Plex integration
 ./arrgo plex status      # Check Plex connection and libraries
 ./arrgo plex list movies # List Plex library contents
@@ -149,6 +150,7 @@ Or use defaults syntax in config: `${VAR:-default_value}`
 ./arrgo parse "Release.Name.2024.1080p.WEB-DL.mkv"     # Parse release name
 ./arrgo parse --score hd "Release.Name.1080p.mkv"     # Parse and score against profile
 ./arrgo init             # Interactive setup wizard
+./arrgo version          # Print version
 ```
 
 Note: Most commands require `arrgod` running. `parse` and `init` work standalone.

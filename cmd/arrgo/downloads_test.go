@@ -201,10 +201,10 @@ func TestClientCancelDownload_ServerError(t *testing.T) {
 	assert.Contains(t, err.Error(), "404")
 }
 
-func TestQueueCancelCmd_Exists(t *testing.T) {
-	// Verify the cancel subcommand exists on queueCmd
+func TestDownloadsCancelCmd_Exists(t *testing.T) {
+	// Verify the cancel subcommand exists on downloadsCmd
 	found := false
-	for _, cmd := range queueCmd.Commands() {
+	for _, cmd := range downloadsCmd.Commands() {
 		if cmd.Use == "cancel <id>" {
 			found = true
 			// Check that --delete flag exists
@@ -213,10 +213,10 @@ func TestQueueCancelCmd_Exists(t *testing.T) {
 			break
 		}
 	}
-	assert.True(t, found, "queueCmd should have 'cancel' subcommand")
+	assert.True(t, found, "downloadsCmd should have 'cancel' subcommand")
 }
 
-func TestRunQueueCancel_Success(t *testing.T) {
+func TestRunDownloadsCancel_Success(t *testing.T) {
 	var receivedMethod, receivedPath string
 	srv := newMockServer(t).
 		Handler(func(w http.ResponseWriter, r *http.Request) {
@@ -229,19 +229,19 @@ func TestRunQueueCancel_Success(t *testing.T) {
 
 	defer withServerURL(srv.URL)()
 
-	err := runQueueCancel(nil, []string{"42"})
+	err := runDownloadsCancel(nil, []string{"42"})
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodDelete, receivedMethod)
 	assert.Equal(t, "/api/v1/downloads/42", receivedPath)
 }
 
-func TestRunQueueCancel_InvalidID(t *testing.T) {
-	err := runQueueCancel(nil, []string{"notanumber"})
+func TestRunDownloadsCancel_InvalidID(t *testing.T) {
+	err := runDownloadsCancel(nil, []string{"notanumber"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid ID")
 }
 
-func TestRunQueueCancel_WithDeleteFlag(t *testing.T) {
+func TestRunDownloadsCancel_WithDeleteFlag(t *testing.T) {
 	var receivedPath string
 	srv := newMockServer(t).
 		Handler(func(w http.ResponseWriter, r *http.Request) {
@@ -258,7 +258,20 @@ func TestRunQueueCancel_WithDeleteFlag(t *testing.T) {
 	cmd.Flags().BoolP("delete", "d", false, "Delete files")
 	_ = cmd.Flags().Set("delete", "true")
 
-	err := runQueueCancel(cmd, []string{"42"})
+	err := runDownloadsCancel(cmd, []string{"42"})
 	require.NoError(t, err)
 	assert.Equal(t, "/api/v1/downloads/42?delete_files=true", receivedPath)
+}
+
+func TestDownloadsCmd_StateValidation(t *testing.T) {
+	// Test that invalid state is rejected
+	cmd := &cobra.Command{}
+	cmd.Flags().BoolP("all", "a", false, "")
+	cmd.Flags().StringP("state", "s", "", "")
+	_ = cmd.Flags().Set("state", "invalid")
+
+	err := runDownloadsCmd(cmd, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid state")
+	assert.Contains(t, err.Error(), "queued")
 }

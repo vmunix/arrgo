@@ -109,7 +109,6 @@ func init() {
 	addCmd.Flags().Int64("tmdb-id", 0, "The Movie Database ID")
 	addCmd.Flags().Int64("tvdb-id", 0, "TheTVDB ID")
 	addCmd.Flags().String("quality", "", "Quality profile (e.g., hd, uhd)")
-	addCmd.Flags().Bool("json", false, "Output as JSON")
 
 	_ = addCmd.MarkFlagRequired("title")
 	_ = addCmd.MarkFlagRequired("year")
@@ -367,7 +366,6 @@ func runLibraryAdd(cmd *cobra.Command, args []string) error {
 	tmdbID, _ := cmd.Flags().GetInt64("tmdb-id")
 	tvdbID, _ := cmd.Flags().GetInt64("tvdb-id")
 	quality, _ := cmd.Flags().GetString("quality")
-	jsonOutput, _ := cmd.Flags().GetBool("json")
 
 	// Validate type
 	if contentType != "movie" && contentType != "series" {

@@ -16,7 +16,7 @@ var eventsCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(eventsCmd)
-	eventsCmd.Flags().IntP("limit", "n", 20, "Number of events to show")
+	eventsCmd.Flags().IntP("limit", "l", 20, "Number of events to show")
 }
 
 func runEventsCmd(cmd *cobra.Command, args []string) error {

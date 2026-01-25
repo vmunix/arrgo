@@ -9,47 +9,60 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var queueCmd = &cobra.Command{
-	Use:   "queue",
-	Short: "Show active downloads",
-	RunE:  runQueueCmd,
+// Valid download states for --state flag validation
+var validStates = []string{"queued", "downloading", "completed", "importing", "imported", "cleaned", "failed"}
+
+var downloadsCmd = &cobra.Command{
+	Use:   "downloads",
+	Short: "Show and manage downloads",
+	Long: `Show and manage downloads.
+
+Examples:
+  arrgo downloads                     # Show active downloads
+  arrgo downloads --all               # Include terminal states (cleaned, failed)
+  arrgo downloads --state failed      # Filter by state
+  arrgo downloads show 42             # Show detailed info for download #42
+  arrgo downloads cancel 42           # Cancel download #42
+  arrgo downloads cancel 42 --delete  # Cancel and delete files
+  arrgo downloads retry 42            # Retry a failed download`,
+	RunE: runDownloadsCmd,
 }
 
-var queueCancelCmd = &cobra.Command{
+var downloadsCancelCmd = &cobra.Command{
 	Use:   "cancel <id>",
 	Short: "Cancel a download",
 	Long:  "Cancels the download and removes it from the download client. Use --delete to also remove downloaded files.",
 	Args:  cobra.ExactArgs(1),
-	RunE:  runQueueCancel,
+	RunE:  runDownloadsCancel,
 }
 
-var queueShowCmd = &cobra.Command{
+var downloadsShowCmd = &cobra.Command{
 	Use:   "show <id>",
 	Short: "Show detailed download info",
 	Args:  cobra.ExactArgs(1),
-	RunE:  runQueueShow,
+	RunE:  runDownloadsShow,
 }
 
-var queueRetryCmd = &cobra.Command{
+var downloadsRetryCmd = &cobra.Command{
 	Use:   "retry <id>",
 	Short: "Retry a failed download",
 	Long:  "Re-searches indexers for the content and grabs the best matching release.",
 	Args:  cobra.ExactArgs(1),
-	RunE:  runQueueRetry,
+	RunE:  runDownloadsRetry,
 }
 
 func init() {
-	rootCmd.AddCommand(queueCmd)
-	queueCmd.Flags().BoolP("all", "a", false, "Include terminal states (cleaned, failed)")
-	queueCmd.Flags().StringP("state", "s", "", "Filter by state (queued, downloading, completed, importing, imported, cleaned, failed)")
+	rootCmd.AddCommand(downloadsCmd)
+	downloadsCmd.Flags().BoolP("all", "a", false, "Include terminal states (cleaned, failed)")
+	downloadsCmd.Flags().StringP("state", "s", "", "Filter by state (queued, downloading, completed, importing, imported, cleaned, failed)")
 
-	queueCancelCmd.Flags().BoolP("delete", "d", false, "Also delete downloaded files")
-	queueCmd.AddCommand(queueCancelCmd)
-	queueCmd.AddCommand(queueShowCmd)
-	queueCmd.AddCommand(queueRetryCmd)
+	downloadsCancelCmd.Flags().BoolP("delete", "d", false, "Also delete downloaded files")
+	downloadsCmd.AddCommand(downloadsCancelCmd)
+	downloadsCmd.AddCommand(downloadsShowCmd)
+	downloadsCmd.AddCommand(downloadsRetryCmd)
 }
 
-func runQueueCancel(cmd *cobra.Command, args []string) error {
+func runDownloadsCancel(cmd *cobra.Command, args []string) error {
 	id, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
 		return fmt.Errorf("invalid ID: %s", args[0])
@@ -65,22 +78,38 @@ func runQueueCancel(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cancel failed: %w", err)
 	}
 
-	if deleteFiles {
-		fmt.Printf("Download %d canceled (files deleted)\n", id)
-	} else {
-		fmt.Printf("Download %d canceled\n", id)
+	if !quietOutput {
+		if deleteFiles {
+			fmt.Printf("Download %d canceled (files deleted)\n", id)
+		} else {
+			fmt.Printf("Download %d canceled\n", id)
+		}
 	}
 	return nil
 }
 
-func runQueueCmd(cmd *cobra.Command, args []string) error {
+func runDownloadsCmd(cmd *cobra.Command, args []string) error {
 	showAll, _ := cmd.Flags().GetBool("all")
 	stateFilter, _ := cmd.Flags().GetString("state")
+
+	// Validate state filter
+	if stateFilter != "" {
+		valid := false
+		for _, s := range validStates {
+			if strings.EqualFold(stateFilter, s) {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			return fmt.Errorf("invalid state %q, valid states: %s", stateFilter, strings.Join(validStates, ", "))
+		}
+	}
 
 	client := NewClient(serverURL)
 	downloads, err := client.Downloads(!showAll)
 	if err != nil {
-		return fmt.Errorf("queue fetch failed: %w", err)
+		return fmt.Errorf("fetch failed: %w", err)
 	}
 
 	// Filter by state if specified
@@ -101,14 +130,14 @@ func runQueueCmd(cmd *cobra.Command, args []string) error {
 	}
 
 	if showAll {
-		printQueueAll(downloads)
+		printDownloadsAll(downloads)
 	} else {
-		printQueueActive(downloads)
+		printDownloadsActive(downloads)
 	}
 	return nil
 }
 
-func printQueueActive(d *ListDownloadsResponse) {
+func printDownloadsActive(d *ListDownloadsResponse) {
 	if len(d.Items) == 0 {
 		fmt.Println("No active downloads")
 		return
@@ -138,7 +167,7 @@ func printQueueActive(d *ListDownloadsResponse) {
 	}
 }
 
-func printQueueAll(d *ListDownloadsResponse) {
+func printDownloadsAll(d *ListDownloadsResponse) {
 	if len(d.Items) == 0 {
 		fmt.Println("No downloads")
 		return
@@ -164,7 +193,7 @@ func printQueueAll(d *ListDownloadsResponse) {
 	}
 }
 
-func runQueueShow(cmd *cobra.Command, args []string) error {
+func runDownloadsShow(cmd *cobra.Command, args []string) error {
 	id, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
 		return fmt.Errorf("invalid ID: %s", args[0])
@@ -205,7 +234,7 @@ func runQueueShow(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runQueueRetry(cmd *cobra.Command, args []string) error {
+func runDownloadsRetry(cmd *cobra.Command, args []string) error {
 	id, err := strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
 		return fmt.Errorf("invalid ID: %s", args[0])
@@ -213,7 +242,9 @@ func runQueueRetry(cmd *cobra.Command, args []string) error {
 
 	client := NewClient(serverURL)
 
-	fmt.Printf("Retrying download #%d...\n", id)
+	if !quietOutput {
+		fmt.Printf("Retrying download #%d...\n", id)
+	}
 	result, err := client.RetryDownload(id)
 	if err != nil {
 		return fmt.Errorf("retry failed: %w", err)
@@ -225,6 +256,6 @@ func runQueueRetry(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Retry queued: %s\n", result.ReleaseName)
-	fmt.Println("Use 'arrgo queue' to monitor progress")
+	fmt.Println("Use 'arrgo downloads' to monitor progress")
 	return nil
 }
