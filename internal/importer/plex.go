@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -473,16 +474,17 @@ func (c *PlexClient) HasContent(ctx context.Context, title string, year int) (bo
 //   - Year off by one (release year vs theatrical year)
 //   - Title includes year ("Blade Runner 2049" vs "Blade Runner" + year=2049)
 func (c *PlexClient) FindMovie(ctx context.Context, title string, year int) (bool, string, error) {
-	items, err := c.Search(ctx, title)
+	movies, err := c.searchMovies(ctx, title)
 	if err != nil {
 		return false, "", err
 	}
 
-	// Filter to movies only
-	var movies []PlexItem
-	for _, item := range items {
-		if item.Type == "movie" {
-			movies = append(movies, item)
+	// If no results, try fallback searches with individual words.
+	// Plex search can be finicky with long titles or punctuation.
+	if len(movies) == 0 {
+		movies, err = c.fallbackSearch(ctx, title)
+		if err != nil {
+			return false, "", err
 		}
 	}
 
@@ -527,6 +529,65 @@ func (c *PlexClient) FindMovie(ctx context.Context, title string, year int) (boo
 	}
 
 	return false, "", nil
+}
+
+// searchMovies searches Plex and filters to movies only.
+func (c *PlexClient) searchMovies(ctx context.Context, query string) ([]PlexItem, error) {
+	items, err := c.Search(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	var movies []PlexItem
+	for _, item := range items {
+		if item.Type == "movie" {
+			movies = append(movies, item)
+		}
+	}
+	return movies, nil
+}
+
+// fallbackSearch tries searching for individual words from the title.
+// Plex search can be finicky with long titles or punctuation differences.
+func (c *PlexClient) fallbackSearch(ctx context.Context, title string) ([]PlexItem, error) {
+	// Split into words and filter out common short words
+	words := strings.Fields(title)
+	var candidates []string
+	for _, word := range words {
+		lower := strings.ToLower(word)
+		// Skip common words and short words
+		if len(word) >= 4 && !isCommonWord(lower) {
+			candidates = append(candidates, word)
+		}
+	}
+
+	// Try each candidate word, longest first (more distinctive)
+	sort.Slice(candidates, func(i, j int) bool {
+		return len(candidates[i]) > len(candidates[j])
+	})
+
+	for _, word := range candidates {
+		movies, err := c.searchMovies(ctx, word)
+		if err != nil {
+			return nil, err
+		}
+		if len(movies) > 0 {
+			return movies, nil
+		}
+	}
+
+	return nil, nil
+}
+
+// isCommonWord returns true for words that are too common to be useful for search.
+func isCommonWord(word string) bool {
+	common := map[string]bool{
+		"the": true, "a": true, "an": true, "and": true, "or": true,
+		"of": true, "to": true, "in": true, "for": true, "on": true,
+		"with": true, "how": true, "what": true, "who": true, "that": true,
+		"this": true, "from": true, "into": true,
+	}
+	return common[word]
 }
 
 // normalizeForMatch normalizes a string for fuzzy comparison.
