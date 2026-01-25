@@ -63,58 +63,20 @@ func (e *testEnv) cleanup() {
 	}
 }
 
+// sabnzbdMock holds the mock server and its configuration for testEnv.
+type sabnzbdMock struct {
+	*SABnzbdMock
+	server *httptest.Server
+}
+
 func (e *testEnv) mockSABnzbdServer() *httptest.Server {
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mode := r.URL.Query().Get("mode")
-		w.Header().Set("Content-Type", "application/json")
-
-		switch mode {
-		case "addurl":
-			// Return configured client ID
-			resp := map[string]any{
-				"status":  true,
-				"nzo_ids": []string{e.sabnzbdClientID},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-
-		case "queue":
-			// Return queue status if configured
-			slots := []map[string]any{}
-			if e.sabnzbdStatus != nil && e.sabnzbdStatus.Status != download.StatusCompleted {
-				slots = append(slots, map[string]any{
-					"nzo_id":     e.sabnzbdStatus.ID,
-					"filename":   e.sabnzbdStatus.Name,
-					"status":     "Downloading",
-					"percentage": e.sabnzbdStatus.Progress,
-					"mb":         float64(e.sabnzbdStatus.Size) / 1024 / 1024,
-				})
-			}
-			resp := map[string]any{
-				"queue": map[string]any{"slots": slots},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-
-		case "history":
-			// Return history status if configured and completed
-			slots := []map[string]any{}
-			if e.sabnzbdStatus != nil && e.sabnzbdStatus.Status == download.StatusCompleted {
-				slots = append(slots, map[string]any{
-					"nzo_id":  e.sabnzbdStatus.ID,
-					"name":    e.sabnzbdStatus.Name,
-					"status":  "Completed",
-					"storage": e.sabnzbdStatus.Path,
-					"bytes":   e.sabnzbdStatus.Size,
-				})
-			}
-			resp := map[string]any{
-				"history": map[string]any{"slots": slots},
-			}
-			_ = json.NewEncoder(w).Encode(resp)
-
-		default:
-			http.Error(w, "unknown mode", http.StatusBadRequest)
-		}
-	}))
+	mock := NewSABnzbdMock(e.t).
+		WithAPIKey("test-api-key").
+		WithClientID(e.sabnzbdClientID)
+	if e.sabnzbdStatus != nil {
+		mock = mock.WithStatus(e.sabnzbdStatus)
+	}
+	return mock.Build()
 }
 
 func setupIntegrationTest(t *testing.T) *testEnv {
@@ -758,4 +720,152 @@ func requireStatus(t *testing.T, resp *http.Response, expectedStatus int, msg st
 		body := readBody(t, resp)
 		t.Fatalf("%s: expected status %d, got %d, body: %s", msg, expectedStatus, resp.StatusCode, body)
 	}
+}
+
+// === Mock Server Validation Tests ===
+// These tests verify the mock servers behave like real services.
+
+func TestSABnzbdMock_APIKeyValidation(t *testing.T) {
+	mock := NewSABnzbdMock(t).WithAPIKey("correct-key")
+	srv := mock.Build()
+	defer srv.Close()
+
+	// Test with correct API key
+	resp, err := http.Get(srv.URL + "/api?mode=queue&apikey=correct-key&output=json")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	var result map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	_, hasQueue := result["queue"]
+	assert.True(t, hasQueue, "should return queue data with correct API key")
+
+	// Test with incorrect API key
+	resp2, err := http.Get(srv.URL + "/api?mode=queue&apikey=wrong-key&output=json")
+	require.NoError(t, err)
+	defer resp2.Body.Close()
+
+	var errResult map[string]any
+	require.NoError(t, json.NewDecoder(resp2.Body).Decode(&errResult))
+	assert.Equal(t, false, errResult["status"], "should return status=false for wrong key")
+	assert.Equal(t, "API Key Incorrect", errResult["error"], "should return API key error message")
+}
+
+func TestSABnzbdMock_HTTPMethodValidation(t *testing.T) {
+	mock := NewSABnzbdMock(t).WithAPIKey("") // Disable API key check for this test
+	srv := mock.Build()
+	defer srv.Close()
+
+	// GET should work
+	resp, err := http.Get(srv.URL + "/api?mode=queue")
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "GET should succeed")
+
+	// POST should fail with 405
+	resp2, err := http.Post(srv.URL+"/api?mode=queue", "application/json", nil)
+	require.NoError(t, err)
+	defer resp2.Body.Close()
+	assert.Equal(t, http.StatusMethodNotAllowed, resp2.StatusCode, "POST should return 405")
+
+	var errResult map[string]any
+	require.NoError(t, json.NewDecoder(resp2.Body).Decode(&errResult))
+	assert.Equal(t, false, errResult["status"])
+	assert.Contains(t, errResult["error"], "Method POST not allowed")
+}
+
+func TestSABnzbdMock_MissingMode(t *testing.T) {
+	mock := NewSABnzbdMock(t).WithAPIKey("")
+	srv := mock.Build()
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api?apikey=test")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	var result map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, false, result["status"])
+	assert.Equal(t, "Missing 'mode' parameter", result["error"])
+}
+
+func TestSABnzbdMock_UnknownMode(t *testing.T) {
+	mock := NewSABnzbdMock(t).WithAPIKey("")
+	srv := mock.Build()
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api?mode=invalid")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	var result map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+	assert.Equal(t, false, result["status"])
+	assert.Contains(t, result["error"], "Unknown mode: invalid")
+}
+
+func TestSABnzbdMock_QueueWithStatus(t *testing.T) {
+	status := &download.ClientStatus{
+		ID:       "nzo_test123",
+		Name:     "Test.Movie.2024.1080p",
+		Status:   download.StatusDownloading,
+		Progress: 45.5,
+		Size:     1572864000,
+	}
+	mock := NewSABnzbdMock(t).WithAPIKey("").WithStatus(status)
+	srv := mock.Build()
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/api?mode=queue")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	var result map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&result))
+
+	queue := result["queue"].(map[string]any)
+	slots := queue["slots"].([]any)
+	require.Len(t, slots, 1)
+
+	slot := slots[0].(map[string]any)
+	assert.Equal(t, "nzo_test123", slot["nzo_id"])
+	assert.Equal(t, "Test.Movie.2024.1080p", slot["filename"])
+	assert.Equal(t, "Downloading", slot["status"])
+}
+
+func TestNewznabMock_APIKeyValidation(t *testing.T) {
+	mock := NewNewznabMock(t).WithAPIKey("correct-key")
+	srv := mock.Build()
+	defer srv.Close()
+
+	// Test with correct API key
+	resp, err := http.Get(srv.URL + "/api?t=search&apikey=correct-key")
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode, "correct key should return 200")
+
+	// Test with incorrect API key
+	resp2, err := http.Get(srv.URL + "/api?t=search&apikey=wrong-key")
+	require.NoError(t, err)
+	defer resp2.Body.Close()
+	assert.Equal(t, http.StatusUnauthorized, resp2.StatusCode, "wrong key should return 401")
+}
+
+func TestNewznabMock_HTTPMethodValidation(t *testing.T) {
+	mock := NewNewznabMock(t).WithAPIKey("")
+	srv := mock.Build()
+	defer srv.Close()
+
+	// GET should work
+	resp, err := http.Get(srv.URL + "/api?t=search")
+	require.NoError(t, err)
+	resp.Body.Close()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// POST should fail
+	resp2, err := http.Post(srv.URL+"/api?t=search", "application/xml", nil)
+	require.NoError(t, err)
+	resp2.Body.Close()
+	assert.Equal(t, http.StatusMethodNotAllowed, resp2.StatusCode)
 }
