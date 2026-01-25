@@ -490,17 +490,21 @@ func (c *PlexClient) FindMovie(ctx context.Context, title string, year int) (boo
 		return false, "", nil
 	}
 
-	// Strategy 1: Exact title match with exact year
+	// Normalize search title once for all comparisons
+	normalizedSearch := normalizeForMatch(title)
+
+	// Strategy 1: Normalized title match with exact year
+	// Uses normalization to handle punctuation differences like "Dr." vs "Dr"
 	for _, item := range movies {
-		if item.Year == year && strings.EqualFold(item.Title, title) {
+		if item.Year == year && normalizeForMatch(item.Title) == normalizedSearch {
 			return true, item.RatingKey, nil
 		}
 	}
 
-	// Strategy 2: Exact title match with ±1 year tolerance
+	// Strategy 2: Normalized title match with ±1 year tolerance
 	for _, item := range movies {
 		yearDiff := item.Year - year
-		if yearDiff >= -1 && yearDiff <= 1 && strings.EqualFold(item.Title, title) {
+		if yearDiff >= -1 && yearDiff <= 1 && normalizeForMatch(item.Title) == normalizedSearch {
 			return true, item.RatingKey, nil
 		}
 	}
@@ -508,7 +512,6 @@ func (c *PlexClient) FindMovie(ctx context.Context, title string, year int) (boo
 	// Strategy 3: Fuzzy title matching for year-in-title variations
 	// e.g., searching for "Blade Runner" year=2049 should match "Blade Runner 2049"
 	// Only applies when the Plex title contains the search year.
-	normalizedSearch := normalizeForMatch(title)
 
 	for _, item := range movies {
 		// Only consider items where the Plex title contains the year we're looking for
