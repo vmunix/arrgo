@@ -30,21 +30,27 @@ const (
 // GrabRequested is emitted when a user/API requests a download.
 type GrabRequested struct {
 	BaseEvent
-	ContentID   int64  `json:"content_id"`
-	EpisodeID   *int64 `json:"episode_id,omitempty"`
-	DownloadURL string `json:"download_url"`
-	ReleaseName string `json:"release_name"`
-	Indexer     string `json:"indexer"`
+	ContentID        int64   `json:"content_id"`
+	EpisodeID        *int64  `json:"episode_id,omitempty"`         // Deprecated: use EpisodeIDs
+	EpisodeIDs       []int64 `json:"episode_ids,omitempty"`        // Episode IDs for multi-episode grabs
+	Season           *int    `json:"season,omitempty"`             // Season number (for season packs)
+	IsCompleteSeason bool    `json:"is_complete_season,omitempty"` // True if grabbing complete season
+	DownloadURL      string  `json:"download_url"`
+	ReleaseName      string  `json:"release_name"`
+	Indexer          string  `json:"indexer"`
 }
 
 // DownloadCreated is emitted when a download record is created.
 type DownloadCreated struct {
 	BaseEvent
-	DownloadID  int64  `json:"download_id"`
-	ContentID   int64  `json:"content_id"`
-	EpisodeID   *int64 `json:"episode_id,omitempty"`
-	ClientID    string `json:"client_id"` // SABnzbd nzo_id
-	ReleaseName string `json:"release_name"`
+	DownloadID       int64   `json:"download_id"`
+	ContentID        int64   `json:"content_id"`
+	EpisodeID        *int64  `json:"episode_id,omitempty"`         // Deprecated: use EpisodeIDs
+	EpisodeIDs       []int64 `json:"episode_ids,omitempty"`        // Episode IDs for multi-episode grabs
+	Season           *int    `json:"season,omitempty"`             // Season number (for season packs)
+	IsCompleteSeason bool    `json:"is_complete_season,omitempty"` // True if grabbing complete season
+	ClientID         string  `json:"client_id"`                    // SABnzbd nzo_id
+	ReleaseName      string  `json:"release_name"`
 }
 
 // DownloadProgressed is emitted periodically with download progress.
