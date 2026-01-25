@@ -82,7 +82,12 @@ func (h *ImportHandler) handleDownloadCompleted(ctx context.Context, e *events.D
 	// Check for existing files before importing (duplicate prevention)
 	// Must happen before transitioning to importing, since completed→skipped is valid but importing→skipped is not
 	if dl.ContentID > 0 && h.library != nil {
-		files, _, err := h.library.ListFiles(library.FileFilter{ContentID: &dl.ContentID})
+		// Build filter - for season packs, only compare against files from the same season
+		filter := library.FileFilter{ContentID: &dl.ContentID}
+		if dl.IsCompleteSeason && dl.Season != nil {
+			filter.Season = dl.Season
+		}
+		files, _, err := h.library.ListFiles(filter)
 		if err != nil {
 			h.Logger().Warn("failed to check existing files", "error", err)
 			// Continue with import on error - better to import than skip
