@@ -61,11 +61,14 @@ func (a *Adapter) Name() string {
 // Start begins listening for ImportCompleted events and polling Plex.
 // It runs until the context is canceled.
 func (a *Adapter) Start(ctx context.Context) error {
-	// Reconcile with database on startup - check for downloads stuck in imported status
-	a.reconcileOnStartup(ctx)
-
-	// Subscribe to ImportCompleted events
+	// Subscribe to ImportCompleted events BEFORE reconciliation.
+	// This ensures we don't miss events that arrive during reconciliation,
+	// which can take time if there are many downloads to check against Plex.
 	importCh := a.bus.Subscribe(events.EventImportCompleted, 100)
+
+	// Reconcile with database on startup - check for downloads stuck in imported status.
+	// Events arriving during reconciliation will buffer in the channel.
+	a.reconcileOnStartup(ctx)
 
 	ticker := time.NewTicker(a.interval)
 	defer ticker.Stop()
