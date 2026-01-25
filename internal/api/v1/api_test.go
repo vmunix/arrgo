@@ -1325,9 +1325,9 @@ type mockIndexer struct {
 	url  string
 }
 
-func (m *mockIndexer) Name() string                      { return m.name }
-func (m *mockIndexer) URL() string                       { return m.url }
-func (m *mockIndexer) Caps(_ context.Context) error      { return nil }
+func (m *mockIndexer) Name() string                 { return m.name }
+func (m *mockIndexer) URL() string                  { return m.url }
+func (m *mockIndexer) Caps(_ context.Context) error { return nil }
 
 func TestCheckLibrary_Success(t *testing.T) {
 	db := setupTestDB(t)
