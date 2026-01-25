@@ -690,16 +690,18 @@ func (s *Server) listDownloads(w http.ResponseWriter, r *http.Request) {
 
 func downloadToResponse(d *download.Download, live *download.ClientStatus) downloadResponse {
 	resp := downloadResponse{
-		ID:          d.ID,
-		ContentID:   d.ContentID,
-		EpisodeID:   d.EpisodeID,
-		Client:      string(d.Client),
-		ClientID:    d.ClientID,
-		Status:      string(d.Status),
-		ReleaseName: d.ReleaseName,
-		Indexer:     d.Indexer,
-		AddedAt:     d.AddedAt,
-		CompletedAt: d.CompletedAt,
+		ID:               d.ID,
+		ContentID:        d.ContentID,
+		EpisodeID:        d.EpisodeID,
+		Season:           d.Season,
+		IsCompleteSeason: d.IsCompleteSeason,
+		Client:           string(d.Client),
+		ClientID:         d.ClientID,
+		Status:           string(d.Status),
+		ReleaseName:      d.ReleaseName,
+		Indexer:          d.Indexer,
+		AddedAt:          d.AddedAt,
+		CompletedAt:      d.CompletedAt,
 	}
 	if live != nil {
 		resp.Progress = &live.Progress

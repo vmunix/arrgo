@@ -213,6 +213,13 @@ func runDownloadsShow(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Download #%d\n\n", dl.ID)
 	fmt.Printf("  %-12s %s\n", "Release:", dl.ReleaseName)
 	fmt.Printf("  %-12s %d\n", "Content ID:", dl.ContentID)
+	if dl.Season != nil {
+		if dl.IsCompleteSeason {
+			fmt.Printf("  %-12s Season %d (complete season pack)\n", "Season:", *dl.Season)
+		} else {
+			fmt.Printf("  %-12s %d\n", "Season:", *dl.Season)
+		}
+	}
 	fmt.Printf("  %-12s %s\n", "Status:", dl.Status)
 	fmt.Printf("  %-12s %s\n", "Indexer:", dl.Indexer)
 	fmt.Printf("  %-12s %s (%s)\n", "Client:", dl.Client, dl.ClientID)

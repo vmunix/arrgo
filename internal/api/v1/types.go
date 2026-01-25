@@ -96,16 +96,18 @@ type grabRequest struct {
 
 // downloadResponse is the API representation of a download.
 type downloadResponse struct {
-	ID          int64      `json:"id"`
-	ContentID   int64      `json:"content_id"`
-	EpisodeID   *int64     `json:"episode_id,omitempty"`
-	Client      string     `json:"client"`
-	ClientID    string     `json:"client_id"`
-	Status      string     `json:"status"`
-	ReleaseName string     `json:"release_name"`
-	Indexer     string     `json:"indexer"`
-	AddedAt     time.Time  `json:"added_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	ID               int64      `json:"id"`
+	ContentID        int64      `json:"content_id"`
+	EpisodeID        *int64     `json:"episode_id,omitempty"`
+	Season           *int       `json:"season,omitempty"`            // For season packs: which season
+	IsCompleteSeason bool       `json:"is_complete_season,omitempty"` // True if this is a complete season pack
+	Client           string     `json:"client"`
+	ClientID         string     `json:"client_id"`
+	Status           string     `json:"status"`
+	ReleaseName      string     `json:"release_name"`
+	Indexer          string     `json:"indexer"`
+	AddedAt          time.Time  `json:"added_at"`
+	CompletedAt      *time.Time `json:"completed_at,omitempty"`
 	// Live status from download client (only present for active downloads)
 	Progress *float64 `json:"progress,omitempty"` // 0-100
 	Size     *int64   `json:"size,omitempty"`     // bytes
