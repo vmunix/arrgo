@@ -703,3 +703,406 @@ func TestClient_Download_Success(t *testing.T) {
 	require.NotNil(t, resp.ETA)
 	assert.Equal(t, "15m", *resp.ETA)
 }
+
+func TestClient_Indexers_Success(t *testing.T) {
+	var receivedPath string
+
+	srv := newMockServer(t).
+		ExpectGET().
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.String()
+			respondJSON(t, w, ListIndexersResponse{
+				Indexers: []IndexerResponse{
+					{
+						Name: "nzbgeek",
+						URL:  "https://api.nzbgeek.info",
+					},
+					{
+						Name: "drunkenslug",
+						URL:  "https://api.drunkenslug.com",
+					},
+				},
+			})
+		}).
+		Build()
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	resp, err := client.Indexers(false)
+	require.NoError(t, err)
+
+	// Verify no test param was sent
+	assert.Equal(t, "/api/v1/indexers", receivedPath)
+
+	// Verify response
+	require.Len(t, resp.Indexers, 2)
+	assert.Equal(t, "nzbgeek", resp.Indexers[0].Name)
+	assert.Equal(t, "https://api.nzbgeek.info", resp.Indexers[0].URL)
+	assert.Equal(t, "drunkenslug", resp.Indexers[1].Name)
+	assert.Equal(t, "https://api.drunkenslug.com", resp.Indexers[1].URL)
+}
+
+func TestClient_Indexers_WithTest(t *testing.T) {
+	var receivedPath string
+
+	srv := newMockServer(t).
+		ExpectGET().
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.String()
+			respondJSON(t, w, ListIndexersResponse{
+				Indexers: []IndexerResponse{
+					{
+						Name:       "nzbgeek",
+						URL:        "https://api.nzbgeek.info",
+						Status:     "ok",
+						ResponseMs: 150,
+					},
+					{
+						Name:       "drunkenslug",
+						URL:        "https://api.drunkenslug.com",
+						Status:     "error",
+						Error:      "connection timeout",
+						ResponseMs: 5000,
+					},
+				},
+			})
+		}).
+		Build()
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	resp, err := client.Indexers(true)
+	require.NoError(t, err)
+
+	// Verify test param was sent
+	assert.Equal(t, "/api/v1/indexers?test=true", receivedPath)
+
+	// Verify response with test results
+	require.Len(t, resp.Indexers, 2)
+
+	// First indexer - success
+	assert.Equal(t, "nzbgeek", resp.Indexers[0].Name)
+	assert.Equal(t, "ok", resp.Indexers[0].Status)
+	assert.Equal(t, int64(150), resp.Indexers[0].ResponseMs)
+	assert.Empty(t, resp.Indexers[0].Error)
+
+	// Second indexer - error
+	assert.Equal(t, "drunkenslug", resp.Indexers[1].Name)
+	assert.Equal(t, "error", resp.Indexers[1].Status)
+	assert.Equal(t, "connection timeout", resp.Indexers[1].Error)
+	assert.Equal(t, int64(5000), resp.Indexers[1].ResponseMs)
+}
+
+func TestClient_Profiles_Success(t *testing.T) {
+	srv := newMockServer(t).
+		ExpectPath("/api/v1/profiles").
+		ExpectGET().
+		RespondJSON(ListProfilesResponse{
+			Profiles: []ProfileResponse{
+				{
+					Name:   "hd",
+					Accept: []string{"1080p", "720p"},
+				},
+				{
+					Name:   "uhd",
+					Accept: []string{"2160p", "1080p"},
+				},
+				{
+					Name:   "any",
+					Accept: []string{"2160p", "1080p", "720p", "480p"},
+				},
+			},
+		}).
+		Build()
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	resp, err := client.Profiles()
+	require.NoError(t, err)
+
+	// Verify response
+	require.Len(t, resp.Profiles, 3)
+
+	// Verify first profile
+	assert.Equal(t, "hd", resp.Profiles[0].Name)
+	assert.Equal(t, []string{"1080p", "720p"}, resp.Profiles[0].Accept)
+
+	// Verify second profile
+	assert.Equal(t, "uhd", resp.Profiles[1].Name)
+	assert.Equal(t, []string{"2160p", "1080p"}, resp.Profiles[1].Accept)
+
+	// Verify third profile
+	assert.Equal(t, "any", resp.Profiles[2].Name)
+	assert.Equal(t, []string{"2160p", "1080p", "720p", "480p"}, resp.Profiles[2].Accept)
+}
+
+func TestClient_Files_All(t *testing.T) {
+	var receivedPath string
+
+	srv := newMockServer(t).
+		ExpectGET().
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.String()
+			respondJSON(t, w, ListFilesResponse{
+				Items: []FileResponse{
+					{
+						ID:        1,
+						ContentID: 100,
+						Path:      "/media/movies/The Matrix (1999)/The Matrix.mkv",
+						SizeBytes: 4294967296,
+						Quality:   "1080p",
+						Source:    "bluray",
+					},
+					{
+						ID:        2,
+						ContentID: 101,
+						Path:      "/media/movies/Inception (2010)/Inception.mkv",
+						SizeBytes: 5368709120,
+						Quality:   "2160p",
+						Source:    "uhd.bluray",
+					},
+				},
+				Total: 2,
+			})
+		}).
+		Build()
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	resp, err := client.Files(nil)
+	require.NoError(t, err)
+
+	// Verify no filter was sent
+	assert.Equal(t, "/api/v1/files", receivedPath)
+
+	// Verify response
+	assert.Equal(t, 2, resp.Total)
+	require.Len(t, resp.Items, 2)
+
+	// Verify first file
+	assert.Equal(t, int64(1), resp.Items[0].ID)
+	assert.Equal(t, int64(100), resp.Items[0].ContentID)
+	assert.Equal(t, "/media/movies/The Matrix (1999)/The Matrix.mkv", resp.Items[0].Path)
+	assert.Equal(t, int64(4294967296), resp.Items[0].SizeBytes)
+	assert.Equal(t, "1080p", resp.Items[0].Quality)
+	assert.Equal(t, "bluray", resp.Items[0].Source)
+
+	// Verify second file
+	assert.Equal(t, int64(2), resp.Items[1].ID)
+	assert.Equal(t, int64(101), resp.Items[1].ContentID)
+	assert.Equal(t, "2160p", resp.Items[1].Quality)
+}
+
+func TestClient_Files_ByContentID(t *testing.T) {
+	var receivedPath string
+
+	srv := newMockServer(t).
+		ExpectGET().
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.String()
+			respondJSON(t, w, ListFilesResponse{
+				Items: []FileResponse{
+					{
+						ID:        5,
+						ContentID: 42,
+						Path:      "/media/movies/Test Movie (2024)/Test Movie.mkv",
+						SizeBytes: 3221225472,
+						Quality:   "1080p",
+						Source:    "web",
+					},
+				},
+				Total: 1,
+			})
+		}).
+		Build()
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	contentID := int64(42)
+	resp, err := client.Files(&contentID)
+	require.NoError(t, err)
+
+	// Verify content_id filter was sent
+	assert.Equal(t, "/api/v1/files?content_id=42", receivedPath)
+
+	// Verify response
+	assert.Equal(t, 1, resp.Total)
+	require.Len(t, resp.Items, 1)
+	assert.Equal(t, int64(42), resp.Items[0].ContentID)
+}
+
+func TestClient_RetryDownload_Success(t *testing.T) {
+	var receivedPath string
+
+	srv := newMockServer(t).
+		ExpectPOST().
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.Path
+			respondJSON(t, w, RetryResponse{
+				NewDownloadID: 456,
+				ReleaseName:   "Test.Movie.2024.1080p.BluRay.x264-GROUP",
+				Message:       "Download re-grabbed successfully",
+			})
+		}).
+		Build()
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	resp, err := client.RetryDownload(123)
+	require.NoError(t, err)
+
+	// Verify the download ID was included in the path
+	assert.Equal(t, "/api/v1/downloads/123/retry", receivedPath)
+
+	// Verify response
+	assert.Equal(t, int64(456), resp.NewDownloadID)
+	assert.Equal(t, "Test.Movie.2024.1080p.BluRay.x264-GROUP", resp.ReleaseName)
+	assert.Equal(t, "Download re-grabbed successfully", resp.Message)
+}
+
+func TestClient_AddContent_Success(t *testing.T) {
+	var receivedReq map[string]any
+
+	srv := newMockServer(t).
+		ExpectPath("/api/v1/content").
+		ExpectPOST().
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&receivedReq)) {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			respondJSON(t, w, ContentResponse{
+				ID:             42,
+				Type:           "movie",
+				Title:          "The Matrix",
+				Year:           1999,
+				Status:         "wanted",
+				QualityProfile: "hd",
+				RootPath:       "/media/movies",
+			})
+		}).
+		Build()
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	resp, err := client.AddContent("movie", "The Matrix", 1999, "hd")
+	require.NoError(t, err)
+
+	// Verify request body was sent correctly
+	assert.Equal(t, "movie", receivedReq["type"])
+	assert.Equal(t, "The Matrix", receivedReq["title"])
+	assert.InDelta(t, 1999, receivedReq["year"], 0.001)
+	assert.Equal(t, "hd", receivedReq["quality_profile"])
+
+	// Verify response
+	assert.Equal(t, int64(42), resp.ID)
+	assert.Equal(t, "movie", resp.Type)
+	assert.Equal(t, "The Matrix", resp.Title)
+	assert.Equal(t, 1999, resp.Year)
+	assert.Equal(t, "wanted", resp.Status)
+	assert.Equal(t, "hd", resp.QualityProfile)
+	assert.Equal(t, "/media/movies", resp.RootPath)
+}
+
+func TestClient_FindContent_Found(t *testing.T) {
+	var receivedPath string
+
+	srv := newMockServer(t).
+		ExpectGET().
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.String()
+			respondJSON(t, w, ListContentResponse{
+				Items: []ContentResponse{
+					{
+						ID:             42,
+						Type:           "movie",
+						Title:          "The Matrix",
+						Year:           1999,
+						Status:         "available",
+						QualityProfile: "hd",
+						RootPath:       "/media/movies",
+					},
+				},
+				Total:  1,
+				Limit:  1,
+				Offset: 0,
+			})
+		}).
+		Build()
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	resp, err := client.FindContent("movie", "The Matrix", 1999)
+	require.NoError(t, err)
+
+	// Verify query parameters were sent correctly
+	assert.Contains(t, receivedPath, "type=movie")
+	assert.Contains(t, receivedPath, "title=The+Matrix")
+	assert.Contains(t, receivedPath, "year=1999")
+	assert.Contains(t, receivedPath, "limit=1")
+
+	// Verify response (should return first item)
+	require.NotNil(t, resp)
+	assert.Equal(t, int64(42), resp.ID)
+	assert.Equal(t, "movie", resp.Type)
+	assert.Equal(t, "The Matrix", resp.Title)
+	assert.Equal(t, 1999, resp.Year)
+	assert.Equal(t, "available", resp.Status)
+}
+
+func TestClient_FindContent_NotFound(t *testing.T) {
+	srv := newMockServer(t).
+		ExpectGET().
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			respondJSON(t, w, ListContentResponse{
+				Items:  []ContentResponse{},
+				Total:  0,
+				Limit:  1,
+				Offset: 0,
+			})
+		}).
+		Build()
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	resp, err := client.FindContent("movie", "Nonexistent Movie", 2099)
+
+	// Should return nil, nil when not found (not an error)
+	require.NoError(t, err)
+	assert.Nil(t, resp)
+}
+
+func TestClient_Grab_Success(t *testing.T) {
+	var receivedReq map[string]any
+
+	srv := newMockServer(t).
+		ExpectPath("/api/v1/grab").
+		ExpectPOST().
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&receivedReq)) {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			respondJSON(t, w, GrabResponse{
+				DownloadID: 789,
+				Status:     "queued",
+			})
+		}).
+		Build()
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	resp, err := client.Grab(42, "https://api.nzbgeek.info/api?t=get&id=abc123", "Test.Movie.2024.1080p.WEB-DL", "nzbgeek")
+	require.NoError(t, err)
+
+	// Verify request body was sent correctly
+	assert.InDelta(t, 42, receivedReq["content_id"], 0.001)
+	assert.Equal(t, "https://api.nzbgeek.info/api?t=get&id=abc123", receivedReq["download_url"])
+	assert.Equal(t, "Test.Movie.2024.1080p.WEB-DL", receivedReq["title"])
+	assert.Equal(t, "nzbgeek", receivedReq["indexer"])
+
+	// Verify response
+	assert.Equal(t, int64(789), resp.DownloadID)
+	assert.Equal(t, "queued", resp.Status)
+}
