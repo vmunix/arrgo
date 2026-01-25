@@ -979,3 +979,39 @@ func TestParse_DoViHDR(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_YearInTitle(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantTitle string
+		wantYear  int
+	}{
+		{
+			name:      "future year in title - Blade Runner 2049",
+			input:     "Blade.Runner.2049.2017.1080p.BluRay.x264-GROUP",
+			wantTitle: "Blade Runner 2049",
+			wantYear:  2017,
+		},
+		{
+			name:      "past year in title - 2001 A Space Odyssey",
+			input:     "2001.A.Space.Odyssey.1968.1080p.BluRay.x264-GROUP",
+			wantTitle: "2001 A Space Odyssey",
+			wantYear:  1968,
+		},
+		{
+			name:      "year-only title - 1917",
+			input:     "1917.2019.1080p.BluRay.x264-GROUP",
+			wantTitle: "1917",
+			wantYear:  2019,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := Parse(tt.input)
+			assert.Equal(t, tt.wantTitle, info.Title)
+			assert.Equal(t, tt.wantYear, info.Year)
+		})
+	}
+}
