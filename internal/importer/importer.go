@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -447,20 +448,70 @@ func (i *Importer) importEpisodeFile(_ context.Context, dl *download.Download, c
 		}
 	}
 
-	// Copy file
-	size, err := CopyFile(srcPath, destPath)
+	// Check if destination already exists (for resumable imports)
+	var size int64
+	srcInfo, err := os.Stat(srcPath)
 	if err != nil {
-		i.log.Warn("failed to copy file", "src", srcPath, "dest", destPath, "error", err)
+		i.log.Warn("failed to stat source file", "src", srcPath, "error", err)
 		return EpisodeResult{
 			EpisodeID: episode.ID,
 			Season:    season,
 			Episode:   epNum,
 			Success:   false,
-			Error:     fmt.Errorf("copy file: %w", err),
+			Error:     fmt.Errorf("stat source: %w", err),
 		}
 	}
 
-	i.log.Debug("copied episode file", "src", srcPath, "dest", destPath, "size", size)
+	if destInfo, err := os.Stat(destPath); err == nil {
+		// Destination exists - check if it matches source size
+		if destInfo.Size() == srcInfo.Size() {
+			// File already imported, skip copy
+			size = destInfo.Size()
+			i.log.Info("episode file already exists, skipping copy",
+				"dest", destPath, "size", size, "season", season, "episode", epNum)
+		} else {
+			// Size mismatch - file is incomplete, remove and re-copy
+			i.log.Warn("destination file exists with wrong size, removing",
+				"dest", destPath, "expected", srcInfo.Size(), "actual", destInfo.Size())
+			if err := os.Remove(destPath); err != nil {
+				i.log.Warn("failed to remove incomplete file", "dest", destPath, "error", err)
+				return EpisodeResult{
+					EpisodeID: episode.ID,
+					Season:    season,
+					Episode:   epNum,
+					Success:   false,
+					Error:     fmt.Errorf("remove incomplete file: %w", err),
+				}
+			}
+			// Now copy the file
+			size, err = CopyFile(srcPath, destPath)
+			if err != nil {
+				i.log.Warn("failed to copy file", "src", srcPath, "dest", destPath, "error", err)
+				return EpisodeResult{
+					EpisodeID: episode.ID,
+					Season:    season,
+					Episode:   epNum,
+					Success:   false,
+					Error:     fmt.Errorf("copy file: %w", err),
+				}
+			}
+			i.log.Debug("copied episode file", "src", srcPath, "dest", destPath, "size", size)
+		}
+	} else {
+		// Destination doesn't exist - copy the file
+		size, err = CopyFile(srcPath, destPath)
+		if err != nil {
+			i.log.Warn("failed to copy file", "src", srcPath, "dest", destPath, "error", err)
+			return EpisodeResult{
+				EpisodeID: episode.ID,
+				Season:    season,
+				Episode:   epNum,
+				Success:   false,
+				Error:     fmt.Errorf("copy file: %w", err),
+			}
+		}
+		i.log.Debug("copied episode file", "src", srcPath, "dest", destPath, "size", size)
+	}
 
 	// Update database in transaction
 	tx, err := i.library.Begin()
@@ -476,7 +527,7 @@ func (i *Importer) importEpisodeFile(_ context.Context, dl *download.Download, c
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Insert file record
+	// Insert file record (skip if already exists from previous import attempt)
 	file := &library.File{
 		ContentID: content.ID,
 		EpisodeID: &episode.ID,
@@ -486,13 +537,18 @@ func (i *Importer) importEpisodeFile(_ context.Context, dl *download.Download, c
 		Source:    dl.Indexer,
 	}
 	if err := tx.AddFile(file); err != nil {
-		i.log.Warn("failed to add file record", "error", err)
-		return EpisodeResult{
-			EpisodeID: episode.ID,
-			Season:    season,
-			Episode:   epNum,
-			Success:   false,
-			Error:     fmt.Errorf("add file: %w", err),
+		if errors.Is(err, library.ErrDuplicate) {
+			// File record already exists - this is fine for resumable imports
+			i.log.Debug("file record already exists, skipping insert", "path", destPath)
+		} else {
+			i.log.Warn("failed to add file record", "error", err)
+			return EpisodeResult{
+				EpisodeID: episode.ID,
+				Season:    season,
+				Episode:   epNum,
+				Success:   false,
+				Error:     fmt.Errorf("add file: %w", err),
+			}
 		}
 	}
 
