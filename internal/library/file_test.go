@@ -337,6 +337,54 @@ func TestStore_ListFiles_FilterByQuality(t *testing.T) {
 	}
 }
 
+func TestStore_ListFiles_FilterBySeason(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+	series := createTestSeries(t, store)
+
+	// Create episodes in two seasons
+	e1s1 := &Episode{ContentID: series.ID, Season: 1, Episode: 1, Title: "S01E01", Status: StatusWanted}
+	e2s1 := &Episode{ContentID: series.ID, Season: 1, Episode: 2, Title: "S01E02", Status: StatusWanted}
+	e1s2 := &Episode{ContentID: series.ID, Season: 2, Episode: 1, Title: "S02E01", Status: StatusWanted}
+	e2s2 := &Episode{ContentID: series.ID, Season: 2, Episode: 2, Title: "S02E02", Status: StatusWanted}
+	require.NoError(t, store.AddEpisode(e1s1))
+	require.NoError(t, store.AddEpisode(e2s1))
+	require.NoError(t, store.AddEpisode(e1s2))
+	require.NoError(t, store.AddEpisode(e2s2))
+
+	// Add files for each episode
+	require.NoError(t, store.AddFile(&File{ContentID: series.ID, EpisodeID: &e1s1.ID, Path: "/tv/s01e01.mkv", Quality: "1080p"}))
+	require.NoError(t, store.AddFile(&File{ContentID: series.ID, EpisodeID: &e2s1.ID, Path: "/tv/s01e02.mkv", Quality: "1080p"}))
+	require.NoError(t, store.AddFile(&File{ContentID: series.ID, EpisodeID: &e1s2.ID, Path: "/tv/s02e01.mkv", Quality: "720p"}))
+	require.NoError(t, store.AddFile(&File{ContentID: series.ID, EpisodeID: &e2s2.ID, Path: "/tv/s02e02.mkv", Quality: "720p"}))
+
+	// Filter by Season 1 - should get 2 files
+	season1 := 1
+	results, total, err := store.ListFiles(FileFilter{ContentID: &series.ID, Season: &season1})
+	require.NoError(t, err)
+	assert.Equal(t, 2, total)
+	assert.Len(t, results, 2)
+	for _, f := range results {
+		assert.Equal(t, "1080p", f.Quality, "Season 1 files should have 1080p quality")
+	}
+
+	// Filter by Season 2 - should get 2 files
+	season2 := 2
+	results2, total2, err := store.ListFiles(FileFilter{ContentID: &series.ID, Season: &season2})
+	require.NoError(t, err)
+	assert.Equal(t, 2, total2)
+	assert.Len(t, results2, 2)
+	for _, f := range results2 {
+		assert.Equal(t, "720p", f.Quality, "Season 2 files should have 720p quality")
+	}
+
+	// Without season filter - should get all 4 files
+	resultsAll, totalAll, err := store.ListFiles(FileFilter{ContentID: &series.ID})
+	require.NoError(t, err)
+	assert.Equal(t, 4, totalAll)
+	assert.Len(t, resultsAll, 4)
+}
+
 func TestTx_AddFile(t *testing.T) {
 	db := setupTestDB(t)
 	store := NewStore(db)

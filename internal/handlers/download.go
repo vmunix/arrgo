@@ -62,7 +62,12 @@ func (h *DownloadHandler) handleGrabRequested(ctx context.Context, e *events.Gra
 
 	// Check for existing files before grabbing (duplicate prevention)
 	if e.ContentID > 0 && h.library != nil {
-		files, _, err := h.library.ListFiles(library.FileFilter{ContentID: &e.ContentID})
+		// Build filter - for season packs, only compare against files from the same season
+		filter := library.FileFilter{ContentID: &e.ContentID}
+		if e.IsCompleteSeason && e.Season != nil {
+			filter.Season = e.Season
+		}
+		files, _, err := h.library.ListFiles(filter)
 		if err != nil {
 			h.Logger().Warn("failed to check existing files", "error", err)
 			// Continue with grab on error - better to grab than miss content

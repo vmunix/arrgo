@@ -55,16 +55,29 @@ func listFiles(q querier, f FileFilter) ([]*File, int, error) {
 	var conditions []string
 	var args []any
 
+	// Determine if we need to join with episodes table
+	needsJoin := f.Season != nil
+
+	// Use table prefix when joining
+	filePrefix := ""
+	if needsJoin {
+		filePrefix = "f."
+	}
+
 	if f.ContentID != nil {
-		conditions = append(conditions, "content_id = ?")
+		conditions = append(conditions, filePrefix+"content_id = ?")
 		args = append(args, *f.ContentID)
 	}
 	if f.EpisodeID != nil {
-		conditions = append(conditions, "episode_id = ?")
+		conditions = append(conditions, filePrefix+"episode_id = ?")
 		args = append(args, *f.EpisodeID)
 	}
+	if f.Season != nil {
+		conditions = append(conditions, "e.season = ?")
+		args = append(args, *f.Season)
+	}
 	if f.Quality != nil {
-		conditions = append(conditions, "quality = ?")
+		conditions = append(conditions, filePrefix+"quality = ?")
 		args = append(args, *f.Quality)
 	}
 
@@ -73,12 +86,22 @@ func listFiles(q querier, f FileFilter) ([]*File, int, error) {
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
 	}
 
+	// Build FROM clause with optional join
+	fromClause := "files"
+	if needsJoin {
+		fromClause = "files f JOIN episodes e ON f.episode_id = e.id"
+	}
+
 	var total int
-	if err := q.QueryRow("SELECT COUNT(*) FROM files "+whereClause, args...).Scan(&total); err != nil {
+	if err := q.QueryRow("SELECT COUNT(*) FROM "+fromClause+" "+whereClause, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count files: %w", err)
 	}
 
-	query := "SELECT id, content_id, episode_id, path, size_bytes, quality, source, added_at FROM files " + whereClause + " ORDER BY id"
+	selectCols := "id, content_id, episode_id, path, size_bytes, quality, source, added_at"
+	if needsJoin {
+		selectCols = "f.id, f.content_id, f.episode_id, f.path, f.size_bytes, f.quality, f.source, f.added_at"
+	}
+	query := "SELECT " + selectCols + " FROM " + fromClause + " " + whereClause + " ORDER BY " + filePrefix + "id"
 	if f.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d OFFSET %d", f.Limit, f.Offset)
 	}
