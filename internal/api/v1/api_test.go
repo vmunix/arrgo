@@ -18,6 +18,7 @@ import (
 	"github.com/vmunix/arrgo/internal/api/v1/mocks"
 	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/events"
+	"github.com/vmunix/arrgo/internal/importer"
 	"github.com/vmunix/arrgo/internal/library"
 	"github.com/vmunix/arrgo/internal/search"
 	"go.uber.org/mock/gomock"
@@ -871,4 +872,188 @@ func TestVerify_WithDownloadID(t *testing.T) {
 	// Without manager, verify doesn't find problems for completed status
 	assert.Equal(t, 1, resp.Passed)
 	assert.Empty(t, resp.Problems)
+}
+
+func TestGetPlexStatus_Connected(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	mockPlex := mocks.NewMockPlexClient(ctrl)
+
+	// Setup Plex mock expectations
+	mockPlex.EXPECT().
+		GetIdentity(gomock.Any()).
+		Return(&importer.Identity{
+			Name:    "Test Plex Server",
+			Version: "1.32.0",
+		}, nil)
+
+	mockPlex.EXPECT().
+		GetSections(gomock.Any()).
+		Return([]importer.Section{
+			{
+				Key:       "1",
+				Title:     "Movies",
+				Type:      "movie",
+				Locations: []importer.Location{{Path: "/media/movies"}},
+				ScannedAt: 1700000000,
+			},
+			{
+				Key:       "2",
+				Title:     "TV Shows",
+				Type:      "show",
+				Locations: []importer.Location{{Path: "/media/tv"}},
+				ScannedAt: 1700000001,
+			},
+		}, nil)
+
+	// GetLibraryCount is called for each section
+	mockPlex.EXPECT().
+		GetLibraryCount(gomock.Any(), "1").
+		Return(150, nil)
+	mockPlex.EXPECT().
+		GetLibraryCount(gomock.Any(), "2").
+		Return(50, nil)
+
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Plex:      mockPlex,
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/plex/status", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp plexStatusResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	assert.True(t, resp.Connected)
+	assert.Equal(t, "Test Plex Server", resp.ServerName)
+	assert.Equal(t, "1.32.0", resp.Version)
+	assert.Empty(t, resp.Error)
+	assert.Len(t, resp.Libraries, 2)
+
+	// Verify first library
+	assert.Equal(t, "1", resp.Libraries[0].Key)
+	assert.Equal(t, "Movies", resp.Libraries[0].Title)
+	assert.Equal(t, "movie", resp.Libraries[0].Type)
+	assert.Equal(t, 150, resp.Libraries[0].ItemCount)
+	assert.Equal(t, "/media/movies", resp.Libraries[0].Location)
+	assert.Equal(t, int64(1700000000), resp.Libraries[0].ScannedAt)
+
+	// Verify second library
+	assert.Equal(t, "2", resp.Libraries[1].Key)
+	assert.Equal(t, "TV Shows", resp.Libraries[1].Title)
+	assert.Equal(t, "show", resp.Libraries[1].Type)
+	assert.Equal(t, 50, resp.Libraries[1].ItemCount)
+}
+
+func TestGetPlexStatus_NotConfigured(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/plex/status", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp plexStatusResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	assert.False(t, resp.Connected)
+	assert.Empty(t, resp.ServerName)
+	assert.Empty(t, resp.Version)
+	assert.Empty(t, resp.Libraries)
+	assert.Equal(t, "Plex not configured", resp.Error)
+}
+
+func TestScanPlexLibraries_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	mockPlex := mocks.NewMockPlexClient(ctrl)
+
+	// Setup mock expectations
+	mockPlex.EXPECT().
+		GetSections(gomock.Any()).
+		Return([]importer.Section{
+			{Key: "1", Title: "Movies", Type: "movie"},
+			{Key: "2", Title: "TV Shows", Type: "show"},
+		}, nil)
+
+	// Scan both libraries
+	mockPlex.EXPECT().
+		RefreshLibrary(gomock.Any(), "1").
+		Return(nil)
+	mockPlex.EXPECT().
+		RefreshLibrary(gomock.Any(), "2").
+		Return(nil)
+
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Plex:      mockPlex,
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	// Request to scan all libraries (empty array)
+	body := `{"libraries":[]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/plex/scan", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp plexScanResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	assert.Len(t, resp.Scanned, 2)
+	assert.Contains(t, resp.Scanned, "Movies")
+	assert.Contains(t, resp.Scanned, "TV Shows")
+}
+
+func TestScanPlexLibraries_NoPlex(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	body := `{"libraries":[]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/plex/scan", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+	var resp errorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "SERVICE_UNAVAILABLE", resp.Code)
+	assert.Equal(t, "Plex not configured", resp.Error)
 }
