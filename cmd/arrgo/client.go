@@ -247,18 +247,17 @@ func (c *Client) Downloads(activeOnly bool) (*ListDownloadsResponse, error) {
 }
 
 func (c *Client) Search(query, contentType, profile string) (*SearchResponse, error) {
-	req := map[string]any{
-		"query": query,
-	}
+	params := url.Values{}
+	params.Set("query", query)
 	if contentType != "" {
-		req["type"] = contentType
+		params.Set("type", contentType)
 	}
 	if profile != "" {
-		req["profile"] = profile
+		params.Set("profile", profile)
 	}
 
 	var resp SearchResponse
-	if err := c.post("/api/v1/search", req, &resp); err != nil {
+	if err := c.get("/api/v1/search?"+params.Encode(), &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

@@ -2,16 +2,21 @@ package v1
 
 import (
 	"net/http"
-	"strconv"
 	"time"
 )
 
 func (s *Server) listEvents(w http.ResponseWriter, r *http.Request) {
-	limit := 50 // default
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
-			limit = parsed
-		}
+	limit := queryInt(r, "limit", 50)
+	offset := queryInt(r, "offset", 0)
+
+	// Validate pagination parameters
+	if limit < 0 || offset < 0 {
+		writeError(w, http.StatusBadRequest, "INVALID_PAGINATION", "limit and offset must be non-negative")
+		return
+	}
+	const maxLimit = 1000
+	if limit > maxLimit {
+		limit = maxLimit
 	}
 
 	if s.deps.EventLog == nil {
@@ -19,15 +24,17 @@ func (s *Server) listEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	events, err := s.deps.EventLog.Recent(limit)
+	events, total, err := s.deps.EventLog.Recent(limit, offset)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "EVENT_ERROR", err.Error())
 		return
 	}
 
 	resp := listEventsResponse{
-		Items: make([]EventResponse, len(events)),
-		Total: len(events),
+		Items:  make([]EventResponse, len(events)),
+		Total:  total,
+		Limit:  limit,
+		Offset: offset,
 	}
 	for i, e := range events {
 		resp.Items[i] = EventResponse{
@@ -67,8 +74,10 @@ func (s *Server) listDownloadEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := listEventsResponse{
-		Items: make([]EventResponse, len(events)),
-		Total: len(events),
+		Items:  make([]EventResponse, len(events)),
+		Total:  len(events),
+		Limit:  len(events),
+		Offset: 0,
 	}
 	for i, e := range events {
 		resp.Items[i] = EventResponse{

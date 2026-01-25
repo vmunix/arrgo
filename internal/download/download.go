@@ -55,6 +55,8 @@ type Filter struct {
 	Status    *Status
 	Client    *Client
 	Active    bool // If true, exclude terminal states (cleaned, failed)
+	Limit     int  // Maximum number of results (0 = unlimited)
+	Offset    int  // Number of results to skip
 }
 
 // ClientStatus is the status from a download client.
@@ -254,7 +256,8 @@ func (s *Store) Transition(d *Download, to Status) error {
 
 // List returns downloads matching the specified filter.
 // If Active is true, downloads in terminal states (cleaned, failed) are excluded.
-func (s *Store) List(f Filter) ([]*Download, error) {
+// Returns the matching downloads and total count (before pagination).
+func (s *Store) List(f Filter) ([]*Download, int, error) {
 	// Pre-allocate with capacity for potential filter conditions
 	conditions := make([]string, 0, 5)
 	args := make([]any, 0, 6)
@@ -285,14 +288,28 @@ func (s *Store) List(f Filter) ([]*Download, error) {
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
 	}
 
+	// Get total count first
+	// G202: False positive - whereClause contains only "col = ?" conditions,
+	// actual values are passed via args parameter (parameterized query).
+	countQuery := "SELECT COUNT(*) FROM downloads " + whereClause //nolint:gosec
+	var total int
+	if err := s.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count downloads: %w", err)
+	}
+
 	// G202: False positive - whereClause contains only "col = ?" conditions,
 	// actual values are passed via args parameter (parameterized query).
 	query := "SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at FROM downloads " + //nolint:gosec
 		whereClause + " ORDER BY id"
 
+	// Add LIMIT/OFFSET if specified
+	if f.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d OFFSET %d", f.Limit, f.Offset)
+	}
+
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("list downloads: %w", err)
+		return nil, 0, fmt.Errorf("list downloads: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -300,15 +317,15 @@ func (s *Store) List(f Filter) ([]*Download, error) {
 	for rows.Next() {
 		d := &Download{}
 		if err := rows.Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt); err != nil {
-			return nil, fmt.Errorf("scan download: %w", err)
+			return nil, 0, fmt.Errorf("scan download: %w", err)
 		}
 		results = append(results, d)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate downloads: %w", err)
+		return nil, 0, fmt.Errorf("iterate downloads: %w", err)
 	}
 
-	return results, nil
+	return results, total, nil
 }
 
 // Delete removes a download by ID.
@@ -319,6 +336,30 @@ func (s *Store) Delete(id int64) error {
 		return fmt.Errorf("delete download %d: %w", id, err)
 	}
 	return nil
+}
+
+// CountByStatus returns a map of status to count for all downloads.
+func (s *Store) CountByStatus() (map[Status]int, error) {
+	rows, err := s.db.Query(`
+		SELECT status, COUNT(*) as count
+		FROM downloads
+		GROUP BY status`)
+	if err != nil {
+		return nil, fmt.Errorf("count by status: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	counts := make(map[Status]int)
+	for rows.Next() {
+		var status Status
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return nil, fmt.Errorf("scan count: %w", err)
+		}
+		counts[status] = count
+	}
+
+	return counts, rows.Err()
 }
 
 // ListStuck returns downloads that haven't transitioned within their expected threshold.

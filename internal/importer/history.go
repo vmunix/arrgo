@@ -32,7 +32,8 @@ type HistoryFilter struct {
 	ContentID *int64
 	EpisodeID *int64
 	Event     *string
-	Limit     int
+	Limit     int // Maximum number of results (0 = unlimited)
+	Offset    int // Number of results to skip
 }
 
 // HistoryStore persists history records.
@@ -69,7 +70,8 @@ func (s *HistoryStore) Add(h *HistoryEntry) error {
 
 // List returns history entries matching the filter.
 // Results are ordered by most recent first.
-func (s *HistoryStore) List(f HistoryFilter) ([]*HistoryEntry, error) {
+// Returns the matching entries and total count (before pagination).
+func (s *HistoryStore) List(f HistoryFilter) ([]*HistoryEntry, int, error) {
 	var conditions []string
 	var args []any
 
@@ -91,18 +93,28 @@ func (s *HistoryStore) List(f HistoryFilter) ([]*HistoryEntry, error) {
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
 	}
 
+	// Get total count first
+	// G202: False positive - whereClause contains only "col = ?" conditions,
+	// actual values are passed via args parameter (parameterized query).
+	countQuery := "SELECT COUNT(*) FROM history " + whereClause //nolint:gosec
+	var total int
+	if err := s.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count history: %w", err)
+	}
+
 	// G202: False positive - whereClause contains only "WHERE col = ?" style conditions,
 	// actual values are passed via args parameter (parameterized query).
 	query := `SELECT id, content_id, episode_id, event, data, created_at ` + //nolint:gosec
 		`FROM history ` + whereClause + ` ORDER BY created_at DESC`
 
+	// Add LIMIT/OFFSET if specified
 	if f.Limit > 0 {
-		query += fmt.Sprintf(" LIMIT %d", f.Limit)
+		query += fmt.Sprintf(" LIMIT %d OFFSET %d", f.Limit, f.Offset)
 	}
 
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("list history: %w", err)
+		return nil, 0, fmt.Errorf("list history: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -110,13 +122,13 @@ func (s *HistoryStore) List(f HistoryFilter) ([]*HistoryEntry, error) {
 	for rows.Next() {
 		h := &HistoryEntry{}
 		if err := rows.Scan(&h.ID, &h.ContentID, &h.EpisodeID, &h.Event, &h.Data, &h.CreatedAt); err != nil {
-			return nil, fmt.Errorf("scan history: %w", err)
+			return nil, 0, fmt.Errorf("scan history: %w", err)
 		}
 		results = append(results, h)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate history: %w", err)
+		return nil, 0, fmt.Errorf("iterate history: %w", err)
 	}
 
-	return results, nil
+	return results, total, nil
 }

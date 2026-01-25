@@ -65,16 +65,6 @@ type updateEpisodeRequest struct {
 	Status *string `json:"status,omitempty"`
 }
 
-// searchRequest is the request body for POST /search.
-type searchRequest struct {
-	ContentID *int64 `json:"content_id,omitempty"`
-	Query     string `json:"query,omitempty"`
-	Type      string `json:"type,omitempty"`
-	Season    *int   `json:"season,omitempty"`
-	Episode   *int   `json:"episode,omitempty"`
-	Profile   string `json:"profile,omitempty"`
-}
-
 // releaseResponse is the API representation of a search result.
 type releaseResponse struct {
 	Title       string    `json:"title"`
@@ -123,8 +113,10 @@ type downloadResponse struct {
 
 // listDownloadsResponse is the response for GET /downloads.
 type listDownloadsResponse struct {
-	Items []downloadResponse `json:"items"`
-	Total int                `json:"total"`
+	Items  []downloadResponse `json:"items"`
+	Total  int                `json:"total"`
+	Limit  int                `json:"limit"`
+	Offset int                `json:"offset"`
 }
 
 // historyResponse is the API representation of a history entry.
@@ -139,8 +131,10 @@ type historyResponse struct {
 
 // listHistoryResponse is the response for GET /history.
 type listHistoryResponse struct {
-	Items []historyResponse `json:"items"`
-	Total int               `json:"total"`
+	Items  []historyResponse `json:"items"`
+	Total  int               `json:"total"`
+	Limit  int               `json:"limit"`
+	Offset int               `json:"offset"`
 }
 
 // fileResponse is the API representation of a file.
@@ -157,8 +151,10 @@ type fileResponse struct {
 
 // listFilesResponse is the response for GET /files.
 type listFilesResponse struct {
-	Items []fileResponse `json:"items"`
-	Total int            `json:"total"`
+	Items  []fileResponse `json:"items"`
+	Total  int            `json:"total"`
+	Limit  int            `json:"limit"`
+	Offset int            `json:"offset"`
 }
 
 // statusResponse is the response for GET /status.
@@ -176,11 +172,6 @@ type profileResponse struct {
 // listProfilesResponse is the response for GET /profiles.
 type listProfilesResponse struct {
 	Profiles []profileResponse `json:"profiles"`
-}
-
-// scanRequest is the request body for POST /scan.
-type scanRequest struct {
-	Path string `json:"path,omitempty"`
 }
 
 // plexStatusResponse is the response for GET /plex/status.
@@ -297,15 +288,16 @@ type EventResponse struct {
 
 // listEventsResponse is the response for GET /events.
 type listEventsResponse struct {
-	Items []EventResponse `json:"items"`
-	Total int             `json:"total"`
+	Items  []EventResponse `json:"items"`
+	Total  int             `json:"total"`
+	Limit  int             `json:"limit"`
+	Offset int             `json:"offset"`
 }
 
 // retryResponse is the response for POST /downloads/{id}/retry.
 type retryResponse struct {
-	NewDownloadID int64  `json:"new_download_id,omitempty"`
-	ReleaseName   string `json:"release_name"`
-	Message       string `json:"message"`
+	ReleaseName string `json:"release_name"`
+	Message     string `json:"message"`
 }
 
 // indexerResponse is the API representation of an indexer's status.

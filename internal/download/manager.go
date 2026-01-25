@@ -58,7 +58,7 @@ func (m *Manager) Client() Downloader {
 
 // GetActive returns active downloads with live status from the client.
 func (m *Manager) GetActive(ctx context.Context) ([]*ActiveDownload, error) {
-	downloads, err := m.store.List(Filter{Active: true})
+	downloads, _, err := m.store.List(Filter{Active: true})
 	if err != nil {
 		return nil, fmt.Errorf("list active: %w", err)
 	}
