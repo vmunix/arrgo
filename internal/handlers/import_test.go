@@ -83,6 +83,28 @@ func (m *mockImporter) Import(ctx context.Context, downloadID int64, path string
 	return m.returnResult, nil
 }
 
+func (m *mockImporter) ImportSeasonPack(ctx context.Context, downloadID int64, path string) (*importer.SeasonPackResult, error) {
+	if m.delay > 0 {
+		time.Sleep(m.delay)
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.importCalled = true
+	m.callCount++
+	m.lastID = downloadID
+	m.lastPath = path
+
+	if m.returnError != nil {
+		return nil, m.returnError
+	}
+	return &importer.SeasonPackResult{
+		TotalSize: 10000000000,
+		Episodes:  []importer.EpisodeResult{},
+	}, nil
+}
+
 func (m *mockImporter) getCallCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -452,6 +474,11 @@ type countingImporter struct {
 func (c *countingImporter) Import(ctx context.Context, downloadID int64, path string) (*importer.ImportResult, error) {
 	c.counter.Add(1)
 	return c.inner.Import(ctx, downloadID, path)
+}
+
+func (c *countingImporter) ImportSeasonPack(ctx context.Context, downloadID int64, path string) (*importer.SeasonPackResult, error) {
+	c.counter.Add(1)
+	return c.inner.ImportSeasonPack(ctx, downloadID, path)
 }
 
 // setupImportTestDBWithLibrary creates a test DB with both download and library schemas.

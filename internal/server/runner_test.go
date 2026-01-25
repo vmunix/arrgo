@@ -41,6 +41,10 @@ func (m *mockImporter) Import(_ context.Context, _ int64, _ string) (*importer.I
 	return &importer.ImportResult{DestPath: "/movies/test.mkv", SizeBytes: 1000}, nil
 }
 
+func (m *mockImporter) ImportSeasonPack(_ context.Context, _ int64, _ string) (*importer.SeasonPackResult, error) {
+	return &importer.SeasonPackResult{TotalSize: 5000, Episodes: []importer.EpisodeResult{}}, nil
+}
+
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", ":memory:")

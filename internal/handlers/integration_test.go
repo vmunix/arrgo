@@ -79,7 +79,7 @@ func (m *integrationDownloader) Remove(_ context.Context, _ string, _ bool) erro
 }
 
 // integrationImporter is a mock file importer.
-// Note: Status transitions (importing → imported) are now handled by ImportHandler.
+// Note: Status transitions (importing -> imported) are now handled by ImportHandler.
 type integrationImporter struct{}
 
 func (m *integrationImporter) Import(_ context.Context, _ int64, _ string) (*importer.ImportResult, error) {
@@ -87,6 +87,13 @@ func (m *integrationImporter) Import(_ context.Context, _ int64, _ string) (*imp
 		FileID:    1,
 		DestPath:  "/movies/test.mkv",
 		SizeBytes: 1000,
+	}, nil
+}
+
+func (m *integrationImporter) ImportSeasonPack(_ context.Context, _ int64, _ string) (*importer.SeasonPackResult, error) {
+	return &importer.SeasonPackResult{
+		TotalSize: 5000,
+		Episodes:  []importer.EpisodeResult{},
 	}, nil
 }
 
@@ -338,6 +345,10 @@ type failingImporter struct {
 }
 
 func (m *failingImporter) Import(_ context.Context, _ int64, _ string) (*importer.ImportResult, error) {
+	return nil, m.err
+}
+
+func (m *failingImporter) ImportSeasonPack(_ context.Context, _ int64, _ string) (*importer.SeasonPackResult, error) {
 	return nil, m.err
 }
 
