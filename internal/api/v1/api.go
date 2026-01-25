@@ -759,7 +759,18 @@ func (s *Server) retryDownload(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listHistory(w http.ResponseWriter, r *http.Request) {
 	filter := importer.HistoryFilter{
-		Limit: queryInt(r, "limit", 50),
+		Limit:  queryInt(r, "limit", 50),
+		Offset: queryInt(r, "offset", 0),
+	}
+
+	// Validate pagination parameters
+	if filter.Limit < 0 || filter.Offset < 0 {
+		writeError(w, http.StatusBadRequest, "INVALID_PAGINATION", "limit and offset must be non-negative")
+		return
+	}
+	const maxLimit = 1000
+	if filter.Limit > maxLimit {
+		filter.Limit = maxLimit
 	}
 
 	if contentIDStr := r.URL.Query().Get("content_id"); contentIDStr != "" {
@@ -767,15 +778,17 @@ func (s *Server) listHistory(w http.ResponseWriter, r *http.Request) {
 		filter.ContentID = &id
 	}
 
-	entries, err := s.deps.History.List(filter)
+	entries, total, err := s.deps.History.List(filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
 	}
 
 	resp := listHistoryResponse{
-		Items: make([]historyResponse, len(entries)),
-		Total: len(entries),
+		Items:  make([]historyResponse, len(entries)),
+		Total:  total,
+		Limit:  filter.Limit,
+		Offset: filter.Offset,
 	}
 
 	for i, h := range entries {

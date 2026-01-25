@@ -131,8 +131,10 @@ type historyResponse struct {
 
 // listHistoryResponse is the response for GET /history.
 type listHistoryResponse struct {
-	Items []historyResponse `json:"items"`
-	Total int               `json:"total"`
+	Items  []historyResponse `json:"items"`
+	Total  int               `json:"total"`
+	Limit  int               `json:"limit"`
+	Offset int               `json:"offset"`
 }
 
 // fileResponse is the API representation of a file.
