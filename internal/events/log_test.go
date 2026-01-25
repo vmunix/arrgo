@@ -2,6 +2,7 @@ package events
 
 import (
 	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -141,6 +142,31 @@ func TestEventLog_Prune(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, events, 1)
 	assert.Equal(t, "test.new", events[0].EventType)
+}
+
+func TestEventLog_Recent(t *testing.T) {
+	db := setupTestDB(t)
+	log := NewEventLog(db)
+
+	// Insert 5 events
+	for i := 0; i < 5; i++ {
+		evt := &ContentAdded{
+			BaseEvent: NewBaseEvent(EventContentAdded, EntityContent, int64(i+1)),
+			ContentID: int64(i + 1),
+			Title:     fmt.Sprintf("Movie %d", i+1),
+		}
+		_, err := log.Append(evt)
+		require.NoError(t, err)
+	}
+
+	// Get last 3
+	events, err := log.Recent(3)
+	require.NoError(t, err)
+	assert.Len(t, events, 3)
+	// Should be in reverse chronological order (newest first)
+	assert.Equal(t, int64(5), events[0].EntityID)
+	assert.Equal(t, int64(4), events[1].EntityID)
+	assert.Equal(t, int64(3), events[2].EntityID)
 }
 
 // testEvent is a concrete event type for testing

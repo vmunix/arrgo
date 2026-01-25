@@ -81,6 +81,23 @@ func (l *EventLog) ForEntity(entityType string, entityID int64) ([]RawEvent, err
 	return scanEvents(rows)
 }
 
+// Recent returns the last N events in reverse chronological order.
+func (l *EventLog) Recent(limit int) ([]RawEvent, error) {
+	rows, err := l.db.Query(`
+		SELECT id, event_type, entity_type, entity_id, payload, occurred_at, created_at
+		FROM events
+		ORDER BY id DESC
+		LIMIT ?`,
+		limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query events: %w", err)
+	}
+	defer rows.Close()
+
+	return scanEvents(rows)
+}
+
 // Prune removes events older than the given duration.
 func (l *EventLog) Prune(olderThan time.Duration) (int64, error) {
 	cutoff := time.Now().Add(-olderThan)
