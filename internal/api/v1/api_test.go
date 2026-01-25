@@ -633,6 +633,8 @@ func TestListEvents_Success(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Len(t, resp.Items, 1)
 	assert.Equal(t, 1, resp.Total)
+	assert.Equal(t, 50, resp.Limit)  // default limit
+	assert.Equal(t, 0, resp.Offset)  // default offset
 	assert.Equal(t, "test.event", resp.Items[0].EventType)
 	assert.Equal(t, "content", resp.Items[0].EntityType)
 	assert.Equal(t, int64(1), resp.Items[0].EntityID)
@@ -657,6 +659,8 @@ func TestListEvents_Empty(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Empty(t, resp.Items)
 	assert.Zero(t, resp.Total)
+	assert.Equal(t, 50, resp.Limit)  // default limit
+	assert.Equal(t, 0, resp.Offset)  // default offset
 }
 
 func TestListDownloadEvents_Success(t *testing.T) {

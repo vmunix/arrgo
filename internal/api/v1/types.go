@@ -293,8 +293,10 @@ type EventResponse struct {
 
 // listEventsResponse is the response for GET /events.
 type listEventsResponse struct {
-	Items []EventResponse `json:"items"`
-	Total int             `json:"total"`
+	Items  []EventResponse `json:"items"`
+	Total  int             `json:"total"`
+	Limit  int             `json:"limit"`
+	Offset int             `json:"offset"`
 }
 
 // retryResponse is the response for POST /downloads/{id}/retry.
