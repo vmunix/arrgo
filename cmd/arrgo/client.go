@@ -526,3 +526,15 @@ func (c *Client) Profiles() (*ListProfilesResponse, error) {
 	}
 	return &resp, nil
 }
+
+func (c *Client) Files(contentID *int64) (*ListFilesResponse, error) {
+	path := "/api/v1/files"
+	if contentID != nil {
+		path += fmt.Sprintf("?content_id=%d", *contentID)
+	}
+	var resp ListFilesResponse
+	if err := c.get(path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
