@@ -68,6 +68,17 @@ func (c *PlexClient) translateToRemote(path string) string {
 	return path
 }
 
+// TranslateToLocal converts a Plex path to the local path.
+func (c *PlexClient) TranslateToLocal(path string) string {
+	if c.localPath == "" || c.remotePath == "" {
+		return path
+	}
+	if strings.HasPrefix(path, c.remotePath) {
+		return c.localPath + path[len(c.remotePath):]
+	}
+	return path
+}
+
 // Identity holds Plex server identity information.
 type Identity struct {
 	Name    string

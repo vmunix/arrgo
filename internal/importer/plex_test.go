@@ -296,3 +296,37 @@ func TestPlexClient_FindMovie_ReturnsRatingKey(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, "99999", key, "should return the Plex ratingKey")
 }
+
+func TestPlexClient_TranslateToLocal(t *testing.T) {
+	client := NewPlexClientWithPathMapping(
+		"http://plex:32400",
+		"token",
+		"/srv/media",  // local
+		"/data/media", // remote (Plex sees this)
+		nil,
+	)
+
+	tests := []struct {
+		remote string
+		local  string
+	}{
+		{"/data/media/movies/Test.mkv", "/srv/media/movies/Test.mkv"},
+		{"/data/media/tv/Show/S01E01.mkv", "/srv/media/tv/Show/S01E01.mkv"},
+		{"/other/path/file.mkv", "/other/path/file.mkv"}, // no match, unchanged
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.remote, func(t *testing.T) {
+			result := client.TranslateToLocal(tt.remote)
+			assert.Equal(t, tt.local, result)
+		})
+	}
+}
+
+func TestPlexClient_TranslateToLocal_NoMapping(t *testing.T) {
+	// When no path mapping is configured, paths should be returned unchanged
+	client := NewPlexClient("http://plex:32400", "token", nil)
+
+	result := client.TranslateToLocal("/data/media/movies/Test.mkv")
+	assert.Equal(t, "/data/media/movies/Test.mkv", result)
+}
