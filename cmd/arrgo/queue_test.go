@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -12,12 +10,10 @@ import (
 )
 
 func TestClientDownloads_WithItems(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api/v1/downloads", r.URL.Path, "unexpected path")
-		assert.Equal(t, http.MethodGet, r.Method, "unexpected method")
-
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(ListDownloadsResponse{
+	srv := newMockServer(t).
+		ExpectPath("/api/v1/downloads").
+		ExpectGET().
+		RespondJSON(ListDownloadsResponse{
 			Items: []DownloadResponse{
 				{
 					ID:          1,
@@ -41,8 +37,8 @@ func TestClientDownloads_WithItems(t *testing.T) {
 				},
 			},
 			Total: 2,
-		})
-	}))
+		}).
+		Build()
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
@@ -56,13 +52,14 @@ func TestClientDownloads_WithItems(t *testing.T) {
 }
 
 func TestClientDownloads_EmptyQueue(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(ListDownloadsResponse{
+	srv := newMockServer(t).
+		ExpectPath("/api/v1/downloads").
+		ExpectGET().
+		RespondJSON(ListDownloadsResponse{
 			Items: []DownloadResponse{},
 			Total: 0,
-		})
-	}))
+		}).
+		Build()
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
@@ -73,58 +70,46 @@ func TestClientDownloads_EmptyQueue(t *testing.T) {
 }
 
 func TestClientDownloads_ActiveOnlyFilter(t *testing.T) {
-	var receivedPath string
+	tests := []struct {
+		name         string
+		activeOnly   bool
+		expectedPath string
+	}{
+		{
+			name:         "with active filter",
+			activeOnly:   true,
+			expectedPath: "/api/v1/downloads?active=true",
+		},
+		{
+			name:         "without active filter",
+			activeOnly:   false,
+			expectedPath: "/api/v1/downloads",
+		},
+	}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedPath = r.URL.String()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var receivedPath string
+			srv := newMockServer(t).
+				Handler(func(w http.ResponseWriter, r *http.Request) {
+					receivedPath = r.URL.String()
+					respondJSON(t, w, ListDownloadsResponse{Items: []DownloadResponse{}, Total: 0})
+				}).
+				Build()
+			defer srv.Close()
 
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(ListDownloadsResponse{
-			Items: []DownloadResponse{
-				{
-					ID:          1,
-					Status:      "downloading",
-					ReleaseName: "Active.Download",
-				},
-			},
-			Total: 1,
+			client := NewClient(srv.URL)
+			_, err := client.Downloads(tt.activeOnly)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedPath, receivedPath)
 		})
-	}))
-	defer srv.Close()
-
-	client := NewClient(srv.URL)
-	_, err := client.Downloads(true)
-	require.NoError(t, err)
-
-	assert.Equal(t, "/api/v1/downloads?active=true", receivedPath)
-}
-
-func TestClientDownloads_NoActiveFilter(t *testing.T) {
-	var receivedPath string
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedPath = r.URL.String()
-
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(ListDownloadsResponse{
-			Items: []DownloadResponse{},
-			Total: 0,
-		})
-	}))
-	defer srv.Close()
-
-	client := NewClient(srv.URL)
-	_, err := client.Downloads(false)
-	require.NoError(t, err)
-
-	assert.Equal(t, "/api/v1/downloads", receivedPath)
+	}
 }
 
 func TestClientDownloads_ServerError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte("database error"))
-	}))
+	srv := newMockServer(t).
+		RespondError(http.StatusInternalServerError, "database error").
+		Build()
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
@@ -138,9 +123,10 @@ func TestClientDownloads_WithEpisodeID(t *testing.T) {
 	episodeID := int64(42)
 	completedAt := "2024-01-15T12:00:00Z"
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(ListDownloadsResponse{
+	srv := newMockServer(t).
+		ExpectPath("/api/v1/downloads").
+		ExpectGET().
+		RespondJSON(ListDownloadsResponse{
 			Items: []DownloadResponse{
 				{
 					ID:          1,
@@ -156,8 +142,8 @@ func TestClientDownloads_WithEpisodeID(t *testing.T) {
 				},
 			},
 			Total: 1,
-		})
-	}))
+		}).
+		Build()
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
@@ -171,12 +157,13 @@ func TestClientDownloads_WithEpisodeID(t *testing.T) {
 
 func TestClientCancelDownload_Success(t *testing.T) {
 	var receivedMethod, receivedPath string
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedMethod = r.Method
-		receivedPath = r.URL.String()
-		w.WriteHeader(http.StatusNoContent)
-	}))
+	srv := newMockServer(t).
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			receivedMethod = r.Method
+			receivedPath = r.URL.String()
+			w.WriteHeader(http.StatusNoContent)
+		}).
+		Build()
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
@@ -188,11 +175,12 @@ func TestClientCancelDownload_Success(t *testing.T) {
 
 func TestClientCancelDownload_WithDeleteFiles(t *testing.T) {
 	var receivedPath string
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedPath = r.URL.String()
-		w.WriteHeader(http.StatusNoContent)
-	}))
+	srv := newMockServer(t).
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.String()
+			w.WriteHeader(http.StatusNoContent)
+		}).
+		Build()
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
@@ -202,10 +190,9 @@ func TestClientCancelDownload_WithDeleteFiles(t *testing.T) {
 }
 
 func TestClientCancelDownload_ServerError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{"error":"download not found"}`))
-	}))
+	srv := newMockServer(t).
+		RespondError(http.StatusNotFound, `{"error":"download not found"}`).
+		Build()
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
@@ -231,18 +218,16 @@ func TestQueueCancelCmd_Exists(t *testing.T) {
 
 func TestRunQueueCancel_Success(t *testing.T) {
 	var receivedMethod, receivedPath string
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedMethod = r.Method
-		receivedPath = r.URL.String()
-		w.WriteHeader(http.StatusNoContent)
-	}))
+	srv := newMockServer(t).
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			receivedMethod = r.Method
+			receivedPath = r.URL.String()
+			w.WriteHeader(http.StatusNoContent)
+		}).
+		Build()
 	defer srv.Close()
 
-	// Temporarily override serverURL
-	oldServerURL := serverURL
-	serverURL = srv.URL
-	defer func() { serverURL = oldServerURL }()
+	defer withServerURL(srv.URL)()
 
 	err := runQueueCancel(nil, []string{"42"})
 	require.NoError(t, err)
@@ -258,17 +243,15 @@ func TestRunQueueCancel_InvalidID(t *testing.T) {
 
 func TestRunQueueCancel_WithDeleteFlag(t *testing.T) {
 	var receivedPath string
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedPath = r.URL.String()
-		w.WriteHeader(http.StatusNoContent)
-	}))
+	srv := newMockServer(t).
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			receivedPath = r.URL.String()
+			w.WriteHeader(http.StatusNoContent)
+		}).
+		Build()
 	defer srv.Close()
 
-	// Temporarily override serverURL
-	oldServerURL := serverURL
-	serverURL = srv.URL
-	defer func() { serverURL = oldServerURL }()
+	defer withServerURL(srv.URL)()
 
 	// Create a command with the delete flag set
 	cmd := &cobra.Command{}
