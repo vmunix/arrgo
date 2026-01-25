@@ -96,6 +96,16 @@ func runServer(configPath string) error {
 	}
 	defer func() { _ = db.Close() }()
 
+	// Configure SQLite for better concurrency:
+	// - WAL mode allows concurrent reads during writes
+	// - busy_timeout waits instead of failing immediately on lock contention
+	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		return fmt.Errorf("enable WAL mode: %w", err)
+	}
+	if _, err := db.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		return fmt.Errorf("set busy timeout: %w", err)
+	}
+
 	// Run migrations
 	if _, err := db.Exec(migrations.InitialSQL); err != nil {
 		return fmt.Errorf("migrate 001: %w", err)
