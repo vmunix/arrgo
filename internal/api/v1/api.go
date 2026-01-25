@@ -535,6 +535,30 @@ func (s *Server) grab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate required fields
+	if req.ContentID == 0 {
+		writeError(w, http.StatusBadRequest, "MISSING_FIELD", "content_id is required")
+		return
+	}
+	if req.DownloadURL == "" {
+		writeError(w, http.StatusBadRequest, "MISSING_FIELD", "download_url is required")
+		return
+	}
+	if req.Title == "" {
+		writeError(w, http.StatusBadRequest, "MISSING_FIELD", "title is required")
+		return
+	}
+
+	// Verify content exists
+	if _, err := s.deps.Library.GetContent(req.ContentID); err != nil {
+		if errors.Is(err, library.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "Content not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
 	// Require event bus for grab operations
 	if s.deps.Bus == nil {
 		writeError(w, http.StatusServiceUnavailable, "NO_DOWNLOAD_CLIENT", "download client not configured")

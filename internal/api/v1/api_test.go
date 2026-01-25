@@ -1839,3 +1839,104 @@ func TestLibraryImport_FileStatError(t *testing.T) {
 	assert.Equal(t, "Missing File", resp.Errors[0].Title)
 	assert.Contains(t, resp.Errors[0].Error, "cannot access file")
 }
+
+func TestGrab_ContentNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	mockManager := mocks.NewMockDownloadManager(ctrl)
+
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Manager:   mockManager,
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	// Grab with non-existent content_id
+	body := `{"content_id":999,"download_url":"http://example.com/nzb","title":"Test","indexer":"TestIndexer"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/grab", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+
+	var resp errorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "NOT_FOUND", resp.Code)
+}
+
+func TestGrab_MissingRequiredFields(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	mockManager := mocks.NewMockDownloadManager(ctrl)
+
+	// Add content so content_id validation passes
+	store := library.NewStore(db)
+	c := &library.Content{
+		Type:           library.ContentTypeMovie,
+		Title:          "Test Movie",
+		Year:           2024,
+		Status:         library.StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/movies",
+	}
+	require.NoError(t, store.AddContent(c))
+
+	deps := ServerDeps{
+		Library:   store,
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+		Manager:   mockManager,
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	tests := []struct {
+		name    string
+		body    string
+		wantErr string
+	}{
+		{
+			name:    "missing content_id",
+			body:    `{"download_url":"http://example.com/nzb","title":"Test","indexer":"TestIndexer"}`,
+			wantErr: "content_id",
+		},
+		{
+			name:    "missing download_url",
+			body:    `{"content_id":1,"title":"Test","indexer":"TestIndexer"}`,
+			wantErr: "download_url",
+		},
+		{
+			name:    "missing title",
+			body:    `{"content_id":1,"download_url":"http://example.com/nzb","indexer":"TestIndexer"}`,
+			wantErr: "title",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/grab", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			mux.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Contains(t, w.Body.String(), tt.wantErr)
+		})
+	}
+}
