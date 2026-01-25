@@ -699,3 +699,176 @@ func TestListDownloadEvents_NotFound(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
+
+func TestGetDashboard_Success(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	// Add movies and series
+	movie1 := &library.Content{
+		Type:           library.ContentTypeMovie,
+		Title:          "Test Movie 1",
+		Year:           2024,
+		Status:         library.StatusAvailable,
+		QualityProfile: "hd",
+		RootPath:       "/movies",
+	}
+	require.NoError(t, srv.deps.Library.AddContent(movie1))
+
+	movie2 := &library.Content{
+		Type:           library.ContentTypeMovie,
+		Title:          "Test Movie 2",
+		Year:           2024,
+		Status:         library.StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/movies",
+	}
+	require.NoError(t, srv.deps.Library.AddContent(movie2))
+
+	series1 := &library.Content{
+		Type:           library.ContentTypeSeries,
+		Title:          "Test Series",
+		Year:           2024,
+		Status:         library.StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, srv.deps.Library.AddContent(series1))
+
+	// Add downloads in various states
+	dlQueued := &download.Download{
+		ContentID:   movie1.ID,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "queued-1",
+		Status:      download.StatusQueued,
+		ReleaseName: "Test.Movie.1.2024.1080p",
+		Indexer:     "TestIndexer",
+	}
+	require.NoError(t, srv.deps.Downloads.Add(dlQueued))
+
+	dlDownloading := &download.Download{
+		ContentID:   movie2.ID,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "downloading-1",
+		Status:      download.StatusDownloading,
+		ReleaseName: "Test.Movie.2.2024.1080p",
+		Indexer:     "TestIndexer",
+	}
+	require.NoError(t, srv.deps.Downloads.Add(dlDownloading))
+
+	dlFailed := &download.Download{
+		ContentID:   series1.ID,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "failed-1",
+		Status:      download.StatusFailed,
+		ReleaseName: "Test.Series.S01E01.1080p",
+		Indexer:     "TestIndexer",
+	}
+	require.NoError(t, srv.deps.Downloads.Add(dlFailed))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/dashboard", nil)
+	w := httptest.NewRecorder()
+
+	srv.getDashboard(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp DashboardResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	// Verify version and connections
+	assert.Equal(t, "0.1.0", resp.Version)
+	assert.True(t, resp.Connections.Server)
+	assert.False(t, resp.Connections.Plex)    // No Plex configured
+	assert.False(t, resp.Connections.SABnzbd) // No Manager configured
+
+	// Verify download counts
+	assert.Equal(t, 1, resp.Downloads.Queued)
+	assert.Equal(t, 1, resp.Downloads.Downloading)
+	assert.Equal(t, 1, resp.Downloads.Failed)
+	assert.Equal(t, 0, resp.Downloads.Completed)
+	assert.Equal(t, 0, resp.Downloads.Importing)
+	assert.Equal(t, 0, resp.Downloads.Imported)
+	assert.Equal(t, 0, resp.Downloads.Cleaned)
+
+	// Verify library counts
+	assert.Equal(t, 2, resp.Library.Movies)
+	assert.Equal(t, 1, resp.Library.Series)
+}
+
+func TestVerify_NoProblems(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	// No downloads, no problems expected
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/verify", nil)
+	w := httptest.NewRecorder()
+
+	srv.verify(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp VerifyResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	assert.Equal(t, 0, resp.Checked)
+	assert.Equal(t, 0, resp.Passed)
+	assert.Empty(t, resp.Problems)
+	// Connections should be false since no Plex or Manager configured
+	assert.False(t, resp.Connections.Plex)
+	assert.False(t, resp.Connections.SABnzbd)
+}
+
+func TestVerify_WithDownloadID(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	// Add content for downloads
+	content := &library.Content{
+		Type:           library.ContentTypeMovie,
+		Title:          "Test Movie",
+		Year:           2024,
+		Status:         library.StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/movies",
+	}
+	require.NoError(t, srv.deps.Library.AddContent(content))
+
+	// Add multiple downloads (using Active states so verify finds them)
+	dl1 := &download.Download{
+		ContentID:   content.ID,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "client-1",
+		Status:      download.StatusDownloading,
+		ReleaseName: "Test.Movie.2024.1080p.Release1",
+		Indexer:     "TestIndexer",
+	}
+	require.NoError(t, srv.deps.Downloads.Add(dl1))
+
+	dl2 := &download.Download{
+		ContentID:   content.ID,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "client-2",
+		Status:      download.StatusCompleted,
+		ReleaseName: "Test.Movie.2024.1080p.Release2",
+		Indexer:     "TestIndexer",
+	}
+	require.NoError(t, srv.deps.Downloads.Add(dl2))
+
+	// Verify with specific ID filter (should only check dl2)
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/verify?id=%d", dl2.ID), nil)
+	w := httptest.NewRecorder()
+
+	srv.verify(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp VerifyResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+
+	// Should only have checked 1 download (the one we filtered for)
+	assert.Equal(t, 1, resp.Checked)
+	// Without manager, verify doesn't find problems for completed status
+	assert.Equal(t, 1, resp.Passed)
+	assert.Empty(t, resp.Problems)
+}
