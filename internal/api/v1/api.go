@@ -1089,7 +1089,7 @@ func (s *Server) getPlexStatus(w http.ResponseWriter, r *http.Request) {
 
 	if s.deps.Plex == nil {
 		resp.Error = "Plex not configured"
-		writeJSON(w, http.StatusOK, resp)
+		writeJSON(w, http.StatusServiceUnavailable, resp)
 		return
 	}
 
@@ -1099,7 +1099,7 @@ func (s *Server) getPlexStatus(w http.ResponseWriter, r *http.Request) {
 	identity, err := s.deps.Plex.GetIdentity(ctx)
 	if err != nil {
 		resp.Error = fmt.Sprintf("connection failed: %v", err)
-		writeJSON(w, http.StatusOK, resp)
+		writeJSON(w, http.StatusServiceUnavailable, resp)
 		return
 	}
 
@@ -1110,6 +1110,7 @@ func (s *Server) getPlexStatus(w http.ResponseWriter, r *http.Request) {
 	// Get sections
 	sections, err := s.deps.Plex.GetSections(ctx)
 	if err != nil {
+		// Connected but partial failure - still return 200
 		resp.Error = fmt.Sprintf("failed to get libraries: %v", err)
 		writeJSON(w, http.StatusOK, resp)
 		return

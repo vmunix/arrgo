@@ -339,7 +339,7 @@ func TestIntegration_PlexStatus_NotConfigured(t *testing.T) {
 	env.server.RegisterRoutes(env.mux)
 	env.mux.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
 
 	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))

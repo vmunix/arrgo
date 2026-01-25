@@ -986,7 +986,7 @@ func TestGetPlexStatus_NotConfigured(t *testing.T) {
 
 	mux.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 
 	var resp plexStatusResponse
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
