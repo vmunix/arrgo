@@ -37,7 +37,10 @@ const (
 type Download struct {
 	ID               int64
 	ContentID        int64
-	EpisodeID        *int64
+	EpisodeID        *int64  // Deprecated: use EpisodeIDs for multi-episode support
+	EpisodeIDs       []int64 // Episode IDs from junction table
+	Season           *int    // For season packs: which season
+	IsCompleteSeason bool    // True if this is a complete season pack
 	Client           Client
 	ClientID         string // ID in the download client
 	Status           Status
@@ -125,9 +128,9 @@ func (s *Store) Add(d *Download) error {
 	// No existing record, insert new one
 	now := time.Now()
 	result, err := s.db.Exec(`
-		INSERT INTO downloads (content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		d.ContentID, d.EpisodeID, d.Client, d.ClientID, d.Status, d.ReleaseName, d.Indexer, now, d.CompletedAt, now,
+		INSERT INTO downloads (content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at, season, is_complete_season)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		d.ContentID, d.EpisodeID, d.Client, d.ClientID, d.Status, d.ReleaseName, d.Indexer, now, d.CompletedAt, now, d.Season, d.IsCompleteSeason,
 	)
 	if err != nil {
 		return fmt.Errorf("insert download: %w", err)
@@ -149,16 +152,23 @@ func (s *Store) Add(d *Download) error {
 func (s *Store) Get(id int64) (*Download, error) {
 	d := &Download{}
 	err := s.db.QueryRow(`
-		SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at
+		SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at, season, is_complete_season
 		FROM downloads WHERE id = ?`, id,
-	).Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt)
+	).Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt, &d.Season, &d.IsCompleteSeason)
 
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("get download %d: %w", id, ErrNotFound)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get download %d: %w", id, err)
 	}
+
+	// Load episode IDs from junction table
+	d.EpisodeIDs, err = s.getEpisodeIDs(d.ID)
+	if err != nil {
+		return nil, fmt.Errorf("get episode IDs for download %d: %w", id, err)
+	}
+
 	return d, nil
 }
 
@@ -167,16 +177,23 @@ func (s *Store) Get(id int64) (*Download, error) {
 func (s *Store) GetByClientID(client Client, clientID string) (*Download, error) {
 	d := &Download{}
 	err := s.db.QueryRow(`
-		SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at
+		SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at, season, is_complete_season
 		FROM downloads WHERE client = ? AND client_id = ?`, client, clientID,
-	).Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt)
+	).Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt, &d.Season, &d.IsCompleteSeason)
 
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("get download by client %s/%s: %w", client, clientID, ErrNotFound)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get download by client %s/%s: %w", client, clientID, err)
 	}
+
+	// Load episode IDs from junction table
+	d.EpisodeIDs, err = s.getEpisodeIDs(d.ID)
+	if err != nil {
+		return nil, fmt.Errorf("get episode IDs for download %s/%s: %w", client, clientID, err)
+	}
+
 	return d, nil
 }
 
@@ -299,7 +316,7 @@ func (s *Store) List(f Filter) ([]*Download, int, error) {
 
 	// G202: False positive - whereClause contains only "col = ?" conditions,
 	// actual values are passed via args parameter (parameterized query).
-	query := "SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at FROM downloads " + //nolint:gosec
+	query := "SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at, season, is_complete_season FROM downloads " + //nolint:gosec
 		whereClause + " ORDER BY id"
 
 	// Add LIMIT/OFFSET if specified
@@ -316,9 +333,10 @@ func (s *Store) List(f Filter) ([]*Download, int, error) {
 	var results []*Download
 	for rows.Next() {
 		d := &Download{}
-		if err := rows.Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt, &d.Season, &d.IsCompleteSeason); err != nil {
 			return nil, 0, fmt.Errorf("scan download: %w", err)
 		}
+		// Note: EpisodeIDs not loaded for List() performance - use Get() for full details
 		results = append(results, d)
 	}
 	if err := rows.Err(); err != nil {
@@ -336,6 +354,65 @@ func (s *Store) Delete(id int64) error {
 		return fmt.Errorf("delete download %d: %w", id, err)
 	}
 	return nil
+}
+
+// SetEpisodeIDs sets the episode IDs for a download using the junction table.
+// This replaces any existing episode associations for the download.
+func (s *Store) SetEpisodeIDs(downloadID int64, episodeIDs []int64) error {
+	// Start a transaction to ensure atomicity
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Delete existing associations
+	if _, err := tx.Exec("DELETE FROM download_episodes WHERE download_id = ?", downloadID); err != nil {
+		return fmt.Errorf("delete existing episode associations: %w", err)
+	}
+
+	// Insert new associations
+	for _, episodeID := range episodeIDs {
+		if _, err := tx.Exec(
+			"INSERT INTO download_episodes (download_id, episode_id) VALUES (?, ?)",
+			downloadID, episodeID,
+		); err != nil {
+			return fmt.Errorf("insert episode association: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return nil
+}
+
+// getEpisodeIDs retrieves the episode IDs associated with a download from the junction table.
+func (s *Store) getEpisodeIDs(downloadID int64) ([]int64, error) {
+	rows, err := s.db.Query(
+		"SELECT episode_id FROM download_episodes WHERE download_id = ? ORDER BY episode_id",
+		downloadID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query episode IDs: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var episodeIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan episode ID: %w", err)
+		}
+		episodeIDs = append(episodeIDs, id)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate episode IDs: %w", err)
+	}
+
+	return episodeIDs, nil
 }
 
 // CountByStatus returns a map of status to count for all downloads.
@@ -383,7 +460,7 @@ func (s *Store) ListStuck(thresholds map[Status]time.Duration) ([]*Download, err
 	// actual values are passed via args parameter (parameterized query).
 	whereClause := strings.Join(conditions, " OR ")
 	//nolint:gosec // G201: whereClause is built from hardcoded conditions, not user input
-	query := fmt.Sprintf(`SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at
+	query := fmt.Sprintf(`SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at, season, is_complete_season
 		FROM downloads WHERE %s ORDER BY last_transition_at`, whereClause)
 
 	rows, err := s.db.Query(query, args...)
@@ -395,9 +472,10 @@ func (s *Store) ListStuck(thresholds map[Status]time.Duration) ([]*Download, err
 	var results []*Download
 	for rows.Next() {
 		d := &Download{}
-		if err := rows.Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt, &d.Season, &d.IsCompleteSeason); err != nil {
 			return nil, fmt.Errorf("scan download: %w", err)
 		}
+		// Note: EpisodeIDs not loaded for ListStuck() performance - use Get() for full details
 		results = append(results, d)
 	}
 
