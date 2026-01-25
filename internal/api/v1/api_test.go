@@ -579,3 +579,50 @@ func TestSearch_WithMockSearcher(t *testing.T) {
 	assert.Len(t, resp.Releases, 1)
 	assert.Equal(t, "Test Movie", resp.Releases[0].Title)
 }
+
+func TestLibraryImport_ValidationErrors(t *testing.T) {
+	db := setupTestDB(t)
+	srv := New(db, Config{})
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	tests := []struct {
+		name     string
+		body     string
+		wantCode int
+		wantErr  string
+	}{
+		{
+			name:     "missing source",
+			body:     `{"library": "Movies"}`,
+			wantCode: http.StatusBadRequest,
+			wantErr:  "source is required",
+		},
+		{
+			name:     "invalid source",
+			body:     `{"source": "invalid", "library": "Movies"}`,
+			wantCode: http.StatusBadRequest,
+			wantErr:  "unsupported source",
+		},
+		{
+			name:     "missing library",
+			body:     `{"source": "plex"}`,
+			wantCode: http.StatusBadRequest,
+			wantErr:  "library is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/library/import", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			mux.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.wantCode, w.Code)
+			assert.Contains(t, w.Body.String(), tt.wantErr)
+		})
+	}
+}

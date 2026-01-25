@@ -111,6 +111,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// Import
 	mux.HandleFunc("POST /api/v1/import", s.requireImporter(s.importContent))
+
+	// Library import (from external sources like Plex)
+	mux.HandleFunc("POST /api/v1/library/import", s.importLibrary)
 }
 
 // Error response
@@ -1512,4 +1515,36 @@ func (s *Server) findOrCreateEpisode(contentID int64, season, episode int) (*lib
 	}
 
 	return ep, nil
+}
+
+// importLibrary handles POST /api/v1/library/import for importing content from external sources.
+func (s *Server) importLibrary(w http.ResponseWriter, r *http.Request) {
+	var req libraryImportRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_JSON", "Invalid request body")
+		return
+	}
+
+	// Validate source
+	if req.Source == "" {
+		writeError(w, http.StatusBadRequest, "MISSING_SOURCE", "source is required")
+		return
+	}
+	if req.Source != "plex" {
+		writeError(w, http.StatusBadRequest, "INVALID_SOURCE", "unsupported source: "+req.Source)
+		return
+	}
+
+	// Validate library
+	if req.Library == "" {
+		writeError(w, http.StatusBadRequest, "MISSING_LIBRARY", "library is required")
+		return
+	}
+
+	// TODO: implement import logic in next task
+	writeJSON(w, http.StatusOK, libraryImportResponse{
+		Imported: []libraryImportItem{},
+		Skipped:  []libraryImportItem{},
+		Errors:   []libraryImportItem{},
+	})
 }
