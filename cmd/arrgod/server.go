@@ -127,6 +127,13 @@ func runServer(configPath string) error {
 			return fmt.Errorf("migrate 005: %w", err)
 		}
 	}
+	// Run migration 006 - download_episodes junction table
+	if _, err := db.Exec(migrations.Migration006DownloadEpisodes); err != nil {
+		// Ignore "table/column already exists" for idempotent migrations
+		if !strings.Contains(err.Error(), "already exists") && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("migrate 006: %w", err)
+		}
+	}
 
 	// === Stores (always created) ===
 	libraryStore := library.NewStore(db)
