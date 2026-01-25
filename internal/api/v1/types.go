@@ -296,9 +296,8 @@ type listEventsResponse struct {
 
 // retryResponse is the response for POST /downloads/{id}/retry.
 type retryResponse struct {
-	NewDownloadID int64  `json:"new_download_id,omitempty"`
-	ReleaseName   string `json:"release_name"`
-	Message       string `json:"message"`
+	ReleaseName string `json:"release_name"`
+	Message     string `json:"message"`
 }
 
 // indexerResponse is the API representation of an indexer's status.
