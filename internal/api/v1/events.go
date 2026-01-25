@@ -41,3 +41,44 @@ func (s *Server) listEvents(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, resp)
 }
+
+func (s *Server) listDownloadEvents(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
+		return
+	}
+
+	if s.deps.EventLog == nil {
+		writeError(w, http.StatusServiceUnavailable, "NO_EVENT_LOG", "Event log not configured")
+		return
+	}
+
+	// Verify download exists
+	if _, err := s.deps.Downloads.Get(id); err != nil {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "Download not found")
+		return
+	}
+
+	events, err := s.deps.EventLog.ForEntity("download", id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "EVENT_ERROR", err.Error())
+		return
+	}
+
+	resp := listEventsResponse{
+		Items: make([]EventResponse, len(events)),
+		Total: len(events),
+	}
+	for i, e := range events {
+		resp.Items[i] = EventResponse{
+			ID:         e.ID,
+			EventType:  e.EventType,
+			EntityType: e.EntityType,
+			EntityID:   e.EntityID,
+			OccurredAt: e.OccurredAt.Format(time.RFC3339),
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}

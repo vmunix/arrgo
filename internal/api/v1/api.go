@@ -76,6 +76,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// Downloads
 	mux.HandleFunc("GET /api/v1/downloads", s.listDownloads)
 	mux.HandleFunc("GET /api/v1/downloads/{id}", s.getDownload)
+	mux.HandleFunc("GET /api/v1/downloads/{id}/events", s.listDownloadEvents)
 	mux.HandleFunc("DELETE /api/v1/downloads/{id}", s.requireManager(s.deleteDownload))
 
 	// History
