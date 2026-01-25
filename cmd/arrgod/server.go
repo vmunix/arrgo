@@ -202,6 +202,7 @@ func runServer(configPath string) error {
 
 	// === Event-Driven Runner ===
 	var eventBus *events.Bus
+	var eventLog *events.EventLog
 
 	if sabClient != nil {
 		// Create plex checker adapter if plex is configured
@@ -220,11 +221,15 @@ func runServer(configPath string) error {
 		}, logger, sabClient, imp, plexChecker)
 
 		eventBus = runner.Start()
+		eventLog = runner.EventLog()
 		go func() {
 			if err := runner.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 				logger.Error("runner error", "error", err)
 			}
 		}()
+	} else {
+		// Create EventLog even without runner for API access to event history
+		eventLog = events.NewEventLog(db)
 	}
 
 	// === HTTP Setup ===
@@ -246,6 +251,7 @@ func runServer(configPath string) error {
 		Plex:      plexClient,
 		Importer:  imp,
 		Bus:       eventBus,
+		EventLog:  eventLog,
 	}, v1.Config{
 		MovieRoot:       cfg.Libraries.Movies.Root,
 		SeriesRoot:      cfg.Libraries.Series.Root,

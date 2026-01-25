@@ -71,6 +71,11 @@ func (r *Runner) Start() *events.Bus {
 	return r.bus
 }
 
+// EventLog returns the event log. Must call Start() first.
+func (r *Runner) EventLog() *events.EventLog {
+	return r.eventLog
+}
+
 // Run starts all event-driven components.
 // Must call Start() before Run().
 func (r *Runner) Run(ctx context.Context) error {

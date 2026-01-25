@@ -224,7 +224,7 @@ func runQueueRetry(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	fmt.Printf("New download queued: #%d\n", result.NewDownloadID)
-	fmt.Printf("Release: %s\n", result.ReleaseName)
+	fmt.Printf("Retry queued: %s\n", result.ReleaseName)
+	fmt.Println("Use 'arrgo queue' to monitor progress")
 	return nil
 }
