@@ -577,7 +577,8 @@ func (s *Server) listQualityProfiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listQueue(w http.ResponseWriter, r *http.Request) {
-	downloads, err := s.downloads.List(download.Filter{Active: true})
+	// Note: No pagination for compat API - returns all active for Radarr/Sonarr compatibility
+	downloads, _, err := s.downloads.List(download.Filter{Active: true})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

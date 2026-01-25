@@ -113,8 +113,10 @@ type downloadResponse struct {
 
 // listDownloadsResponse is the response for GET /downloads.
 type listDownloadsResponse struct {
-	Items []downloadResponse `json:"items"`
-	Total int                `json:"total"`
+	Items  []downloadResponse `json:"items"`
+	Total  int                `json:"total"`
+	Limit  int                `json:"limit"`
+	Offset int                `json:"offset"`
 }
 
 // historyResponse is the API representation of a history entry.

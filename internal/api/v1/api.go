@@ -550,12 +550,26 @@ func (s *Server) grab(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listDownloads(w http.ResponseWriter, r *http.Request) {
-	filter := download.Filter{}
+	filter := download.Filter{
+		Limit:  queryInt(r, "limit", 50),
+		Offset: queryInt(r, "offset", 0),
+	}
+
+	// Validate pagination parameters
+	if filter.Limit < 0 || filter.Offset < 0 {
+		writeError(w, http.StatusBadRequest, "INVALID_PAGINATION", "limit and offset must be non-negative")
+		return
+	}
+	const maxLimit = 1000
+	if filter.Limit > maxLimit {
+		filter.Limit = maxLimit
+	}
+
 	if activeStr := r.URL.Query().Get("active"); activeStr == queryTrue {
 		filter.Active = true
 	}
 
-	downloads, err := s.deps.Downloads.List(filter)
+	downloads, total, err := s.deps.Downloads.List(filter)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
 		return
@@ -575,8 +589,10 @@ func (s *Server) listDownloads(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := listDownloadsResponse{
-		Items: make([]downloadResponse, len(downloads)),
-		Total: len(downloads),
+		Items:  make([]downloadResponse, len(downloads)),
+		Total:  total,
+		Limit:  filter.Limit,
+		Offset: filter.Offset,
 	}
 
 	for i, d := range downloads {
@@ -958,22 +974,22 @@ func (s *Server) getDashboard(w http.ResponseWriter, _ *http.Request) {
 		download.StatusFailed,
 	} {
 		st := status
-		downloads, _ := s.deps.Downloads.List(download.Filter{Status: &st})
+		_, count, _ := s.deps.Downloads.List(download.Filter{Status: &st})
 		switch status {
 		case download.StatusQueued:
-			resp.Downloads.Queued = len(downloads)
+			resp.Downloads.Queued = count
 		case download.StatusDownloading:
-			resp.Downloads.Downloading = len(downloads)
+			resp.Downloads.Downloading = count
 		case download.StatusCompleted:
-			resp.Downloads.Completed = len(downloads)
+			resp.Downloads.Completed = count
 		case download.StatusImporting:
-			resp.Downloads.Importing = len(downloads)
+			resp.Downloads.Importing = count
 		case download.StatusImported:
-			resp.Downloads.Imported = len(downloads)
+			resp.Downloads.Imported = count
 		case download.StatusCleaned:
-			resp.Downloads.Cleaned = len(downloads)
+			resp.Downloads.Cleaned = count
 		case download.StatusFailed:
-			resp.Downloads.Failed = len(downloads)
+			resp.Downloads.Failed = count
 		}
 	}
 

@@ -1,6 +1,7 @@
 package download
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -223,9 +224,10 @@ func TestStore_List_All(t *testing.T) {
 	}
 
 	// List all
-	results, err := store.List(Filter{})
+	results, total, err := store.List(Filter{})
 	require.NoError(t, err)
 	assert.Len(t, results, 3)
+	assert.Equal(t, 3, total)
 }
 
 func TestStore_List_Active(t *testing.T) {
@@ -248,9 +250,10 @@ func TestStore_List_Active(t *testing.T) {
 	}
 
 	// List active (excludes terminal states: cleaned, failed)
-	results, err := store.List(Filter{Active: true})
+	results, total, err := store.List(Filter{Active: true})
 	require.NoError(t, err)
 	assert.Len(t, results, 4, "should exclude cleaned and failed")
+	assert.Equal(t, 4, total)
 
 	// Verify no terminal status in results
 	for _, d := range results {
@@ -273,10 +276,11 @@ func TestStore_List_FilterByContentID(t *testing.T) {
 	require.NoError(t, store.Add(d2))
 
 	// Filter by content ID
-	results, err := store.List(Filter{ContentID: &contentID1})
+	results, total, err := store.List(Filter{ContentID: &contentID1})
 	require.NoError(t, err)
 
 	assert.Len(t, results, 1)
+	assert.Equal(t, 1, total)
 	assert.Equal(t, contentID1, results[0].ContentID)
 }
 
@@ -294,10 +298,11 @@ func TestStore_List_FilterByStatus(t *testing.T) {
 
 	// Filter by status
 	status := StatusDownloading
-	results, err := store.List(Filter{Status: &status})
+	results, total, err := store.List(Filter{Status: &status})
 	require.NoError(t, err)
 
 	assert.Len(t, results, 1)
+	assert.Equal(t, 1, total)
 	assert.Equal(t, StatusDownloading, results[0].Status)
 }
 
@@ -315,10 +320,11 @@ func TestStore_List_FilterByClient(t *testing.T) {
 
 	// Filter by client
 	client := ClientSABnzbd
-	results, err := store.List(Filter{Client: &client})
+	results, total, err := store.List(Filter{Client: &client})
 	require.NoError(t, err)
 
 	assert.Len(t, results, 1)
+	assert.Equal(t, 1, total)
 	assert.Equal(t, ClientSABnzbd, results[0].Client)
 }
 
@@ -416,10 +422,11 @@ func TestStore_List_FilterByEpisodeID(t *testing.T) {
 	require.NoError(t, store.Add(d2))
 
 	// Filter by episode ID
-	results, err := store.List(Filter{EpisodeID: &ep1ID})
+	results, total, err := store.List(Filter{EpisodeID: &ep1ID})
 	require.NoError(t, err)
 
 	require.Len(t, results, 1)
+	assert.Equal(t, 1, total)
 	require.NotNil(t, results[0].EpisodeID)
 	assert.Equal(t, ep1ID, *results[0].EpisodeID)
 }
@@ -461,7 +468,7 @@ func TestStore_LastTransitionAt(t *testing.T) {
 	assert.False(t, gotByClient.LastTransitionAt.IsZero(), "LastTransitionAt should be set after GetByClientID")
 
 	// Retrieve and verify via List
-	downloads, err := store.List(Filter{})
+	downloads, _, err := store.List(Filter{})
 	require.NoError(t, err)
 	require.Len(t, downloads, 1)
 	assert.False(t, downloads[0].LastTransitionAt.IsZero(), "LastTransitionAt should be set in List results")
@@ -600,4 +607,60 @@ func TestStore_Transition_FailedToQueued(t *testing.T) {
 	got, err := store.Get(d.ID)
 	require.NoError(t, err)
 	assert.Equal(t, StatusQueued, got.Status)
+}
+
+func TestStore_List_Pagination(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+	contentID := insertTestContent(t, db, "Pagination Test")
+
+	// Add 5 downloads
+	for i := 0; i < 5; i++ {
+		d := &Download{
+			ContentID:   contentID,
+			Client:      ClientSABnzbd,
+			ClientID:    fmt.Sprintf("nzo_%d", i),
+			Status:      StatusQueued,
+			ReleaseName: fmt.Sprintf("release%d", i),
+			Indexer:     "idx",
+		}
+		require.NoError(t, store.Add(d))
+	}
+
+	// Test: List all without pagination
+	results, total, err := store.List(Filter{})
+	require.NoError(t, err)
+	assert.Len(t, results, 5)
+	assert.Equal(t, 5, total)
+
+	// Test: Limit to 2
+	results, total, err = store.List(Filter{Limit: 2})
+	require.NoError(t, err)
+	assert.Len(t, results, 2)
+	assert.Equal(t, 5, total, "total should be all matching, not just page size")
+
+	// Test: Limit 2, Offset 2 (second page)
+	results, total, err = store.List(Filter{Limit: 2, Offset: 2})
+	require.NoError(t, err)
+	assert.Len(t, results, 2)
+	assert.Equal(t, 5, total)
+
+	// Test: Limit 2, Offset 4 (third page - partial)
+	results, total, err = store.List(Filter{Limit: 2, Offset: 4})
+	require.NoError(t, err)
+	assert.Len(t, results, 1)
+	assert.Equal(t, 5, total)
+
+	// Test: Offset beyond data
+	results, total, err = store.List(Filter{Limit: 2, Offset: 10})
+	require.NoError(t, err)
+	assert.Empty(t, results)
+	assert.Equal(t, 5, total)
+
+	// Test: Pagination with filter
+	status := StatusQueued
+	results, total, err = store.List(Filter{Status: &status, Limit: 2, Offset: 1})
+	require.NoError(t, err)
+	assert.Len(t, results, 2)
+	assert.Equal(t, 5, total)
 }

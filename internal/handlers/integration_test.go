@@ -137,7 +137,7 @@ func TestIntegration_GrabToImport(t *testing.T) {
 	}
 
 	// Verify download was created in store
-	downloads, err := store.List(download.Filter{})
+	downloads, _, err := store.List(download.Filter{})
 	require.NoError(t, err)
 	require.Len(t, downloads, 1, "DownloadHandler should have created a download")
 	assert.Equal(t, download.StatusQueued, downloads[0].Status)
@@ -235,7 +235,7 @@ func TestIntegration_GrabFailure(t *testing.T) {
 	}
 
 	// Verify no download was created
-	downloads, err := store.List(download.Filter{})
+	downloads, _, err := store.List(download.Filter{})
 	require.NoError(t, err)
 	assert.Empty(t, downloads, "no download should be created on failure")
 }

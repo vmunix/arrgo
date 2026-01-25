@@ -83,9 +83,9 @@ func (a *Adapter) Start(ctx context.Context) error {
 
 // poll retrieves tracked downloads and checks their status.
 func (a *Adapter) poll(ctx context.Context) {
-	// Get active SABnzbd downloads from store
+	// Get active SABnzbd downloads from store (no pagination - poll all)
 	client := download.ClientSABnzbd
-	downloads, err := a.store.List(download.Filter{
+	downloads, _, err := a.store.List(download.Filter{
 		Client: &client,
 		Active: true,
 	})

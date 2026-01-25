@@ -50,9 +50,9 @@ func NewCleanupHandler(bus *events.Bus, store *download.Store, config CleanupCon
 // reconcileOnStartup restores pending cleanups from database.
 // This handles the case where server restarted after import but before Plex detection.
 func (h *CleanupHandler) reconcileOnStartup(_ context.Context) {
-	// Query downloads in "imported" status
+	// Query downloads in "imported" status (no pagination - reconcile all)
 	status := download.StatusImported
-	downloads, err := h.store.List(download.Filter{Status: &status})
+	downloads, _, err := h.store.List(download.Filter{Status: &status})
 	if err != nil {
 		h.Logger().Error("failed to list imported downloads for reconciliation", "error", err)
 		return
