@@ -656,3 +656,47 @@ func TestCleanupHandler_ImportSkipped_Disabled(t *testing.T) {
 	_, err = os.Stat(releaseDir)
 	assert.NoError(t, err, "release directory should still exist when cleanup is disabled")
 }
+
+func TestCleanupHandler_ReconcileOnStartup(t *testing.T) {
+	// Setup
+	db := setupCleanupTestDB(t)
+	bus := events.NewBus(nil, nil)
+	defer bus.Close()
+
+	store := download.NewStore(db)
+
+	contentID := int64(123)
+
+	// Create a download in "imported" status (simulating server restart scenario)
+	dl := &download.Download{
+		ContentID:   contentID,
+		Client:      download.ClientSABnzbd,
+		ClientID:    "nzo_test",
+		Status:      download.StatusImported,
+		ReleaseName: "Test.Movie.2024.1080p.BluRay",
+		Indexer:     "test",
+	}
+	err := store.Add(dl)
+	require.NoError(t, err)
+
+	// Create cleanup handler
+	config := CleanupConfig{
+		DownloadRoot: t.TempDir(),
+		Enabled:      true,
+	}
+	handler := NewCleanupHandler(bus, store, config, nil)
+
+	// Call reconcileOnStartup
+	ctx := context.Background()
+	handler.reconcileOnStartup(ctx)
+
+	// Verify pending map contains the download
+	handler.mu.RLock()
+	pending, ok := handler.pending[contentID]
+	handler.mu.RUnlock()
+
+	assert.True(t, ok, "expected pending entry for content ID")
+	assert.Equal(t, dl.ID, pending.DownloadID)
+	assert.Equal(t, contentID, pending.ContentID)
+	assert.Equal(t, "Test.Movie.2024.1080p.BluRay", pending.ReleaseName)
+}
