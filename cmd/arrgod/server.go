@@ -106,32 +106,73 @@ func runServer(configPath string) error {
 		return fmt.Errorf("set busy timeout: %w", err)
 	}
 
-	// Run migrations
+	// Run migrations with version checking
+	// Helper to get current schema version
+	getVersion := func() int {
+		var version int
+		_ = db.QueryRow("SELECT COALESCE(MAX(version), 0) FROM schema_migrations").Scan(&version)
+		return version
+	}
+	setVersion := func(v int) error {
+		_, err := db.Exec("UPDATE schema_migrations SET version = ?", v)
+		return err
+	}
+
+	// Migration 001 - initial schema (creates schema_migrations table)
 	if _, err := db.Exec(migrations.InitialSQL); err != nil {
 		return fmt.Errorf("migrate 001: %w", err)
 	}
-	// Run migration 002 (ignore "duplicate column" error for already-migrated DBs)
-	if _, err := db.Exec(migrations.Migration002LastTransitionAt); err != nil {
-		if !strings.Contains(err.Error(), "duplicate column") {
-			return fmt.Errorf("migrate 002: %w", err)
+
+	currentVersion := getVersion()
+
+	// Migration 002 - add last_transition_at column
+	if currentVersion < 2 {
+		if _, err := db.Exec(migrations.Migration002LastTransitionAt); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column") {
+				return fmt.Errorf("migrate 002: %w", err)
+			}
 		}
-	}
-	// Run migration 003 - adds 'cleaned' to status CHECK constraint
-	if _, err := db.Exec(migrations.Migration003DownloadsStatusCleaned); err != nil {
-		return fmt.Errorf("migrate 003: %w", err)
-	}
-	// Run migration 005 - events table
-	if _, err := db.Exec(migrations.Migration005Events); err != nil {
-		// Ignore "table already exists" for idempotent migrations
-		if !strings.Contains(err.Error(), "already exists") {
-			return fmt.Errorf("migrate 005: %w", err)
+		if err := setVersion(2); err != nil {
+			return fmt.Errorf("migrate 002 version: %w", err)
 		}
+		currentVersion = 2
 	}
-	// Run migration 006 - download_episodes junction table
-	if _, err := db.Exec(migrations.Migration006DownloadEpisodes); err != nil {
-		// Ignore "table/column already exists" for idempotent migrations
-		if !strings.Contains(err.Error(), "already exists") && !strings.Contains(err.Error(), "duplicate column") {
-			return fmt.Errorf("migrate 006: %w", err)
+
+	// Migration 003 - adds 'cleaned' to status CHECK constraint
+	if currentVersion < 3 {
+		if _, err := db.Exec(migrations.Migration003DownloadsStatusCleaned); err != nil {
+			return fmt.Errorf("migrate 003: %w", err)
+		}
+		if err := setVersion(3); err != nil {
+			return fmt.Errorf("migrate 003 version: %w", err)
+		}
+		currentVersion = 3
+	}
+
+	// Migration 004 skipped (was merged into 003)
+
+	// Migration 005 - events table
+	if currentVersion < 5 {
+		if _, err := db.Exec(migrations.Migration005Events); err != nil {
+			if !strings.Contains(err.Error(), "already exists") {
+				return fmt.Errorf("migrate 005: %w", err)
+			}
+		}
+		if err := setVersion(5); err != nil {
+			return fmt.Errorf("migrate 005 version: %w", err)
+		}
+		currentVersion = 5
+	}
+
+	// Migration 006 - download_episodes junction table
+	if currentVersion < 6 {
+		if _, err := db.Exec(migrations.Migration006DownloadEpisodes); err != nil {
+			if !strings.Contains(err.Error(), "already exists") && !strings.Contains(err.Error(), "duplicate column") {
+				return fmt.Errorf("migrate 006: %w", err)
+			}
+		}
+		if err := setVersion(6); err != nil {
+			return fmt.Errorf("migrate 006 version: %w", err)
 		}
 	}
 
