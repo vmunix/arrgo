@@ -88,8 +88,9 @@ task              # Show available tasks
 task build        # Build both arrgo and arrgod
 task build:client # Build arrgo (CLI) only
 task build:server # Build arrgod (server) only
-task test         # Run tests
-task test:v       # Run tests with verbose output
+task test         # Run tests with race detection
+task test:quick   # Run tests without race detection (faster)
+task test:v       # Run tests verbose with race detection
 task lint         # Run linter
 task check        # fmt + lint + test
 task dev          # Run arrgod with live reload (air)

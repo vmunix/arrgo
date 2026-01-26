@@ -164,14 +164,15 @@ export PATH="$PATH:$HOME/go/bin"
 ```bash
 # Using Task (recommended)
 task build        # Build both binaries
-task test         # Run tests
+task test         # Run tests with race detection
+task test:quick   # Run tests without race detection (faster)
 task lint         # Run linter
 task check        # fmt + lint + test
 task dev          # Live reload server
 
 # Or directly with Go
 go build ./cmd/...
-go test ./...
+go test -race ./...
 ```
 
 ## Architecture
