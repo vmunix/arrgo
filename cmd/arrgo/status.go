@@ -68,8 +68,9 @@ func runStatusCmd(cmd *cobra.Command, args []string) error {
 
 	printDashboard(serverURL, dash)
 
-	// If --verify flag or there are problems, run verification
-	if runVerify || dash.Stuck.Count > 0 || dash.Downloads.Failed > 0 {
+	// If --verify flag or there are stuck downloads, run verification
+	// (failed downloads are shown in verify output but don't trigger auto-verify)
+	if runVerify || dash.Stuck.Count > 0 {
 		fmt.Println()
 		return runVerifyDownload(client, nil)
 	}
@@ -122,9 +123,11 @@ func printDashboard(server string, d *DashboardResponse) {
 	fmt.Println()
 
 	// Problems summary
-	if d.Stuck.Count > 0 || d.Downloads.Failed > 0 {
-		problems := d.Stuck.Count + d.Downloads.Failed
-		fmt.Printf("Problems: %d detected (running verification...)\n", problems)
+	if d.Stuck.Count > 0 {
+		fmt.Printf("Problems: %d stuck downloads (running verification...)\n", d.Stuck.Count)
+	}
+	if d.Downloads.Failed > 0 {
+		fmt.Printf("Failed: %d downloads (use 'arrgo downloads -s failed' to see)\n", d.Downloads.Failed)
 	}
 }
 

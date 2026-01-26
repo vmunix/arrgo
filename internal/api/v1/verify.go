@@ -68,12 +68,21 @@ func (s *Server) verify(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Get downloads to verify (no pagination - verify all active)
+	// Get downloads to verify (no pagination - verify all active + failed)
 	downloads, _, err := s.deps.Downloads.List(download.Filter{Active: true})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "DB_ERROR", "list downloads: "+err.Error())
 		return
 	}
+
+	// Also include failed downloads
+	failedStatus := download.StatusFailed
+	failedDownloads, _, err := s.deps.Downloads.List(download.Filter{Status: &failedStatus})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", "list failed downloads: "+err.Error())
+		return
+	}
+	downloads = append(downloads, failedDownloads...)
 
 	// Filter if specific ID requested
 	if filterID != nil {
@@ -167,6 +176,19 @@ func (s *Server) verifyDownload(ctx context.Context, dl *download.Download) *Ver
 					Fixes:      []string{"arrgo plex scan", "Wait for automatic scan"},
 				}
 			}
+		}
+
+	case download.StatusFailed:
+		// Failed downloads are always problems
+		return &VerifyProblem{
+			DownloadID: dl.ID,
+			Status:     string(dl.Status),
+			Title:      title,
+			Since:      since,
+			Issue:      "Download failed",
+			Checks:     []string{"Status: failed"},
+			Likely:     "Download was incomplete, corrupted, or manually failed",
+			Fixes:      []string{"arrgo downloads retry " + strconv.FormatInt(dl.ID, 10), "arrgo downloads cancel " + strconv.FormatInt(dl.ID, 10) + " --delete"},
 		}
 	}
 
