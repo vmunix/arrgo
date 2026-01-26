@@ -586,3 +586,20 @@ func (c *Client) LibraryImport(req *LibraryImportRequest) (*LibraryImportRespons
 	}
 	return &resp, nil
 }
+
+// TVDBSearchResult represents a series from TVDB search.
+type TVDBSearchResult struct {
+	ID     int    `json:"id"`
+	Name   string `json:"name"`
+	Year   int    `json:"year"`
+	Status string `json:"status"`
+}
+
+// TVDBSearch searches TVDB for series matching the query.
+func (c *Client) TVDBSearch(query string) ([]TVDBSearchResult, error) {
+	var results []TVDBSearchResult
+	if err := c.get("/api/v1/tvdb/search?q="+url.QueryEscape(query), &results); err != nil {
+		return nil, err
+	}
+	return results, nil
+}

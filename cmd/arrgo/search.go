@@ -9,6 +9,44 @@ import (
 	"github.com/vmunix/arrgo/pkg/release"
 )
 
+// tvdbLookup searches TVDB and returns selected series info.
+// Returns tvdbID, title, year, or 0, "", 0 if canceled or not found.
+//
+//nolint:unused // Scaffolding for Task 13 (CLI Series Search with TVDB)
+func tvdbLookup(client *Client, query string) (int64, string, int) {
+	// Call server API to search TVDB
+	results, err := client.TVDBSearch(query)
+	if err != nil || len(results) == 0 {
+		fmt.Println("No series found on TVDB")
+		return 0, "", 0
+	}
+
+	if len(results) == 1 {
+		r := results[0]
+		fmt.Printf("Found: %s (%d) [TVDB:%d]\n", r.Name, r.Year, r.ID)
+		return int64(r.ID), r.Name, r.Year
+	}
+
+	// Multiple results - prompt user
+	fmt.Println("Multiple series found:")
+	for i, r := range results {
+		fmt.Printf("  %d. %s (%d)\n", i+1, r.Name, r.Year)
+	}
+
+	input := prompt(fmt.Sprintf("Select series [1-%d, n to cancel]: ", len(results)))
+	if input == "n" || input == "N" || input == "" {
+		return 0, "", 0
+	}
+
+	idx, _ := strconv.Atoi(input)
+	if idx < 1 || idx > len(results) {
+		return 0, "", 0
+	}
+
+	r := results[idx-1]
+	return int64(r.ID), r.Name, r.Year
+}
+
 var searchCmd = &cobra.Command{
 	Use:   "search [flags] <query>...",
 	Short: "Search indexers for content",
