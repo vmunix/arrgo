@@ -20,11 +20,19 @@ type contentResponse struct {
 	EpisodeStats *episodeStatsResponse `json:"episode_stats,omitempty"`
 }
 
+// seasonStatsResponse contains statistics for a single season.
+type seasonStatsResponse struct {
+	Season    int `json:"season"`
+	Total     int `json:"total"`
+	Available int `json:"available"`
+}
+
 // episodeStatsResponse contains episode statistics for a series.
 type episodeStatsResponse struct {
-	TotalEpisodes     int `json:"total_episodes"`
-	AvailableEpisodes int `json:"available_episodes"`
-	SeasonCount       int `json:"season_count"`
+	TotalEpisodes     int                   `json:"total_episodes"`
+	AvailableEpisodes int                   `json:"available_episodes"`
+	SeasonCount       int                   `json:"season_count"`
+	Seasons           []seasonStatsResponse `json:"seasons,omitempty"`
 }
 
 // listContentResponse is the response for GET /content.

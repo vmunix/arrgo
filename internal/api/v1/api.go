@@ -289,6 +289,13 @@ func contentToResponse(c *library.Content, stats *library.SeriesStats) contentRe
 			AvailableEpisodes: stats.AvailableEpisodes,
 			SeasonCount:       stats.SeasonCount,
 		}
+		for _, ss := range stats.Seasons {
+			resp.EpisodeStats.Seasons = append(resp.EpisodeStats.Seasons, seasonStatsResponse{
+				Season:    ss.Season,
+				Total:     ss.Total,
+				Available: ss.Available,
+			})
+		}
 
 		// Compute display status based on episode availability
 		switch {

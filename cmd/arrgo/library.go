@@ -13,11 +13,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// LibrarySeasonStats matches the API response for season statistics.
+type LibrarySeasonStats struct {
+	Season    int `json:"season"`
+	Total     int `json:"total"`
+	Available int `json:"available"`
+}
+
 // LibraryEpisodeStats matches the API response for series episode statistics.
 type LibraryEpisodeStats struct {
-	TotalEpisodes     int `json:"total_episodes"`
-	AvailableEpisodes int `json:"available_episodes"`
-	SeasonCount       int `json:"season_count"`
+	TotalEpisodes     int                  `json:"total_episodes"`
+	AvailableEpisodes int                  `json:"available_episodes"`
+	SeasonCount       int                  `json:"season_count"`
+	Seasons           []LibrarySeasonStats `json:"seasons,omitempty"`
 }
 
 // LibraryContentResponse matches the API response for content items.
@@ -100,6 +108,7 @@ func init() {
 	listCmd.Flags().StringP("type", "t", "", "Filter by type (movie, series)")
 	listCmd.Flags().StringP("status", "s", "", "Filter by status (wanted, available, missing)")
 	listCmd.Flags().IntP("limit", "l", 50, "Maximum number of items to return")
+	listCmd.Flags().Bool("seasons", false, "Show expanded season breakdown for series")
 
 	showCmd := &cobra.Command{
 		Use:   "show <id>",
@@ -212,7 +221,8 @@ func runLibraryList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	printLibraryList(&data)
+	showSeasons, _ := cmd.Flags().GetBool("seasons")
+	printLibraryList(&data, showSeasons)
 	return nil
 }
 
@@ -372,7 +382,7 @@ func printLibraryShow(content *LibraryContentResponse, episodes *ListEpisodesRes
 	}
 }
 
-func printLibraryList(data *ListLibraryResponse) {
+func printLibraryList(data *ListLibraryResponse, showSeasons bool) {
 	fmt.Printf("Library (%d items):\n\n", data.Total)
 	fmt.Printf("  %-4s %-8s %-40s %-6s %-18s %s\n", "ID", "TYPE", "TITLE", "YEAR", "STATUS", "QUALITY")
 	fmt.Println("  " + strings.Repeat("-", 98))
@@ -406,10 +416,44 @@ func printLibraryList(data *ListLibraryResponse) {
 			yearStr,
 			status,
 			item.QualityProfile)
+
+		// Show season breakdown for series
+		if item.Type == contentTypeSeries && item.EpisodeStats != nil && len(item.EpisodeStats.Seasons) > 0 {
+			if showSeasons {
+				// Expanded view: show each season on its own line
+				for _, s := range item.EpisodeStats.Seasons {
+					indicator := seasonIndicator(s.Available, s.Total)
+					fmt.Printf("         Season %2d: %s %d/%d episodes\n", s.Season, indicator, s.Available, s.Total)
+				}
+			} else {
+				// Compact view: show all seasons on one line
+				var parts []string
+				for _, s := range item.EpisodeStats.Seasons {
+					indicator := seasonIndicator(s.Available, s.Total)
+					parts = append(parts, fmt.Sprintf("S%d%s", s.Season, indicator))
+				}
+				fmt.Printf("         %s\n", strings.Join(parts, " "))
+			}
+		}
 	}
 
 	if data.Total > len(data.Items) {
 		fmt.Printf("\n  Showing %d of %d items. Use --limit to see more.\n", len(data.Items), data.Total)
+	}
+}
+
+// seasonIndicator returns a status indicator for a season:
+// ✓ = complete (all episodes available)
+// ○ = wanted (no episodes available)
+// ◐ = partial (some episodes available)
+func seasonIndicator(available, total int) string {
+	switch {
+	case available == total:
+		return "✓"
+	case available == 0:
+		return "○"
+	default:
+		return "◐"
 	}
 }
 

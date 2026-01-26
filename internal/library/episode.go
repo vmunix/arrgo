@@ -197,11 +197,19 @@ func (s *Store) FindOrCreateEpisodes(contentID int64, season int, episodeNums []
 	return result, nil
 }
 
+// SeasonStats contains statistics for a single season.
+type SeasonStats struct {
+	Season    int
+	Total     int
+	Available int
+}
+
 // SeriesStats contains statistics about a series.
 type SeriesStats struct {
 	TotalEpisodes     int
 	AvailableEpisodes int
 	SeasonCount       int
+	Seasons           []SeasonStats
 }
 
 // GetSeriesStats returns episode statistics for a series.
@@ -220,6 +228,32 @@ func (s *Store) GetSeriesStats(contentID int64) (*SeriesStats, error) {
 	).Scan(&stats.TotalEpisodes, &stats.AvailableEpisodes, &stats.SeasonCount)
 	if err != nil {
 		return nil, fmt.Errorf("get series stats: %w", err)
+	}
+
+	// Get per-season breakdown
+	rows, err := s.db.Query(`
+		SELECT
+			season,
+			COUNT(*) as total,
+			COALESCE(SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END), 0) as available
+		FROM episodes
+		WHERE content_id = ?
+		GROUP BY season
+		ORDER BY season`, contentID)
+	if err != nil {
+		return nil, fmt.Errorf("get season stats: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var ss SeasonStats
+		if err := rows.Scan(&ss.Season, &ss.Total, &ss.Available); err != nil {
+			return nil, fmt.Errorf("scan season stats: %w", err)
+		}
+		stats.Seasons = append(stats.Seasons, ss)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate season stats: %w", err)
 	}
 
 	return stats, nil
@@ -280,7 +314,9 @@ func (s *Store) GetSeriesStatsBatch(contentIDs []int64) (map[int64]*SeriesStats,
 		placeholders[i] = "?"
 		args[i] = id
 	}
+	inClause := strings.Join(placeholders, ",")
 
+	// Get aggregate stats per series
 	rows, err := s.db.Query(fmt.Sprintf(`
 		SELECT
 			content_id,
@@ -289,7 +325,7 @@ func (s *Store) GetSeriesStatsBatch(contentIDs []int64) (map[int64]*SeriesStats,
 			COUNT(DISTINCT season) as seasons
 		FROM episodes
 		WHERE content_id IN (%s)
-		GROUP BY content_id`, strings.Join(placeholders, ",")), args...)
+		GROUP BY content_id`, inClause), args...)
 	if err != nil {
 		return nil, fmt.Errorf("get series stats batch: %w", err)
 	}
@@ -306,6 +342,36 @@ func (s *Store) GetSeriesStatsBatch(contentIDs []int64) (map[int64]*SeriesStats,
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate series stats: %w", err)
+	}
+
+	// Get per-season breakdown for each series
+	seasonRows, err := s.db.Query(fmt.Sprintf(`
+		SELECT
+			content_id,
+			season,
+			COUNT(*) as total,
+			COALESCE(SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END), 0) as available
+		FROM episodes
+		WHERE content_id IN (%s)
+		GROUP BY content_id, season
+		ORDER BY content_id, season`, inClause), args...)
+	if err != nil {
+		return nil, fmt.Errorf("get season stats batch: %w", err)
+	}
+	defer seasonRows.Close()
+
+	for seasonRows.Next() {
+		var contentID int64
+		var ss SeasonStats
+		if err := seasonRows.Scan(&contentID, &ss.Season, &ss.Total, &ss.Available); err != nil {
+			return nil, fmt.Errorf("scan season stats: %w", err)
+		}
+		if stats, ok := result[contentID]; ok {
+			stats.Seasons = append(stats.Seasons, ss)
+		}
+	}
+	if err := seasonRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate season stats: %w", err)
 	}
 
 	return result, nil
