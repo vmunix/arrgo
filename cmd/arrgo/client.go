@@ -592,7 +592,7 @@ func (c *Client) LibraryImport(req *LibraryImportRequest) (*LibraryImportRespons
 
 // TVDBSearchResult represents a series from TVDB search.
 type TVDBSearchResult struct {
-	ID     int    `json:"id"`
+	ID     int    `json:"tvdb_id"`
 	Name   string `json:"name"`
 	Year   int    `json:"year"`
 	Status string `json:"status"`
