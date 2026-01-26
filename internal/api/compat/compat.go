@@ -840,25 +840,33 @@ func (s *Server) contentToSonarrSeries(c *library.Content) sonarrSeriesResponse 
 	// Build path
 	path := fmt.Sprintf("%s/%s", c.RootPath, c.Title)
 
-	// Query episodes to get actual season numbers
+	// Query episodes to get actual season numbers and availability
 	seasons := []sonarrSeason{}
 	episodes, _, err := s.library.ListEpisodes(library.EpisodeFilter{ContentID: &c.ID})
 	if err == nil && len(episodes) > 0 {
-		// Find unique season numbers
-		seasonMap := make(map[int]bool)
+		// Track season numbers and whether each has any available episodes
+		seasonHasAvailable := make(map[int]bool)
 		for _, ep := range episodes {
 			if ep.Season > 0 {
-				seasonMap[ep.Season] = true
+				// Initialize season if not seen yet
+				if _, exists := seasonHasAvailable[ep.Season]; !exists {
+					seasonHasAvailable[ep.Season] = false
+				}
+				// Mark season as available if any episode is available
+				if ep.Status == library.StatusAvailable {
+					seasonHasAvailable[ep.Season] = true
+				}
 			}
 		}
-		// Build seasons array
-		for seasonNum := range seasonMap {
-			seasons = append(seasons, sonarrSeason{SeasonNumber: seasonNum, Monitored: true})
+		// Build seasons array - only mark as monitored if season has available episodes
+		// This prevents Overseerr from thinking all seasons are already requested
+		for seasonNum, hasAvailable := range seasonHasAvailable {
+			seasons = append(seasons, sonarrSeason{SeasonNumber: seasonNum, Monitored: hasAvailable})
 		}
 	}
 	// Default to 1 season if we don't have episode data
 	if len(seasons) == 0 {
-		seasons = []sonarrSeason{{SeasonNumber: 1, Monitored: true}}
+		seasons = []sonarrSeason{{SeasonNumber: 1, Monitored: false}}
 	}
 
 	return sonarrSeriesResponse{
