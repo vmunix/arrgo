@@ -24,6 +24,7 @@ type Config struct {
 	AI            AIConfig            `toml:"ai"`
 	Importer      ImporterConfig      `toml:"importer"`
 	TMDB          *TMDBConfig         `toml:"tmdb"`
+	TVDB          *TVDBConfig         `toml:"tvdb"`
 }
 
 type ServerConfig struct {
@@ -138,6 +139,10 @@ type ImporterConfig struct {
 }
 
 type TMDBConfig struct {
+	APIKey string `toml:"api_key"`
+}
+
+type TVDBConfig struct {
 	APIKey string `toml:"api_key"`
 }
 
