@@ -840,8 +840,26 @@ func (s *Server) contentToSonarrSeries(c *library.Content) sonarrSeriesResponse 
 	// Build path
 	path := fmt.Sprintf("%s/%s", c.RootPath, c.Title)
 
+	// Query episodes to get actual season numbers
+	seasons := []sonarrSeason{}
+	episodes, _, err := s.library.ListEpisodes(library.EpisodeFilter{ContentID: &c.ID})
+	if err == nil && len(episodes) > 0 {
+		// Find unique season numbers
+		seasonMap := make(map[int]bool)
+		for _, ep := range episodes {
+			if ep.Season > 0 {
+				seasonMap[ep.Season] = true
+			}
+		}
+		// Build seasons array
+		for seasonNum := range seasonMap {
+			seasons = append(seasons, sonarrSeason{SeasonNumber: seasonNum, Monitored: true})
+		}
+	}
 	// Default to 1 season if we don't have episode data
-	seasons := []sonarrSeason{{SeasonNumber: 1, Monitored: true}}
+	if len(seasons) == 0 {
+		seasons = []sonarrSeason{{SeasonNumber: 1, Monitored: true}}
+	}
 
 	return sonarrSeriesResponse{
 		ID:                c.ID,
