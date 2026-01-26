@@ -19,3 +19,6 @@ var Migration005Events string
 
 //go:embed sql/006_download_episodes.sql
 var Migration006DownloadEpisodes string
+
+//go:embed sql/007_metadata_cache.sql
+var Migration007MetadataCache string

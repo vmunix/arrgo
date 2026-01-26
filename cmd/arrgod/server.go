@@ -178,6 +178,18 @@ func runServer(configPath string) error {
 		}
 	}
 
+	// Migration 007 - metadata cache table for TVDB/TMDB
+	if currentVersion < 7 {
+		if _, err := db.Exec(migrations.Migration007MetadataCache); err != nil {
+			if !strings.Contains(err.Error(), "already exists") {
+				return fmt.Errorf("migrate 007: %w", err)
+			}
+		}
+		if err := setVersion(7); err != nil {
+			return fmt.Errorf("migrate 007 version: %w", err)
+		}
+	}
+
 	// === Stores (always created) ===
 	libraryStore := library.NewStore(db)
 	downloadStore := download.NewStore(db)
