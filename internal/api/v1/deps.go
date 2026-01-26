@@ -58,6 +58,7 @@ type IndexerAPI interface {
 // TVDBService defines the interface for TVDB metadata operations.
 type TVDBService interface {
 	Search(ctx context.Context, query string) ([]tvdb.SearchResult, error)
+	GetEpisodes(ctx context.Context, tvdbID int) ([]tvdb.Episode, error)
 }
 
 // ServerDeps contains all dependencies for the API server.

@@ -375,6 +375,21 @@ func (m *MockTVDBService) EXPECT() *MockTVDBServiceMockRecorder {
 	return m.recorder
 }
 
+// GetEpisodes mocks base method.
+func (m *MockTVDBService) GetEpisodes(ctx context.Context, tvdbID int) ([]tvdb.Episode, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetEpisodes", ctx, tvdbID)
+	ret0, _ := ret[0].([]tvdb.Episode)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetEpisodes indicates an expected call of GetEpisodes.
+func (mr *MockTVDBServiceMockRecorder) GetEpisodes(ctx, tvdbID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEpisodes", reflect.TypeOf((*MockTVDBService)(nil).GetEpisodes), ctx, tvdbID)
+}
+
 // Search mocks base method.
 func (m *MockTVDBService) Search(ctx context.Context, query string) ([]tvdb.SearchResult, error) {
 	m.ctrl.T.Helper()

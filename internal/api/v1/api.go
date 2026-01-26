@@ -66,6 +66,47 @@ func (s *Server) SetTVDB(svc TVDBService) {
 	s.tvdbSvc = svc
 }
 
+// syncEpisodesFromTVDB fetches episodes from TVDB and creates Episode records.
+// This runs in the background and logs errors but doesn't fail the request.
+func (s *Server) syncEpisodesFromTVDB(contentID int64, tvdbID int) {
+	if s.tvdbSvc == nil {
+		return
+	}
+
+	ctx := context.Background()
+
+	episodes, err := s.tvdbSvc.GetEpisodes(ctx, tvdbID)
+	if err != nil {
+		// Silently fail - series is added, just without episode data
+		return
+	}
+
+	// Convert to library.Episode
+	libEpisodes := make([]*library.Episode, 0, len(episodes))
+	for _, ep := range episodes {
+		// Skip specials (season 0) and episodes without numbers
+		if ep.Season == 0 || ep.Episode == 0 {
+			continue
+		}
+
+		var airDate *time.Time
+		if !ep.AirDate.IsZero() {
+			airDate = &ep.AirDate
+		}
+
+		libEpisodes = append(libEpisodes, &library.Episode{
+			ContentID: contentID,
+			Season:    ep.Season,
+			Episode:   ep.Episode,
+			Title:     ep.Name,
+			Status:    library.StatusWanted,
+			AirDate:   airDate,
+		})
+	}
+
+	_, _ = s.deps.Library.BulkAddEpisodes(libEpisodes)
+}
+
 // RegisterRoutes registers API routes on the given mux.
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// Content
@@ -366,6 +407,11 @@ func (s *Server) addContent(w http.ResponseWriter, r *http.Request) {
 			QualityProfile: c.QualityProfile,
 		}
 		_ = s.deps.Bus.Publish(r.Context(), evt)
+	}
+
+	// For series with TVDB ID, fetch and populate episodes
+	if c.Type == library.ContentTypeSeries && c.TVDBID != nil {
+		go s.syncEpisodesFromTVDB(c.ID, int(*c.TVDBID))
 	}
 
 	writeJSON(w, http.StatusCreated, contentToResponse(c, nil))
