@@ -1047,14 +1047,33 @@ func (s *Server) updateSeries(w http.ResponseWriter, r *http.Request) {
 
 	// Trigger search for re-request flow (Overseerr sends PUT when re-requesting wanted series)
 	if shouldSearch || req.AddOptions.SearchForMissingEpisodes {
-		// Extract monitored season numbers
-		var monitoredSeasons []int
-		for _, season := range req.Seasons {
-			if season.Monitored && season.SeasonNumber > 0 {
-				monitoredSeasons = append(monitoredSeasons, season.SeasonNumber)
+		// Find which seasons already have available episodes (already downloaded)
+		availableSeasons := make(map[int]bool)
+		episodes, _, err := s.library.ListEpisodes(library.EpisodeFilter{ContentID: &content.ID})
+		if err == nil {
+			for _, ep := range episodes {
+				if ep.Status == library.StatusAvailable {
+					availableSeasons[ep.Season] = true
+				}
 			}
 		}
-		go s.searchAndGrabSeries(content.ID, content.Title, content.QualityProfile, monitoredSeasons)
+
+		// Extract monitored season numbers, excluding already-available seasons
+		var seasonsToSearch []int
+		for _, season := range req.Seasons {
+			if season.Monitored && season.SeasonNumber > 0 && !availableSeasons[season.SeasonNumber] {
+				seasonsToSearch = append(seasonsToSearch, season.SeasonNumber)
+			}
+		}
+
+		if len(seasonsToSearch) > 0 {
+			s.log.Debug("searching for missing seasons",
+				"id", content.ID,
+				"seasons", seasonsToSearch,
+				"skipped_available", len(availableSeasons),
+			)
+			go s.searchAndGrabSeries(content.ID, content.Title, content.QualityProfile, seasonsToSearch)
+		}
 	}
 
 	writeJSON(w, http.StatusOK, s.contentToSonarrSeries(content))
