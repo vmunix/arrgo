@@ -49,6 +49,11 @@ type Download struct {
 	AddedAt          time.Time
 	CompletedAt      *time.Time
 	LastTransitionAt time.Time
+	// Progress tracking (updated by adapter on each poll)
+	Progress   float64 // 0-100
+	Speed      int64   // bytes/sec
+	ETASeconds int64   // seconds remaining
+	Size       int64   // total size in bytes
 }
 
 // Filter specifies criteria for listing downloads.
@@ -178,9 +183,9 @@ func (s *Store) Add(d *Download) error {
 func (s *Store) Get(id int64) (*Download, error) {
 	d := &Download{}
 	err := s.db.QueryRow(`
-		SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at, season, is_complete_season
+		SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at, season, is_complete_season, progress, speed, eta_seconds, size_bytes
 		FROM downloads WHERE id = ?`, id,
-	).Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt, &d.Season, &d.IsCompleteSeason)
+	).Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt, &d.Season, &d.IsCompleteSeason, &d.Progress, &d.Speed, &d.ETASeconds, &d.Size)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("get download %d: %w", id, ErrNotFound)
@@ -203,9 +208,9 @@ func (s *Store) Get(id int64) (*Download, error) {
 func (s *Store) GetByClientID(client Client, clientID string) (*Download, error) {
 	d := &Download{}
 	err := s.db.QueryRow(`
-		SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at, season, is_complete_season
+		SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at, season, is_complete_season, progress, speed, eta_seconds, size_bytes
 		FROM downloads WHERE client = ? AND client_id = ?`, client, clientID,
-	).Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt, &d.Season, &d.IsCompleteSeason)
+	).Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt, &d.Season, &d.IsCompleteSeason, &d.Progress, &d.Speed, &d.ETASeconds, &d.Size)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("get download by client %s/%s: %w", client, clientID, ErrNotFound)
@@ -342,7 +347,7 @@ func (s *Store) List(f Filter) ([]*Download, int, error) {
 
 	// G202: False positive - whereClause contains only "col = ?" conditions,
 	// actual values are passed via args parameter (parameterized query).
-	query := "SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at, season, is_complete_season FROM downloads " + //nolint:gosec
+	query := "SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at, season, is_complete_season, progress, speed, eta_seconds, size_bytes FROM downloads " + //nolint:gosec
 		whereClause + " ORDER BY id"
 
 	// Add LIMIT/OFFSET if specified
@@ -359,7 +364,7 @@ func (s *Store) List(f Filter) ([]*Download, int, error) {
 	var results []*Download
 	for rows.Next() {
 		d := &Download{}
-		if err := rows.Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt, &d.Season, &d.IsCompleteSeason); err != nil {
+		if err := rows.Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt, &d.Season, &d.IsCompleteSeason, &d.Progress, &d.Speed, &d.ETASeconds, &d.Size); err != nil {
 			return nil, 0, fmt.Errorf("scan download: %w", err)
 		}
 		// Note: EpisodeIDs not loaded for List() performance - use Get() for full details
@@ -486,7 +491,7 @@ func (s *Store) ListStuck(thresholds map[Status]time.Duration) ([]*Download, err
 	// actual values are passed via args parameter (parameterized query).
 	whereClause := strings.Join(conditions, " OR ")
 	//nolint:gosec // G201: whereClause is built from hardcoded conditions, not user input
-	query := fmt.Sprintf(`SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at, season, is_complete_season
+	query := fmt.Sprintf(`SELECT id, content_id, episode_id, client, client_id, status, release_name, indexer, added_at, completed_at, last_transition_at, season, is_complete_season, progress, speed, eta_seconds, size_bytes
 		FROM downloads WHERE %s ORDER BY last_transition_at`, whereClause)
 
 	rows, err := s.db.Query(query, args...)
@@ -498,7 +503,7 @@ func (s *Store) ListStuck(thresholds map[Status]time.Duration) ([]*Download, err
 	var results []*Download
 	for rows.Next() {
 		d := &Download{}
-		if err := rows.Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt, &d.Season, &d.IsCompleteSeason); err != nil {
+		if err := rows.Scan(&d.ID, &d.ContentID, &d.EpisodeID, &d.Client, &d.ClientID, &d.Status, &d.ReleaseName, &d.Indexer, &d.AddedAt, &d.CompletedAt, &d.LastTransitionAt, &d.Season, &d.IsCompleteSeason, &d.Progress, &d.Speed, &d.ETASeconds, &d.Size); err != nil {
 			return nil, fmt.Errorf("scan download: %w", err)
 		}
 		// Note: EpisodeIDs not loaded for ListStuck() performance - use Get() for full details
@@ -506,4 +511,17 @@ func (s *Store) ListStuck(thresholds map[Status]time.Duration) ([]*Download, err
 	}
 
 	return results, rows.Err()
+}
+
+// UpdateProgress updates the progress tracking fields for a download.
+func (s *Store) UpdateProgress(id int64, progress float64, speed, etaSeconds, size int64) error {
+	_, err := s.db.Exec(`
+		UPDATE downloads SET progress = ?, speed = ?, eta_seconds = ?, size_bytes = ?
+		WHERE id = ?`,
+		progress, speed, etaSeconds, size, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update progress for download %d: %w", id, err)
+	}
+	return nil
 }

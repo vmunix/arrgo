@@ -714,19 +714,6 @@ func (s *Server) listDownloads(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build a map of live status if manager is available
-	liveStatus := make(map[int64]*download.ClientStatus)
-	if s.deps.Manager != nil {
-		active, err := s.deps.Manager.GetActive(r.Context())
-		if err == nil {
-			for _, a := range active {
-				if a.Live != nil {
-					liveStatus[a.Download.ID] = a.Live
-				}
-			}
-		}
-	}
-
 	resp := listDownloadsResponse{
 		Items:  make([]downloadResponse, len(downloads)),
 		Total:  total,
@@ -735,13 +722,13 @@ func (s *Server) listDownloads(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for i, d := range downloads {
-		resp.Items[i] = downloadToResponse(d, liveStatus[d.ID])
+		resp.Items[i] = downloadToResponse(d)
 	}
 
 	writeJSON(w, http.StatusOK, resp)
 }
 
-func downloadToResponse(d *download.Download, live *download.ClientStatus) downloadResponse {
+func downloadToResponse(d *download.Download) downloadResponse {
 	resp := downloadResponse{
 		ID:               d.ID,
 		ContentID:        d.ContentID,
@@ -755,17 +742,13 @@ func downloadToResponse(d *download.Download, live *download.ClientStatus) downl
 		Indexer:          d.Indexer,
 		AddedAt:          d.AddedAt,
 		CompletedAt:      d.CompletedAt,
+		Progress:         &d.Progress,
+		Size:             &d.Size,
+		Speed:            &d.Speed,
 	}
-	if live != nil {
-		// Only use live data for ephemeral values (progress/speed/ETA).
-		// Status is managed by the adapter and stored in DB.
-		resp.Progress = &live.Progress
-		resp.Size = &live.Size
-		resp.Speed = &live.Speed
-		if live.ETA > 0 {
-			eta := live.ETA.String()
-			resp.ETA = &eta
-		}
+	if d.ETASeconds > 0 {
+		eta := (time.Duration(d.ETASeconds) * time.Second).String()
+		resp.ETA = &eta
 	}
 	return resp
 }
@@ -787,13 +770,7 @@ func (s *Server) getDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get live status if manager is available
-	var live *download.ClientStatus
-	if s.deps.Manager != nil && d.Status == download.StatusDownloading {
-		live, _ = s.deps.Manager.Client().Status(r.Context(), d.ClientID)
-	}
-
-	writeJSON(w, http.StatusOK, downloadToResponse(d, live))
+	writeJSON(w, http.StatusOK, downloadToResponse(d))
 }
 
 func (s *Server) deleteDownload(w http.ResponseWriter, r *http.Request) {

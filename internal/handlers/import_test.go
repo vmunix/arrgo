@@ -40,7 +40,11 @@ func setupImportTestDB(t *testing.T) *sql.DB {
 			completed_at TIMESTAMP,
 			last_transition_at TIMESTAMP NOT NULL,
 			season INTEGER,
-			is_complete_season INTEGER DEFAULT 0
+			is_complete_season INTEGER DEFAULT 0,
+			progress REAL DEFAULT 0,
+			speed INTEGER DEFAULT 0,
+			eta_seconds INTEGER DEFAULT 0,
+			size_bytes INTEGER DEFAULT 0
 		);
 		CREATE TABLE download_episodes (
 			download_id INTEGER NOT NULL,
@@ -501,7 +505,11 @@ func setupImportTestDBWithLibrary(t *testing.T) *sql.DB {
 			completed_at TIMESTAMP,
 			last_transition_at TIMESTAMP NOT NULL,
 			season INTEGER,
-			is_complete_season INTEGER DEFAULT 0
+			is_complete_season INTEGER DEFAULT 0,
+			progress REAL DEFAULT 0,
+			speed INTEGER DEFAULT 0,
+			eta_seconds INTEGER DEFAULT 0,
+			size_bytes INTEGER DEFAULT 0
 		);
 		CREATE TABLE download_episodes (
 			download_id INTEGER NOT NULL,

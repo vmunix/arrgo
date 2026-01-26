@@ -225,7 +225,7 @@ func (a *Adapter) emitFailed(ctx context.Context, dl *download.Download, reason 
 		"retryable", retryable)
 }
 
-// emitProgressed transitions status if needed and publishes a DownloadProgressed event.
+// emitProgressed transitions status if needed, updates progress in DB, and publishes event.
 func (a *Adapter) emitProgressed(ctx context.Context, dl *download.Download, status *download.ClientStatus) {
 	// Transition to downloading if client reports downloading and we're still queued
 	if status.Status == download.StatusDownloading && dl.Status == download.StatusQueued {
@@ -249,6 +249,13 @@ func (a *Adapter) emitProgressed(ctx context.Context, dl *download.Download, sta
 		} else {
 			dl.Status = download.StatusQueued // Update local copy
 		}
+	}
+
+	// Update progress in database
+	if err := a.store.UpdateProgress(dl.ID, status.Progress, status.Speed, int64(status.ETA.Seconds()), status.Size); err != nil {
+		a.logger.Error("failed to update download progress",
+			"download_id", dl.ID,
+			"error", err)
 	}
 
 	evt := &events.DownloadProgressed{

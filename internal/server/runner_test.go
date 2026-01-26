@@ -91,7 +91,13 @@ func setupTestDB(t *testing.T) *sql.DB {
 			indexer TEXT,
 			added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 			completed_at TIMESTAMP,
-			last_transition_at TIMESTAMP
+			last_transition_at TIMESTAMP,
+			season INTEGER,
+			is_complete_season INTEGER DEFAULT 0,
+			progress REAL DEFAULT 0,
+			speed INTEGER DEFAULT 0,
+			eta_seconds INTEGER DEFAULT 0,
+			size_bytes INTEGER DEFAULT 0
 		);
 	`)
 	require.NoError(t, err)
