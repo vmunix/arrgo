@@ -107,6 +107,81 @@ func (s *Server) syncEpisodesFromTVDB(contentID int64, tvdbID int) {
 	_, _ = s.deps.Library.BulkAddEpisodes(libEpisodes)
 }
 
+// syncEpisodes handles POST /api/v1/content/{id}/sync-episodes.
+// Fetches episodes from TVDB and populates the database.
+func (s *Server) syncEpisodes(w http.ResponseWriter, r *http.Request) {
+	id, err := pathID(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "INVALID_ID", err.Error())
+		return
+	}
+
+	c, err := s.deps.Library.GetContent(id)
+	if err != nil {
+		if errors.Is(err, library.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "Content not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	if c.Type != library.ContentTypeSeries {
+		writeError(w, http.StatusBadRequest, "NOT_SERIES", "Episode sync only applies to series")
+		return
+	}
+
+	if c.TVDBID == nil {
+		writeError(w, http.StatusBadRequest, "NO_TVDB_ID", "Series has no TVDB ID configured")
+		return
+	}
+
+	if s.tvdbSvc == nil {
+		writeError(w, http.StatusServiceUnavailable, "TVDB_NOT_CONFIGURED", "TVDB service not available")
+		return
+	}
+
+	// Fetch and insert episodes (synchronously for this endpoint)
+	episodes, err := s.tvdbSvc.GetEpisodes(r.Context(), int(*c.TVDBID))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "TVDB_ERROR", err.Error())
+		return
+	}
+
+	// Convert to library.Episode
+	libEpisodes := make([]*library.Episode, 0, len(episodes))
+	for _, ep := range episodes {
+		if ep.Season == 0 || ep.Episode == 0 {
+			continue
+		}
+		var airDate *time.Time
+		if !ep.AirDate.IsZero() {
+			airDate = &ep.AirDate
+		}
+		libEpisodes = append(libEpisodes, &library.Episode{
+			ContentID: id,
+			Season:    ep.Season,
+			Episode:   ep.Episode,
+			Title:     ep.Name,
+			Status:    library.StatusWanted,
+			AirDate:   airDate,
+		})
+	}
+
+	inserted, err := s.deps.Library.BulkAddEpisodes(libEpisodes)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "DB_ERROR", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"content_id": id,
+		"tvdb_id":    *c.TVDBID,
+		"total":      len(libEpisodes),
+		"inserted":   inserted,
+	})
+}
+
 // RegisterRoutes registers API routes on the given mux.
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	// Content
@@ -118,6 +193,7 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// Episodes
 	mux.HandleFunc("GET /api/v1/content/{id}/episodes", s.listEpisodes)
+	mux.HandleFunc("POST /api/v1/content/{id}/sync-episodes", s.syncEpisodes)
 	mux.HandleFunc("PUT /api/v1/episodes/{id}", s.updateEpisode)
 
 	// Search & grab (require optional dependencies)
