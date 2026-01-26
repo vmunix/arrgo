@@ -25,11 +25,13 @@ import (
 	"github.com/vmunix/arrgo/internal/events"
 	"github.com/vmunix/arrgo/internal/importer"
 	"github.com/vmunix/arrgo/internal/library"
+	"github.com/vmunix/arrgo/internal/metadata"
 	"github.com/vmunix/arrgo/internal/migrations"
 	"github.com/vmunix/arrgo/internal/search"
 	"github.com/vmunix/arrgo/internal/server"
 	"github.com/vmunix/arrgo/internal/tmdb"
 	"github.com/vmunix/arrgo/pkg/newznab"
+	"github.com/vmunix/arrgo/pkg/tvdb"
 )
 
 func parseLogLevel(s string) slog.Level {
@@ -359,6 +361,15 @@ func runServer(configPath string) error {
 			tmdbClient := tmdb.NewClient(cfg.TMDB.APIKey, tmdb.WithLogger(logger))
 			apiCompat.SetTMDB(tmdbClient)
 			logger.Info("TMDB client configured")
+		}
+
+		// Wire TVDB client and service if configured
+		if cfg.TVDB != nil && cfg.TVDB.APIKey != "" {
+			tvdbClient := tvdb.New(cfg.TVDB.APIKey, tvdb.WithLogger(logger))
+			metadataCache := metadata.NewCache(db)
+			tvdbSvc := metadata.NewTVDBService(tvdbClient, metadataCache, logger.With("component", "tvdb"))
+			apiCompat.SetTVDB(tvdbSvc)
+			logger.Info("TVDB integration enabled")
 		}
 
 		apiCompat.RegisterRoutes(mux)
