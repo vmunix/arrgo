@@ -649,7 +649,7 @@ func TestStore_BulkAddEpisodes_PartialDuplicates(t *testing.T) {
 
 	// Bulk add with mix of existing and new
 	episodes := []*Episode{
-		{ContentID: series.ID, Season: 1, Episode: 1, Title: "Duplicate", Status: StatusWanted},   // exists
+		{ContentID: series.ID, Season: 1, Episode: 1, Title: "Duplicate", Status: StatusWanted},     // exists
 		{ContentID: series.ID, Season: 1, Episode: 2, Title: "New Episode 2", Status: StatusWanted}, // new
 		{ContentID: series.ID, Season: 1, Episode: 3, Title: "New Episode 3", Status: StatusWanted}, // new
 	}

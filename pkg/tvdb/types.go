@@ -7,20 +7,20 @@ import "time"
 type Series struct {
 	ID       int    `json:"id"`
 	Name     string `json:"name"`
-	Year     int    `json:"year"`      // Extracted from firstAired
-	Status   string `json:"status"`    // "Continuing" or "Ended"
+	Year     int    `json:"year"`   // Extracted from firstAired
+	Status   string `json:"status"` // "Continuing" or "Ended"
 	Overview string `json:"overview"`
 }
 
 // Episode represents a single episode from TVDB.
 type Episode struct {
-	ID        int       `json:"id"`
-	Season    int       `json:"seasonNumber"`
-	Episode   int       `json:"number"`
-	Name      string    `json:"name"`
-	Overview  string    `json:"overview"`
-	AirDate   time.Time `json:"aired"` // Parsed from YYYY-MM-DD
-	Runtime   int       `json:"runtime"`
+	ID       int       `json:"id"`
+	Season   int       `json:"seasonNumber"`
+	Episode  int       `json:"number"`
+	Name     string    `json:"name"`
+	Overview string    `json:"overview"`
+	AirDate  time.Time `json:"aired"` // Parsed from YYYY-MM-DD
+	Runtime  int       `json:"runtime"`
 }
 
 // SearchResult represents a series search result.

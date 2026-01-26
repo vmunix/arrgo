@@ -270,7 +270,7 @@ func TestGetSeries_NotFound(t *testing.T) {
 	const token = "test-token"
 
 	server := mockTVDB(t, map[string]http.HandlerFunc{
-		"/login":          loginHandler("api-key", token),
+		"/login": loginHandler("api-key", token),
 		"/series/9999999": requireAuth(token, func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 		}),

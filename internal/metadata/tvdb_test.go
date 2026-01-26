@@ -38,7 +38,10 @@ func writeJSONResponse(w http.ResponseWriter, v any) {
 }
 
 // tvdbLoginHandler returns a handler that validates API key and returns a token.
-func tvdbLoginHandler(validAPIKey, token string) http.HandlerFunc {
+// The handler accepts any API key matching testAPIKey and returns testToken.
+//
+//nolint:unparam // test helper designed for reuse with different values
+func tvdbLoginHandler(testAPIKey, testToken string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -53,23 +56,26 @@ func tvdbLoginHandler(validAPIKey, token string) http.HandlerFunc {
 			return
 		}
 
-		if body.APIKey != validAPIKey {
+		if body.APIKey != testAPIKey {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 
 		writeJSONResponse(w, map[string]any{
 			"status": "success",
-			"data":   map[string]string{"token": token},
+			"data":   map[string]string{"token": testToken},
 		})
 	}
 }
 
 // tvdbRequireAuth wraps a handler with token validation.
-func tvdbRequireAuth(validToken string, handler http.HandlerFunc) http.HandlerFunc {
+// The handler validates that the Authorization header contains testToken.
+//
+//nolint:unparam // test helper designed for reuse with different values
+func tvdbRequireAuth(testToken string, handler http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
-		if auth != "Bearer "+validToken {
+		if auth != "Bearer "+testToken {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
@@ -371,7 +377,7 @@ func TestTVDBService_InvalidateSeries(t *testing.T) {
 		"/series/12345/episodes/default": tvdbRequireAuth(token, func(w http.ResponseWriter, r *http.Request) {
 			writeJSONResponse(w, map[string]any{
 				"status": "success",
-				"data":   map[string]any{"episodes": []map[string]any{{
+				"data": map[string]any{"episodes": []map[string]any{{
 					"id":           1,
 					"seasonNumber": 1,
 					"number":       1,
