@@ -389,6 +389,7 @@ func runServer(configPath string) error {
 		// Wire TVDB service to compat API (reuse from v1 API)
 		if tvdbSvc != nil {
 			apiCompat.SetTVDB(tvdbSvc)
+			logger.Info("TVDB wired to compat API")
 		}
 
 		apiCompat.RegisterRoutes(mux)
