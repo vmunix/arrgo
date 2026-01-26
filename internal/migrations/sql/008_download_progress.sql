@@ -5,5 +5,3 @@ ALTER TABLE downloads ADD COLUMN progress REAL DEFAULT 0;
 ALTER TABLE downloads ADD COLUMN speed INTEGER DEFAULT 0;
 ALTER TABLE downloads ADD COLUMN eta_seconds INTEGER DEFAULT 0;
 ALTER TABLE downloads ADD COLUMN size_bytes INTEGER DEFAULT 0;
-
-INSERT OR IGNORE INTO schema_migrations (version) VALUES (8);

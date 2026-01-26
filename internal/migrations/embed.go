@@ -22,3 +22,6 @@ var Migration006DownloadEpisodes string
 
 //go:embed sql/007_metadata_cache.sql
 var Migration007MetadataCache string
+
+//go:embed sql/008_download_progress.sql
+var Migration008DownloadProgress string

@@ -188,6 +188,19 @@ func runServer(configPath string) error {
 		if err := setVersion(7); err != nil {
 			return fmt.Errorf("migrate 007 version: %w", err)
 		}
+		currentVersion = 7
+	}
+
+	// Migration 008 - download progress columns
+	if currentVersion < 8 {
+		if _, err := db.Exec(migrations.Migration008DownloadProgress); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column") {
+				return fmt.Errorf("migrate 008: %w", err)
+			}
+		}
+		if err := setVersion(8); err != nil {
+			return fmt.Errorf("migrate 008 version: %w", err)
+		}
 	}
 
 	// === Stores (always created) ===
