@@ -741,6 +741,18 @@ func (s *Server) lookupSeries(w http.ResponseWriter, r *http.Request) {
 		if contents[0].Status == library.StatusWanted {
 			resp.Monitored = false
 		}
+
+		// Enrich with TVDB metadata if year is missing and TVDB is configured
+		if resp.Year == 0 && s.tvdbSvc != nil {
+			series, err := s.tvdbSvc.GetSeries(r.Context(), int(tvdbID))
+			if err == nil {
+				resp.Year = series.Year
+				if resp.Overview == "" {
+					resp.Overview = series.Overview
+				}
+			}
+		}
+
 		writeJSON(w, http.StatusOK, []sonarrSeriesResponse{resp})
 		return
 	}
