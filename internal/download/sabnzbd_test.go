@@ -250,9 +250,9 @@ func TestSABnzbdClient_List(t *testing.T) {
 
 	// Check queue items come first
 	assert.Equal(t, "nzo_queue1", list[0].ID)
-	assert.Equal(t, StatusDownloading, list[0].Status)
+	assert.Equal(t, StatusDownloading, list[0].Status) // "Downloading" maps to downloading
 	assert.Equal(t, "nzo_queue2", list[1].ID)
-	assert.Equal(t, StatusDownloading, list[1].Status)
+	assert.Equal(t, StatusQueued, list[1].Status) // "Queued" maps to queued
 
 	// Check history items
 	assert.Equal(t, "nzo_done1", list[2].ID)

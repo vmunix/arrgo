@@ -163,7 +163,12 @@ func printDownloadsActive(d *ListDownloadsResponse) {
 		if dl.ETA != nil {
 			eta = *dl.ETA
 		}
-		fmt.Printf("  %-4d %-12s %-50s %-8s %s\n", dl.ID, dl.Status, title, progress, eta)
+		// Use client status if available (live from download client), else DB status
+		displayStatus := dl.Status
+		if dl.ClientStatus != nil {
+			displayStatus = *dl.ClientStatus
+		}
+		fmt.Printf("  %-4d %-12s %-50s %-8s %s\n", dl.ID, displayStatus, title, progress, eta)
 	}
 }
 
@@ -189,7 +194,12 @@ func printDownloadsAll(d *ListDownloadsResponse) {
 				completed = formatTimeAgo(t.Unix())
 			}
 		}
-		fmt.Printf("  %-4d %-12s %-40s %-12s\n", dl.ID, dl.Status, title, completed)
+		// Use client status if available (live from download client), else DB status
+		displayStatus := dl.Status
+		if dl.ClientStatus != nil {
+			displayStatus = *dl.ClientStatus
+		}
+		fmt.Printf("  %-4d %-12s %-40s %-12s\n", dl.ID, displayStatus, title, completed)
 	}
 }
 

@@ -283,10 +283,15 @@ type historySlot struct {
 }
 
 // mapQueueStatus maps SABnzbd queue status to our Status type.
-// All queue statuses map to StatusDownloading since items in the queue are not yet complete.
 func mapQueueStatus(sabStatus string) Status {
-	// Everything in queue is considered downloading
-	return StatusDownloading
+	switch sabStatus {
+	case "Downloading", "Fetching", "Grabbing", "Checking":
+		return StatusDownloading
+	case "Queued", "Paused", "Propagating":
+		return StatusQueued
+	default:
+		return StatusDownloading // fallback for unknown statuses
+	}
 }
 
 // mapHistoryStatus maps SABnzbd history status to our Status type.

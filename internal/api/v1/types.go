@@ -113,6 +113,7 @@ type downloadResponse struct {
 	Client           string     `json:"client"`
 	ClientID         string     `json:"client_id"`
 	Status           string     `json:"status"`
+	ClientStatus     *string    `json:"client_status,omitempty"` // Live status from download client (downloading, queued)
 	ReleaseName      string     `json:"release_name"`
 	Indexer          string     `json:"indexer"`
 	AddedAt          time.Time  `json:"added_at"`

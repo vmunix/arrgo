@@ -757,6 +757,8 @@ func downloadToResponse(d *download.Download, live *download.ClientStatus) downl
 		CompletedAt:      d.CompletedAt,
 	}
 	if live != nil {
+		clientStatus := string(live.Status)
+		resp.ClientStatus = &clientStatus
 		resp.Progress = &live.Progress
 		resp.Size = &live.Size
 		resp.Speed = &live.Speed
