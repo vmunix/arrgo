@@ -13,6 +13,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Status indicators for library display.
+const (
+	indicatorComplete = "✓"
+	indicatorWanted   = "○"
+	indicatorPartial  = "◐"
+	indicatorMissing  = "✗"
+)
+
 // LibrarySeasonStats matches the API response for season statistics.
 type LibrarySeasonStats struct {
 	Season    int `json:"season"`
@@ -449,11 +457,11 @@ func printLibraryList(data *ListLibraryResponse, showSeasons bool) {
 func seasonIndicator(available, total int) string {
 	switch {
 	case available == total:
-		return "✓"
+		return indicatorComplete
 	case available == 0:
-		return "○"
+		return indicatorWanted
 	default:
-		return "◐"
+		return indicatorPartial
 	}
 }
 
@@ -519,13 +527,13 @@ func printLibraryCheck(data *LibraryCheckResponse, issuesOnly bool) {
 		}
 
 		// Status indicators
-		fileStatus := "✓"
+		fileStatus := indicatorComplete
 		if !item.FileExists {
-			fileStatus = "✗"
+			fileStatus = indicatorMissing
 		}
-		plexStatus := "✓"
+		plexStatus := indicatorComplete
 		if !item.InPlex {
-			plexStatus = "✗"
+			plexStatus = indicatorMissing
 		}
 
 		title := item.Title
