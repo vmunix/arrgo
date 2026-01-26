@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -139,15 +140,16 @@ type sonarrAddRequest struct {
 
 // Server provides Radarr/Sonarr API compatibility.
 type Server struct {
-	cfg       Config
-	library   *library.Store
-	downloads *download.Store
-	searcher  *search.Searcher
-	manager   *download.Manager
-	tmdb      *tmdb.Client
-	tvdbSvc   *metadata.TVDBService
-	bus       *events.Bus // Optional event bus for event-driven grabs
-	log       *slog.Logger
+	cfg          Config
+	library      *library.Store
+	downloads    *download.Store
+	searcher     *search.Searcher
+	manager      *download.Manager
+	tmdb         *tmdb.Client
+	tvdbSvc      *metadata.TVDBService
+	bus          *events.Bus     // Optional event bus for event-driven grabs
+	pendingTasks *sync.WaitGroup // Optional WaitGroup for test synchronization
+	log          *slog.Logger
 }
 
 // New creates a new compatibility server.
@@ -183,6 +185,11 @@ func (s *Server) SetBus(bus *events.Bus) {
 // SetTVDB configures the TVDB service (optional).
 func (s *Server) SetTVDB(svc *metadata.TVDBService) {
 	s.tvdbSvc = svc
+}
+
+// SetPendingWaitGroup sets a WaitGroup for tests to wait on async operations.
+func (s *Server) SetPendingWaitGroup(wg *sync.WaitGroup) {
+	s.pendingTasks = wg
 }
 
 // RegisterRoutes registers compatibility API routes.
@@ -665,6 +672,9 @@ func (s *Server) executeCommand(w http.ResponseWriter, r *http.Request) {
 			content, err := s.library.GetContent(req.SeriesID)
 			if err == nil {
 				// Search for season 1 by default (full series search not supported yet)
+				if s.pendingTasks != nil {
+					s.pendingTasks.Add(1)
+				}
 				go s.searchAndGrabSeries(content.ID, content.Title, content.QualityProfile, []int{1})
 			}
 		}
@@ -990,6 +1000,9 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 				monitoredSeasons = append(monitoredSeasons, season.SeasonNumber)
 			}
 		}
+		if s.pendingTasks != nil {
+			s.pendingTasks.Add(1)
+		}
 		go s.searchAndGrabSeries(content.ID, req.Title, profileName, monitoredSeasons)
 	}
 
@@ -1072,6 +1085,9 @@ func (s *Server) updateSeries(w http.ResponseWriter, r *http.Request) {
 				"seasons", seasonsToSearch,
 				"skipped_available", len(availableSeasons),
 			)
+			if s.pendingTasks != nil {
+				s.pendingTasks.Add(1)
+			}
 			go s.searchAndGrabSeries(content.ID, content.Title, content.QualityProfile, seasonsToSearch)
 		}
 	}
@@ -1153,6 +1169,11 @@ func (s *Server) searchAndGrab(contentID int64, title string, year int, profile 
 
 // searchAndGrabSeries performs a background search for series seasons.
 func (s *Server) searchAndGrabSeries(contentID int64, title string, profile string, seasons []int) {
+	// Signal completion for test synchronization
+	if s.pendingTasks != nil {
+		defer s.pendingTasks.Done()
+	}
+
 	if s.searcher == nil {
 		s.log.Warn("no searcher configured, cannot search")
 		return

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -815,11 +816,12 @@ func TestSonarrAddSeries_WithAutoSearch_MultipleSeasons(t *testing.T) {
 			if q.Season != nil {
 				seasonNum = *q.Season
 			}
+			// Use matching title - the Searcher filters releases by title match
 			return []search.Release{{
-				Title:       "Test.Show.S0" + string(rune('0'+seasonNum)) + ".1080p.BluRay.x264",
+				Title:       "Multi.Season.Show.S0" + string(rune('0'+seasonNum)) + ".COMPLETE.1080p.BluRay.x264",
 				Indexer:     "TestIndexer",
-				GUID:        "test-guid",
-				DownloadURL: "https://indexer.test/download",
+				GUID:        "test-guid-" + string(rune('0'+seasonNum)),
+				DownloadURL: "https://indexer.test/download/" + string(rune('0'+seasonNum)),
 				Size:        5000000000,
 				PublishDate: time.Now(),
 			}}, nil
@@ -833,7 +835,8 @@ func TestSonarrAddSeries_WithAutoSearch_MultipleSeasons(t *testing.T) {
 	scorer := search.NewScorer(profiles)
 	searcher := search.NewSearcher(mockIndexer, scorer, testLogger)
 
-	// Create server
+	// Create server with WaitGroup for test synchronization
+	var pendingTasks sync.WaitGroup
 	cfg := Config{
 		APIKey:          testAPIKey,
 		SeriesRoot:      testSeriesRoot,
@@ -842,6 +845,7 @@ func TestSonarrAddSeries_WithAutoSearch_MultipleSeasons(t *testing.T) {
 	srv := New(cfg, lib, dlStore, testLogger)
 	srv.SetSearcher(searcher)
 	srv.SetBus(bus)
+	srv.SetPendingWaitGroup(&pendingTasks)
 
 	mux := http.NewServeMux()
 	srv.RegisterRoutes(mux)
@@ -873,9 +877,12 @@ func TestSonarrAddSeries_WithAutoSearch_MultipleSeasons(t *testing.T) {
 
 	assert.Equal(t, http.StatusCreated, w.Code)
 
-	// Wait for both GrabRequested events
+	// Wait for the background goroutine to complete
+	pendingTasks.Wait()
+
+	// Now read the events - they should all be in the channel
 	receivedSeasons := make(map[int]bool)
-	timeout := time.After(3 * time.Second)
+	timeout := time.After(1 * time.Second)
 
 	for len(receivedSeasons) < 2 {
 		select {
