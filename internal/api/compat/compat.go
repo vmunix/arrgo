@@ -925,6 +925,11 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Sync episodes from TVDB if available
+	if s.tvdbSvc != nil && tvdbID > 0 {
+		go s.syncEpisodesFromTVDB(content.ID, int(tvdbID))
+	}
+
 	// Publish ContentAdded event
 	if s.bus != nil {
 		evt := &events.ContentAdded{
@@ -1136,4 +1141,51 @@ func (s *Server) searchAndGrabSeries(contentID int64, title string, profile stri
 			s.log.Error("failed to publish GrabRequested", "error", err)
 		}
 	}
+}
+
+// syncEpisodesFromTVDB fetches episodes from TVDB and creates Episode records.
+func (s *Server) syncEpisodesFromTVDB(contentID int64, tvdbID int) {
+	ctx := context.Background()
+
+	episodes, err := s.tvdbSvc.GetEpisodes(ctx, tvdbID)
+	if err != nil {
+		s.log.Warn("failed to fetch episodes from TVDB", "tvdb_id", tvdbID, "error", err)
+		return
+	}
+
+	// Convert to library.Episode
+	libEpisodes := make([]*library.Episode, 0, len(episodes))
+	for _, ep := range episodes {
+		// Skip specials (season 0) and episodes without numbers
+		if ep.Season == 0 || ep.Episode == 0 {
+			continue
+		}
+
+		var airDate *time.Time
+		if !ep.AirDate.IsZero() {
+			airDate = &ep.AirDate
+		}
+
+		libEpisodes = append(libEpisodes, &library.Episode{
+			ContentID: contentID,
+			Season:    ep.Season,
+			Episode:   ep.Episode,
+			Title:     ep.Name,
+			Status:    library.StatusWanted,
+			AirDate:   airDate,
+		})
+	}
+
+	inserted, err := s.library.BulkAddEpisodes(libEpisodes)
+	if err != nil {
+		s.log.Warn("failed to bulk add episodes", "content_id", contentID, "error", err)
+		return
+	}
+
+	s.log.Info("synced episodes from TVDB",
+		"content_id", contentID,
+		"tvdb_id", tvdbID,
+		"total", len(episodes),
+		"inserted", inserted,
+	)
 }
