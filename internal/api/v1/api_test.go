@@ -24,6 +24,7 @@ import (
 	"github.com/vmunix/arrgo/internal/importer"
 	"github.com/vmunix/arrgo/internal/library"
 	"github.com/vmunix/arrgo/internal/search"
+	"github.com/vmunix/arrgo/pkg/tvdb"
 	"go.uber.org/mock/gomock"
 )
 
@@ -2337,4 +2338,141 @@ func TestGrab_MultiEpisodeRelease(t *testing.T) {
 	episodes, _, err := store.ListEpisodes(library.EpisodeFilter{ContentID: &series.ID})
 	require.NoError(t, err)
 	assert.Len(t, episodes, 3)
+}
+
+func TestTVDBSearch_Success(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	mockTVDB := mocks.NewMockTVDBService(ctrl)
+
+	// Set up expectation for search
+	mockTVDB.EXPECT().
+		Search(gomock.Any(), "breaking bad").
+		Return([]tvdb.SearchResult{
+			{
+				ID:       81189,
+				Name:     "Breaking Bad",
+				Year:     2008,
+				Status:   "Ended",
+				Overview: "A high school chemistry teacher diagnosed with inoperable lung cancer...",
+				Network:  "AMC",
+			},
+		}, nil)
+
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+	srv.SetTVDB(mockTVDB)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tvdb/search?q=breaking+bad", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var results []tvdb.SearchResult
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &results))
+	assert.Len(t, results, 1)
+	assert.Equal(t, 81189, results[0].ID)
+	assert.Equal(t, "Breaking Bad", results[0].Name)
+	assert.Equal(t, 2008, results[0].Year)
+}
+
+func TestTVDBSearch_MissingQuery(t *testing.T) {
+	db := setupTestDB(t)
+
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tvdb/search", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var resp errorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Contains(t, resp.Error, "query parameter is required")
+}
+
+func TestTVDBSearch_NotConfigured(t *testing.T) {
+	db := setupTestDB(t)
+
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+	// Note: Not calling SetTVDB, so tvdbSvc remains nil
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tvdb/search?q=test", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+	var resp errorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Contains(t, resp.Error, "TVDB not configured")
+}
+
+func TestTVDBSearch_SearchError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	db := setupTestDB(t)
+	mockTVDB := mocks.NewMockTVDBService(ctrl)
+
+	// Set up expectation for search failure
+	mockTVDB.EXPECT().
+		Search(gomock.Any(), "test").
+		Return(nil, fmt.Errorf("TVDB API error"))
+
+	deps := ServerDeps{
+		Library:   library.NewStore(db),
+		Downloads: download.NewStore(db),
+		History:   importer.NewHistoryStore(db),
+	}
+	srv, err := NewWithDeps(deps, Config{})
+	require.NoError(t, err)
+	srv.SetTVDB(mockTVDB)
+
+	mux := http.NewServeMux()
+	srv.RegisterRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/tvdb/search?q=test", nil)
+	w := httptest.NewRecorder()
+
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+	var resp errorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Contains(t, resp.Error, "TVDB API error")
 }

@@ -34,8 +34,9 @@ type Config struct {
 
 // Server is the v1 API server.
 type Server struct {
-	deps ServerDeps
-	cfg  Config
+	deps    ServerDeps
+	cfg     Config
+	tvdbSvc TVDBService
 }
 
 // NewWithDeps creates a new v1 API server with explicit dependencies.
@@ -58,6 +59,11 @@ func New(db *sql.DB, cfg Config) *Server {
 		History:   importer.NewHistoryStore(db),
 	}
 	return &Server{deps: deps, cfg: cfg}
+}
+
+// SetTVDB configures the TVDB service (optional).
+func (s *Server) SetTVDB(svc TVDBService) {
+	s.tvdbSvc = svc
 }
 
 // RegisterRoutes registers API routes on the given mux.
@@ -118,6 +124,9 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 
 	// Library import (from external sources like Plex)
 	mux.HandleFunc("POST /api/v1/library/import", s.importLibrary)
+
+	// TVDB metadata
+	mux.HandleFunc("GET /api/v1/tvdb/search", s.handleTVDBSearch)
 }
 
 // Error response
@@ -1934,4 +1943,26 @@ func (s *Server) createImportedContent(_ context.Context, item importer.PlexItem
 	}
 
 	return content.ID, nil
+}
+
+// handleTVDBSearch handles GET /api/v1/tvdb/search?q=query
+func (s *Server) handleTVDBSearch(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		writeError(w, http.StatusBadRequest, "MISSING_QUERY", "query parameter is required")
+		return
+	}
+
+	if s.tvdbSvc == nil {
+		writeError(w, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "TVDB not configured")
+		return
+	}
+
+	results, err := s.tvdbSvc.Search(r.Context(), query)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "TVDB_ERROR", err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, results)
 }

@@ -328,6 +328,17 @@ func runServer(configPath string) error {
 	if err != nil {
 		return fmt.Errorf("create api: %w", err)
 	}
+
+	// Wire TVDB to v1 API if configured
+	var tvdbSvc *metadata.TVDBService
+	if cfg.TVDB != nil && cfg.TVDB.APIKey != "" {
+		tvdbClient := tvdb.New(cfg.TVDB.APIKey, tvdb.WithLogger(logger))
+		metadataCache := metadata.NewCache(db)
+		tvdbSvc = metadata.NewTVDBService(tvdbClient, metadataCache, logger.With("component", "tvdb"))
+		apiV1.SetTVDB(tvdbSvc)
+		logger.Info("TVDB integration enabled")
+	}
+
 	apiV1.RegisterRoutes(mux)
 
 	// Compat API (if enabled)
@@ -363,13 +374,9 @@ func runServer(configPath string) error {
 			logger.Info("TMDB client configured")
 		}
 
-		// Wire TVDB client and service if configured
-		if cfg.TVDB != nil && cfg.TVDB.APIKey != "" {
-			tvdbClient := tvdb.New(cfg.TVDB.APIKey, tvdb.WithLogger(logger))
-			metadataCache := metadata.NewCache(db)
-			tvdbSvc := metadata.NewTVDBService(tvdbClient, metadataCache, logger.With("component", "tvdb"))
+		// Wire TVDB service to compat API (reuse from v1 API)
+		if tvdbSvc != nil {
 			apiCompat.SetTVDB(tvdbSvc)
-			logger.Info("TVDB integration enabled")
 		}
 
 		apiCompat.RegisterRoutes(mux)

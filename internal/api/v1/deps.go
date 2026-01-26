@@ -9,6 +9,7 @@ import (
 	"github.com/vmunix/arrgo/internal/importer"
 	"github.com/vmunix/arrgo/internal/library"
 	"github.com/vmunix/arrgo/internal/search"
+	"github.com/vmunix/arrgo/pkg/tvdb"
 )
 
 // ErrMissingDependency is returned when a required dependency is nil.
@@ -52,6 +53,11 @@ type IndexerAPI interface {
 	Name() string
 	URL() string
 	Caps(ctx context.Context) error // Simple connectivity test
+}
+
+// TVDBService defines the interface for TVDB metadata operations.
+type TVDBService interface {
+	Search(ctx context.Context, query string) ([]tvdb.SearchResult, error)
 }
 
 // ServerDeps contains all dependencies for the API server.
