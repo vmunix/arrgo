@@ -2,6 +2,8 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+**Status:** Complete
+
 **Goal:** Add TVDB API integration for TV series metadata, enabling accurate episode counts and year data.
 
 **Architecture:** Pure API client in `pkg/tvdb/`, SQLite-backed cache in `internal/metadata/`, integration via compat API and CLI.

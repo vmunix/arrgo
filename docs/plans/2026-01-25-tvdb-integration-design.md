@@ -2,7 +2,7 @@
 
 **Issue:** #69 - Add TVDB API integration for series metadata
 **Date:** 2026-01-25
-**Status:** Approved
+**Status:** Complete
 
 ## Problem
 
