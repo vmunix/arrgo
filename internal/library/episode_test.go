@@ -557,3 +557,113 @@ func TestStore_GetSeriesStatsBatch_NoEpisodes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, statsMap, "series with no episodes should not appear in batch results")
 }
+
+func TestStore_BulkAddEpisodes(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	// Create test series
+	series := &Content{
+		Type:           ContentTypeSeries,
+		Title:          "Bulk Test Show",
+		Year:           2024,
+		Status:         StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, store.AddContent(series))
+
+	// Prepare 3 episodes for bulk insert
+	airDate1 := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	airDate2 := time.Date(2024, 1, 8, 0, 0, 0, 0, time.UTC)
+	airDate3 := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)
+
+	episodes := []*Episode{
+		{ContentID: series.ID, Season: 1, Episode: 1, Title: "Episode One", Status: StatusWanted, AirDate: &airDate1},
+		{ContentID: series.ID, Season: 1, Episode: 2, Title: "Episode Two", Status: StatusWanted, AirDate: &airDate2},
+		{ContentID: series.ID, Season: 1, Episode: 3, Title: "Episode Three", Status: StatusWanted, AirDate: &airDate3},
+	}
+
+	// Bulk add the episodes
+	inserted, err := store.BulkAddEpisodes(episodes)
+	require.NoError(t, err, "BulkAddEpisodes should succeed")
+	assert.Equal(t, 3, inserted, "all 3 episodes should be inserted")
+
+	// Verify episodes are in database
+	results, total, err := store.ListEpisodes(EpisodeFilter{ContentID: &series.ID})
+	require.NoError(t, err)
+	assert.Equal(t, 3, total, "should have 3 episodes in database")
+	assert.Len(t, results, 3)
+
+	// Verify episode details
+	assert.Equal(t, "Episode One", results[0].Title)
+	assert.Equal(t, "Episode Two", results[1].Title)
+	assert.Equal(t, "Episode Three", results[2].Title)
+
+	// Try to bulk add the same 3 episodes again (duplicates)
+	duplicateEpisodes := []*Episode{
+		{ContentID: series.ID, Season: 1, Episode: 1, Title: "Episode One Modified", Status: StatusAvailable},
+		{ContentID: series.ID, Season: 1, Episode: 2, Title: "Episode Two Modified", Status: StatusAvailable},
+		{ContentID: series.ID, Season: 1, Episode: 3, Title: "Episode Three Modified", Status: StatusAvailable},
+	}
+
+	inserted, err = store.BulkAddEpisodes(duplicateEpisodes)
+	require.NoError(t, err, "BulkAddEpisodes with duplicates should not error")
+	assert.Equal(t, 0, inserted, "no episodes should be inserted (all duplicates)")
+
+	// Verify original data is unchanged (INSERT OR IGNORE doesn't update)
+	results, _, err = store.ListEpisodes(EpisodeFilter{ContentID: &series.ID})
+	require.NoError(t, err)
+	assert.Equal(t, "Episode One", results[0].Title, "original title should be preserved")
+	assert.Equal(t, StatusWanted, results[0].Status, "original status should be preserved")
+}
+
+func TestStore_BulkAddEpisodes_Empty(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	// Empty slice should return 0, nil
+	inserted, err := store.BulkAddEpisodes([]*Episode{})
+	require.NoError(t, err)
+	assert.Equal(t, 0, inserted)
+}
+
+func TestStore_BulkAddEpisodes_PartialDuplicates(t *testing.T) {
+	db := setupTestDB(t)
+	store := NewStore(db)
+
+	// Create test series
+	series := &Content{
+		Type:           ContentTypeSeries,
+		Title:          "Partial Duplicate Test",
+		Year:           2024,
+		Status:         StatusWanted,
+		QualityProfile: "hd",
+		RootPath:       "/tv",
+	}
+	require.NoError(t, store.AddContent(series))
+
+	// Add one episode first
+	ep1 := &Episode{ContentID: series.ID, Season: 1, Episode: 1, Title: "Existing", Status: StatusWanted}
+	require.NoError(t, store.AddEpisode(ep1))
+
+	// Bulk add with mix of existing and new
+	episodes := []*Episode{
+		{ContentID: series.ID, Season: 1, Episode: 1, Title: "Duplicate", Status: StatusWanted},   // exists
+		{ContentID: series.ID, Season: 1, Episode: 2, Title: "New Episode 2", Status: StatusWanted}, // new
+		{ContentID: series.ID, Season: 1, Episode: 3, Title: "New Episode 3", Status: StatusWanted}, // new
+	}
+
+	inserted, err := store.BulkAddEpisodes(episodes)
+	require.NoError(t, err)
+	assert.Equal(t, 2, inserted, "only 2 new episodes should be inserted")
+
+	// Verify total count
+	results, total, err := store.ListEpisodes(EpisodeFilter{ContentID: &series.ID})
+	require.NoError(t, err)
+	assert.Equal(t, 3, total)
+	assert.Len(t, results, 3)
+
+	// Verify original was not modified
+	assert.Equal(t, "Existing", results[0].Title, "original episode title should be preserved")
+}

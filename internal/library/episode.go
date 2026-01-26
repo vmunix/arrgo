@@ -225,6 +225,47 @@ func (s *Store) GetSeriesStats(contentID int64) (*SeriesStats, error) {
 	return stats, nil
 }
 
+// BulkAddEpisodes inserts multiple episodes efficiently.
+// Skips episodes that already exist (by content_id, season, episode).
+// Returns the count of newly inserted episodes.
+func (s *Store) BulkAddEpisodes(episodes []*Episode) (int, error) {
+	if len(episodes) == 0 {
+		return 0, nil
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmt, err := tx.Prepare(`
+		INSERT OR IGNORE INTO episodes (content_id, season, episode, title, status, air_date)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`)
+	if err != nil {
+		return 0, fmt.Errorf("prepare statement: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
+
+	inserted := 0
+	for _, e := range episodes {
+		result, err := stmt.Exec(e.ContentID, e.Season, e.Episode, e.Title, e.Status, e.AirDate)
+		if err != nil {
+			return inserted, fmt.Errorf("insert episode S%02dE%02d: %w", e.Season, e.Episode, err)
+		}
+		if rows, _ := result.RowsAffected(); rows > 0 {
+			inserted++
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	return inserted, nil
+}
+
 // GetSeriesStatsBatch returns episode statistics for multiple series.
 // Returns a map from content ID to stats.
 func (s *Store) GetSeriesStatsBatch(contentIDs []int64) (map[int64]*SeriesStats, error) {
