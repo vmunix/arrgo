@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,16 +15,16 @@ import (
 // mockHandler is a test implementation of Handler
 type mockHandler struct {
 	name    string
-	started bool
-	stopped bool
+	started atomic.Bool
+	stopped atomic.Bool
 }
 
 func (h *mockHandler) Name() string { return h.name }
 
 func (h *mockHandler) Start(ctx context.Context) error {
-	h.started = true
+	h.started.Store(true)
 	<-ctx.Done()
-	h.stopped = true
+	h.stopped.Store(true)
 	return ctx.Err()
 }
 
@@ -40,14 +41,14 @@ func TestHandler_StartStop(t *testing.T) {
 
 	// Wait for start
 	time.Sleep(10 * time.Millisecond)
-	assert.True(t, h.started)
-	assert.False(t, h.stopped)
+	assert.True(t, h.started.Load())
+	assert.False(t, h.stopped.Load())
 
 	// Stop
 	cancel()
 	err := <-done
 	require.ErrorIs(t, err, context.Canceled)
-	assert.True(t, h.stopped)
+	assert.True(t, h.stopped.Load())
 }
 
 func TestBaseHandler_Fields(t *testing.T) {

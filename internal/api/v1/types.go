@@ -108,7 +108,7 @@ type downloadResponse struct {
 	ID               int64      `json:"id"`
 	ContentID        int64      `json:"content_id"`
 	EpisodeID        *int64     `json:"episode_id,omitempty"`
-	Season           *int       `json:"season,omitempty"`            // For season packs: which season
+	Season           *int       `json:"season,omitempty"`             // For season packs: which season
 	IsCompleteSeason bool       `json:"is_complete_season,omitempty"` // True if this is a complete season pack
 	Client           string     `json:"client"`
 	ClientID         string     `json:"client_id"`
