@@ -307,6 +307,7 @@ DELETE  /api/v1/content/:id             Remove
 
 # Episodes
 GET     /api/v1/content/:id/episodes    List episodes for series
+POST    /api/v1/content/:id/sync-episodes  Sync episodes from TVDB
 PUT     /api/v1/episodes/:id            Update episode
 
 # Search & grab
@@ -340,6 +341,9 @@ GET     /api/v1/plex/status             Plex connection status and libraries
 POST    /api/v1/plex/scan               Scan specific libraries or all
 GET     /api/v1/plex/libraries/:name/items  List library contents
 GET     /api/v1/plex/search             Search Plex with tracking status
+
+# TVDB
+GET     /api/v1/tvdb/search             Search TVDB for series
 
 # System
 GET     /api/v1/status                  Health, version

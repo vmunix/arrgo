@@ -130,9 +130,12 @@ Or use defaults syntax in config: `${VAR:-default_value}`
 ./arrgo downloads retry 42            # Retry a failed download
 
 # Library management
-./arrgo library list              # List all tracked content
-./arrgo library delete <id>       # Remove content from library
-./arrgo library check             # Verify files exist and Plex awareness
+./arrgo library list                   # List all tracked content
+./arrgo library list --type series     # List series with season indicators (S1✓ S2○)
+./arrgo library list --type series --seasons  # Expanded season breakdown
+./arrgo library show <id>              # Show content details (episodes for series)
+./arrgo library delete <id>            # Remove content from library
+./arrgo library check                  # Verify files exist and Plex awareness
 ./arrgo library import --from-plex Movies          # Import Plex library
 ./arrgo library import --from-plex Movies --dry-run  # Preview import
 ./arrgo library import --from-plex Movies --quality uhd  # Override quality
