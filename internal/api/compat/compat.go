@@ -996,7 +996,12 @@ func (s *Server) addSeries(w http.ResponseWriter, r *http.Request) {
 		// Extract monitored season numbers
 		var monitoredSeasons []int
 		for _, season := range req.Seasons {
-			if season.Monitored && season.SeasonNumber > 0 {
+			if season.Monitored && season.SeasonNumber == 0 {
+				s.log.Warn("specials (season 0) requested but not supported",
+					"title", req.Title,
+					"tvdb_id", req.TVDBID,
+				)
+			} else if season.Monitored && season.SeasonNumber > 0 {
 				monitoredSeasons = append(monitoredSeasons, season.SeasonNumber)
 			}
 		}
@@ -1074,7 +1079,12 @@ func (s *Server) updateSeries(w http.ResponseWriter, r *http.Request) {
 		// Extract monitored season numbers, excluding already-available seasons
 		var seasonsToSearch []int
 		for _, season := range req.Seasons {
-			if season.Monitored && season.SeasonNumber > 0 && !availableSeasons[season.SeasonNumber] {
+			if season.Monitored && season.SeasonNumber == 0 {
+				s.log.Warn("specials (season 0) requested but not supported",
+					"id", content.ID,
+					"title", content.Title,
+				)
+			} else if season.Monitored && season.SeasonNumber > 0 && !availableSeasons[season.SeasonNumber] {
 				seasonsToSearch = append(seasonsToSearch, season.SeasonNumber)
 			}
 		}
