@@ -103,6 +103,11 @@ cleanup_source = true  # Delete source files after successful import and Plex ve
 [tmdb]
 api_key = "${TMDB_API_KEY}"
 
+# TVDB metadata for TV series (episode counts, air dates)
+# Get your API key at https://thetvdb.com/api-information
+[tvdb]
+api_key = "${TVDB_API_KEY}"
+
 # AI assistant configuration
 [ai]
 enabled = true
