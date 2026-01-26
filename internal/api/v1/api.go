@@ -757,8 +757,8 @@ func downloadToResponse(d *download.Download, live *download.ClientStatus) downl
 		CompletedAt:      d.CompletedAt,
 	}
 	if live != nil {
-		clientStatus := string(live.Status)
-		resp.ClientStatus = &clientStatus
+		// Only use live data for ephemeral values (progress/speed/ETA).
+		// Status is managed by the adapter and stored in DB.
 		resp.Progress = &live.Progress
 		resp.Size = &live.Size
 		resp.Speed = &live.Speed

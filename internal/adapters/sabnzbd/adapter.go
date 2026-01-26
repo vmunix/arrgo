@@ -225,15 +225,29 @@ func (a *Adapter) emitFailed(ctx context.Context, dl *download.Download, reason 
 		"retryable", retryable)
 }
 
-// emitProgressed transitions to downloading if needed and publishes a DownloadProgressed event.
+// emitProgressed transitions status if needed and publishes a DownloadProgressed event.
 func (a *Adapter) emitProgressed(ctx context.Context, dl *download.Download, status *download.ClientStatus) {
-	// Transition to downloading if SABnzbd reports downloading and we're still queued
+	// Transition to downloading if client reports downloading and we're still queued
 	if status.Status == download.StatusDownloading && dl.Status == download.StatusQueued {
 		if err := a.store.Transition(dl, download.StatusDownloading); err != nil {
 			a.logger.Error("failed to transition download to downloading",
 				"download_id", dl.ID,
 				"error", err)
 			// Continue anyway - progress event is still useful
+		} else {
+			dl.Status = download.StatusDownloading // Update local copy
+		}
+	}
+
+	// Transition back to queued if client reports queued but we think it's downloading
+	// (can happen if queue priorities change)
+	if status.Status == download.StatusQueued && dl.Status == download.StatusDownloading {
+		if err := a.store.Transition(dl, download.StatusQueued); err != nil {
+			a.logger.Error("failed to transition download to queued",
+				"download_id", dl.ID,
+				"error", err)
+		} else {
+			dl.Status = download.StatusQueued // Update local copy
 		}
 	}
 

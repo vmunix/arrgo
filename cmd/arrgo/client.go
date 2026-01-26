@@ -125,9 +125,8 @@ type DownloadResponse struct {
 	IsCompleteSeason bool    `json:"is_complete_season,omitempty"`
 	Client           string  `json:"client"`
 	ClientID         string  `json:"client_id"`
-	Status           string  `json:"status"`
-	ClientStatus     *string `json:"client_status,omitempty"` // Live status from download client
-	ReleaseName      string  `json:"release_name"`
+	Status      string `json:"status"`
+	ReleaseName string `json:"release_name"`
 	Indexer          string  `json:"indexer"`
 	AddedAt          string  `json:"added_at"`
 	CompletedAt      *string `json:"completed_at,omitempty"`

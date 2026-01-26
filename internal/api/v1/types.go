@@ -112,8 +112,7 @@ type downloadResponse struct {
 	IsCompleteSeason bool       `json:"is_complete_season,omitempty"` // True if this is a complete season pack
 	Client           string     `json:"client"`
 	ClientID         string     `json:"client_id"`
-	Status           string     `json:"status"`
-	ClientStatus     *string    `json:"client_status,omitempty"` // Live status from download client (downloading, queued)
+	Status string `json:"status"`
 	ReleaseName      string     `json:"release_name"`
 	Indexer          string     `json:"indexer"`
 	AddedAt          time.Time  `json:"added_at"`

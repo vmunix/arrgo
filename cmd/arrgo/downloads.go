@@ -163,14 +163,7 @@ func printDownloadsActive(d *ListDownloadsResponse) {
 		if dl.ETA != nil {
 			eta = *dl.ETA
 		}
-		// Use client status for active downloads (queued/downloading) to show
-		// accurate state from download client. For post-completion states
-		// (importing, imported, cleaned), use DB status since those are internal.
-		displayStatus := dl.Status
-		if dl.ClientStatus != nil && (dl.Status == "queued" || dl.Status == "downloading") {
-			displayStatus = *dl.ClientStatus
-		}
-		fmt.Printf("  %-4d %-12s %-50s %-8s %s\n", dl.ID, displayStatus, title, progress, eta)
+		fmt.Printf("  %-4d %-12s %-50s %-8s %s\n", dl.ID, dl.Status, title, progress, eta)
 	}
 }
 
@@ -196,14 +189,7 @@ func printDownloadsAll(d *ListDownloadsResponse) {
 				completed = formatTimeAgo(t.Unix())
 			}
 		}
-		// Use client status for active downloads (queued/downloading) to show
-		// accurate state from download client. For post-completion states
-		// (importing, imported, cleaned), use DB status since those are internal.
-		displayStatus := dl.Status
-		if dl.ClientStatus != nil && (dl.Status == "queued" || dl.Status == "downloading") {
-			displayStatus = *dl.ClientStatus
-		}
-		fmt.Printf("  %-4d %-12s %-40s %-12s\n", dl.ID, displayStatus, title, completed)
+		fmt.Printf("  %-4d %-12s %-40s %-12s\n", dl.ID, dl.Status, title, completed)
 	}
 }
 
