@@ -986,7 +986,7 @@ func TestClient_AddContent_Success(t *testing.T) {
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
-	resp, err := client.AddContent("movie", "The Matrix", 1999, "hd")
+	resp, err := client.AddContent("movie", "The Matrix", 1999, "hd", 0)
 	require.NoError(t, err)
 
 	// Verify request body was sent correctly
@@ -994,6 +994,8 @@ func TestClient_AddContent_Success(t *testing.T) {
 	assert.Equal(t, "The Matrix", receivedReq["title"])
 	assert.InDelta(t, 1999, receivedReq["year"], 0.001)
 	assert.Equal(t, "hd", receivedReq["quality_profile"])
+	// tvdb_id should not be present when 0
+	assert.Nil(t, receivedReq["tvdb_id"])
 
 	// Verify response
 	assert.Equal(t, int64(42), resp.ID)
@@ -1003,6 +1005,49 @@ func TestClient_AddContent_Success(t *testing.T) {
 	assert.Equal(t, "wanted", resp.Status)
 	assert.Equal(t, "hd", resp.QualityProfile)
 	assert.Equal(t, "/media/movies", resp.RootPath)
+}
+
+func TestClient_AddContent_WithTVDBID(t *testing.T) {
+	var receivedReq map[string]any
+
+	srv := newMockServer(t).
+		ExpectPath("/api/v1/content").
+		ExpectPOST().
+		Handler(func(w http.ResponseWriter, r *http.Request) {
+			if !assert.NoError(t, json.NewDecoder(r.Body).Decode(&receivedReq)) {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			respondJSON(t, w, ContentResponse{
+				ID:             42,
+				Type:           "series",
+				Title:          "Breaking Bad",
+				Year:           2008,
+				Status:         "wanted",
+				QualityProfile: "hd",
+				RootPath:       "/media/series",
+			})
+		}).
+		Build()
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	resp, err := client.AddContent("series", "Breaking Bad", 2008, "hd", 81189)
+	require.NoError(t, err)
+
+	// Verify request body was sent correctly
+	assert.Equal(t, "series", receivedReq["type"])
+	assert.Equal(t, "Breaking Bad", receivedReq["title"])
+	assert.InDelta(t, 2008, receivedReq["year"], 0.001)
+	assert.Equal(t, "hd", receivedReq["quality_profile"])
+	// tvdb_id should be present when non-zero
+	assert.InDelta(t, 81189, receivedReq["tvdb_id"], 0.001)
+
+	// Verify response
+	assert.Equal(t, int64(42), resp.ID)
+	assert.Equal(t, "series", resp.Type)
+	assert.Equal(t, "Breaking Bad", resp.Title)
 }
 
 func TestClient_FindContent_Found(t *testing.T) {

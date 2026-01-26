@@ -11,8 +11,6 @@ import (
 
 // tvdbLookup searches TVDB and returns selected series info.
 // Returns tvdbID, title, year, or 0, "", 0 if canceled or not found.
-//
-//nolint:unused // Scaffolding for Task 13 (CLI Series Search with TVDB)
 func tvdbLookup(client *Client, query string) (int64, string, int) {
 	// Call server API to search TVDB
 	results, err := client.TVDBSearch(query)
@@ -76,6 +74,15 @@ func runSearchCmd(cmd *cobra.Command, args []string) error {
 	grabFlag, _ := cmd.Flags().GetString("grab")
 
 	client := NewClient(serverURL)
+
+	// For series searches, do TVDB lookup first to capture the ID
+	var tvdbID int64
+	if contentType == "series" {
+		tvdbID, _, _ = tvdbLookup(client, query)
+		// If user canceled the TVDB selection, we still proceed with the search
+		// The tvdbID will be 0 if canceled or not found
+	}
+
 	results, err := client.Search(query, contentType, profile)
 	if err != nil {
 		return fmt.Errorf("search failed: %w", err)
@@ -115,7 +122,7 @@ func runSearchCmd(cmd *cobra.Command, args []string) error {
 
 	// Grab the selected release
 	selected := results.Releases[grabIndex-1]
-	grabRelease(client, selected, contentType, profile)
+	grabRelease(client, selected, contentType, profile, tvdbID)
 	return nil
 }
 

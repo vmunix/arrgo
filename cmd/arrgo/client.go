@@ -272,12 +272,15 @@ func (c *Client) Search(query, contentType, profile string) (*SearchResponse, er
 	return &resp, nil
 }
 
-func (c *Client) AddContent(contentType, title string, year int, profile string) (*ContentResponse, error) {
+func (c *Client) AddContent(contentType, title string, year int, profile string, tvdbID int64) (*ContentResponse, error) {
 	req := map[string]any{
 		"type":            contentType,
 		"title":           title,
 		"year":            year,
 		"quality_profile": profile,
+	}
+	if tvdbID > 0 {
+		req["tvdb_id"] = tvdbID
 	}
 
 	var resp ContentResponse

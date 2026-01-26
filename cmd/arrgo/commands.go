@@ -97,7 +97,7 @@ func buildBadges(info *release.Info) string {
 	return strings.Join(badges, " ")
 }
 
-func grabRelease(client *Client, rel ReleaseResponse, contentType, profile string) {
+func grabRelease(client *Client, rel ReleaseResponse, contentType, profile string, tvdbID int64) {
 	// Parse release name to get title/year
 	info := release.Parse(rel.Title)
 	if info.Title == "" {
@@ -139,7 +139,7 @@ func grabRelease(client *Client, rel ReleaseResponse, contentType, profile strin
 		fmt.Printf("Found in library (ID: %d)\n", content.ID)
 	} else {
 		// Create new content entry
-		content, err = client.AddContent(contentType, info.Title, info.Year, profile)
+		content, err = client.AddContent(contentType, info.Title, info.Year, profile, tvdbID)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error adding content: %v\n", err)
 			return
