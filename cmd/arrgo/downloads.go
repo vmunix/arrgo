@@ -144,14 +144,14 @@ func printDownloadsActive(d *ListDownloadsResponse) {
 	}
 
 	fmt.Printf("Active Downloads (%d):\n\n", d.Total)
-	fmt.Printf("  %-4s %-12s %-50s %-8s %s\n", "ID", "STATE", "RELEASE", "PROGRESS", "ETA")
-	fmt.Println("  " + strings.Repeat("-", 90))
+	fmt.Printf("  %-4s %-12s %-46s %-8s %-10s %s\n", "ID", "STATE", "RELEASE", "PROGRESS", "SPEED", "ETA")
+	fmt.Println("  " + strings.Repeat("-", 100))
 
 	for i := range d.Items {
 		dl := &d.Items[i]
 		title := dl.ReleaseName
-		if len(title) > 50 {
-			title = title[:47] + "..."
+		if len(title) > 46 {
+			title = title[:43] + "..."
 		}
 		progress := "-"
 		if dl.Progress != nil {
@@ -159,11 +159,33 @@ func printDownloadsActive(d *ListDownloadsResponse) {
 		} else if dl.Status == "completed" {
 			progress = "100%"
 		}
+		speed := "-"
+		if dl.Speed != nil && *dl.Speed > 0 {
+			speed = formatSpeed(*dl.Speed)
+		}
 		eta := "-"
 		if dl.ETA != nil {
 			eta = *dl.ETA
 		}
-		fmt.Printf("  %-4d %-12s %-50s %-8s %s\n", dl.ID, dl.Status, title, progress, eta)
+		fmt.Printf("  %-4d %-12s %-46s %-8s %-10s %s\n", dl.ID, dl.Status, title, progress, speed, eta)
+	}
+}
+
+func formatSpeed(bytesPerSec int64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+	)
+	switch {
+	case bytesPerSec >= GB:
+		return fmt.Sprintf("%.1f GB/s", float64(bytesPerSec)/GB)
+	case bytesPerSec >= MB:
+		return fmt.Sprintf("%.1f MB/s", float64(bytesPerSec)/MB)
+	case bytesPerSec >= KB:
+		return fmt.Sprintf("%.1f KB/s", float64(bytesPerSec)/KB)
+	default:
+		return fmt.Sprintf("%d B/s", bytesPerSec)
 	}
 }
 
