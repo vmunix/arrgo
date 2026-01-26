@@ -14,6 +14,7 @@ import (
 	"github.com/vmunix/arrgo/internal/download"
 	"github.com/vmunix/arrgo/internal/events"
 	"github.com/vmunix/arrgo/internal/library"
+	"github.com/vmunix/arrgo/internal/metadata"
 	"github.com/vmunix/arrgo/internal/search"
 	"github.com/vmunix/arrgo/internal/tmdb"
 )
@@ -144,6 +145,7 @@ type Server struct {
 	searcher  *search.Searcher
 	manager   *download.Manager
 	tmdb      *tmdb.Client
+	tvdbSvc   *metadata.TVDBService
 	bus       *events.Bus // Optional event bus for event-driven grabs
 	log       *slog.Logger
 }
@@ -176,6 +178,11 @@ func (s *Server) SetTMDB(client *tmdb.Client) {
 // SetBus configures the event bus for event-driven grabs (optional).
 func (s *Server) SetBus(bus *events.Bus) {
 	s.bus = bus
+}
+
+// SetTVDB configures the TVDB service (optional).
+func (s *Server) SetTVDB(svc *metadata.TVDBService) {
+	s.tvdbSvc = svc
 }
 
 // RegisterRoutes registers compatibility API routes.
@@ -739,7 +746,6 @@ func (s *Server) lookupSeries(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Not in library - return stub that Overseerr can use to add
-	// Overseerr will fill in metadata from TMDB/TVDB on its side
 	response := sonarrSeriesResponse{
 		TVDBID:            tvdbID,
 		Title:             "",
@@ -756,6 +762,48 @@ func (s *Server) lookupSeries(w http.ResponseWriter, r *http.Request) {
 		TitleSlug:         fmt.Sprintf("tvdb-%d", tvdbID),
 		Tags:              []int{},
 		CleanTitle:        "",
+	}
+
+	// Enrich with TVDB metadata if service is configured
+	if s.tvdbSvc != nil {
+		series, err := s.tvdbSvc.GetSeries(r.Context(), int(tvdbID))
+		if err == nil {
+			response.Title = series.Name
+			response.SortTitle = strings.ToLower(series.Name)
+			response.Year = series.Year
+			response.Overview = series.Overview
+			response.CleanTitle = strings.ToLower(strings.ReplaceAll(series.Name, " ", ""))
+
+			// Map TVDB status to Sonarr status format
+			if series.Status == "Ended" {
+				response.Status = "ended"
+			} else {
+				response.Status = "continuing"
+			}
+
+			// Get episodes to determine accurate season count
+			episodes, err := s.tvdbSvc.GetEpisodes(r.Context(), int(tvdbID))
+			if err == nil && len(episodes) > 0 {
+				// Find unique season numbers (excluding specials, season 0)
+				seasonMap := make(map[int]bool)
+				for _, ep := range episodes {
+					if ep.Season > 0 {
+						seasonMap[ep.Season] = true
+					}
+				}
+
+				// Build seasons array
+				response.Seasons = make([]sonarrSeason, 0, len(seasonMap))
+				for seasonNum := range seasonMap {
+					response.Seasons = append(response.Seasons, sonarrSeason{
+						SeasonNumber: seasonNum,
+						Monitored:    false,
+					})
+				}
+				response.SeasonCount = len(seasonMap)
+			}
+		}
+		// On error, continue with stub response - graceful degradation
 	}
 
 	writeJSON(w, http.StatusOK, []sonarrSeriesResponse{response})
