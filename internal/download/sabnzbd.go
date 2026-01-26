@@ -164,13 +164,19 @@ func (c *SABnzbdClient) getQueue(ctx context.Context) ([]*ClientStatus, error) {
 		slot := &resp.Queue.Slots[i]
 		// Only the first (active) slot gets the speed; others are queued
 		speed := int64(0)
+		status := mapQueueStatus(slot.Status)
 		if i == 0 {
 			speed = queueSpeed
+		} else if status == StatusDownloading {
+			// Items after the first are waiting in queue, not actively downloading
+			// SABnzbd reports "Downloading" for all non-paused items, but only
+			// the first item is actually receiving data
+			status = StatusQueued
 		}
 		items = append(items, &ClientStatus{
 			ID:       slot.NzoID,
 			Name:     slot.Filename,
-			Status:   mapQueueStatus(slot.Status),
+			Status:   status,
 			Progress: parseFloat(slot.Percentage),
 			Size:     int64(parseFloat(slot.MB) * 1024 * 1024),
 			Speed:    speed,

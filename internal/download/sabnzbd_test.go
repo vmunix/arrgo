@@ -261,6 +261,66 @@ func TestSABnzbdClient_List(t *testing.T) {
 	assert.Equal(t, StatusFailed, list[3].Status)
 }
 
+func TestSABnzbdClient_List_QueuePositionOverridesStatus(t *testing.T) {
+	// Test that items after the first in queue are marked as queued,
+	// even when SABnzbd reports them as "Downloading"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mode := r.URL.Query().Get("mode")
+
+		if mode == modeQueue {
+			resp := map[string]any{
+				"queue": map[string]any{
+					"slots": []map[string]any{
+						{
+							"nzo_id":     "nzo_active",
+							"filename":   "Active.Download.2024",
+							"status":     "Downloading",
+							"percentage": "50",
+							"mb":         "2000",
+							"mbleft":     "1000",
+						},
+						{
+							// SABnzbd reports "Downloading" but this item is actually waiting
+							"nzo_id":     "nzo_waiting",
+							"filename":   "Waiting.Download.2024",
+							"status":     "Downloading", // Note: Same status as active item
+							"percentage": "0",
+							"mb":         "1500",
+							"mbleft":     "1500",
+						},
+					},
+				},
+			}
+			writeJSON(t, w, resp)
+			return
+		}
+
+		if mode == modeHistory {
+			resp := map[string]any{
+				"history": map[string]any{
+					"slots": []map[string]any{},
+				},
+			}
+			writeJSON(t, w, resp)
+			return
+		}
+	}))
+	defer server.Close()
+
+	client := NewSABnzbdClient(server.URL, "test-key", "", nil)
+	list, err := client.List(context.Background())
+	require.NoError(t, err)
+	require.Len(t, list, 2)
+
+	// First item (active) should be downloading
+	assert.Equal(t, "nzo_active", list[0].ID)
+	assert.Equal(t, StatusDownloading, list[0].Status)
+
+	// Second item should be queued despite SABnzbd reporting "Downloading"
+	assert.Equal(t, "nzo_waiting", list[1].ID)
+	assert.Equal(t, StatusQueued, list[1].Status) // Position overrides status
+}
+
 func TestSABnzbdClient_Remove(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "queue", r.URL.Query().Get("mode"))
