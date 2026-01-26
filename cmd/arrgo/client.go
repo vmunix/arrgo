@@ -304,6 +304,22 @@ func (c *Client) FindContent(contentType, title string, year int) (*ContentRespo
 	return &resp.Items[0], nil
 }
 
+// FindContentByTitle finds content by title only (ignores year).
+// Useful for series where seasons have different years.
+func (c *Client) FindContentByTitle(contentType, title string) (*ContentResponse, error) {
+	path := fmt.Sprintf("/api/v1/content?type=%s&title=%s&limit=1",
+		contentType, url.QueryEscape(title))
+
+	var resp ListContentResponse
+	if err := c.get(path, &resp); err != nil {
+		return nil, err
+	}
+	if len(resp.Items) == 0 {
+		return nil, nil // Not found
+	}
+	return &resp.Items[0], nil
+}
+
 func (c *Client) Grab(contentID int64, downloadURL, title, indexer string) (*GrabResponse, error) {
 	req := map[string]any{
 		"content_id":   contentID,

@@ -135,6 +135,15 @@ func grabRelease(client *Client, rel ReleaseResponse, contentType, profile strin
 		return
 	}
 
+	// For series, try title-only match as fallback (seasons have different years)
+	if content == nil && contentType == contentTypeSeries {
+		content, err = client.FindContentByTitle(contentType, info.Title)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error finding content: %v\n", err)
+			return
+		}
+	}
+
 	if content != nil {
 		fmt.Printf("Found in library (ID: %d)\n", content.ID)
 	} else {
